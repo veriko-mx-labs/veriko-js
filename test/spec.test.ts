@@ -7,8 +7,9 @@
  * de 2026 llegó a publicarse por un endpoint que lo leía sin filtrar. Estas
  * pruebas fallan si alguien sustituye la copia por ese bundle.
  *
- * La segunda parte compara el tipo del cuerpo de `POST /v1/validate`, que se
- * escribe a mano, con los campos que declara el spec.
+ * La segunda parte compara los tipos de los cuerpos de `POST /v1/validate` y de
+ * `POST /v1/validate-ocr`, que se escriben a mano, con los campos que declara el
+ * spec.
  */
 
 import assert from 'node:assert/strict';
@@ -18,7 +19,7 @@ import { describe, it } from 'node:test';
 
 import { parse } from 'yaml';
 
-import { VALIDATION_REQUEST_FIELDS } from '../src/types.js';
+import { OCR_VALIDATION_REQUEST_FIELDS, VALIDATION_REQUEST_FIELDS } from '../src/types.js';
 import { PROJECT_ROOT } from './harness.js';
 
 const SPEC_PATH = join(PROJECT_ROOT, 'spec', 'openapi.yaml');
@@ -27,7 +28,10 @@ interface SpecDocument {
   openapi: string;
   paths: Record<string, unknown>;
   components: {
-    schemas: Record<string, { properties?: Record<string, unknown>; required?: string[] }>;
+    schemas: Record<
+      string,
+      { properties?: Record<string, unknown>; required?: string[]; anyOf?: unknown }
+    >;
   };
 }
 
@@ -71,5 +75,18 @@ describe('el cuerpo de POST /v1/validate sigue al spec', () => {
 
   it('exige fecha y monto', () => {
     assert.deepEqual(schema?.required, ['fecha', 'monto']);
+  });
+});
+
+describe('el cuerpo de POST /v1/validate-ocr sigue al spec', () => {
+  const schema = spec.components.schemas['OcrValidationRequest'];
+
+  it('tiene los mismos campos que el tipo del SDK', () => {
+    assert.ok(schema?.properties);
+    assert.deepEqual(Object.keys(schema.properties), [...OCR_VALIDATION_REQUEST_FIELDS]);
+  });
+
+  it('exige la imagen o su URL', () => {
+    assert.deepEqual(schema?.anyOf, [{ required: ['image'] }, { required: ['image_url'] }]);
   });
 });

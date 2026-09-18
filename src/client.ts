@@ -1,24 +1,24 @@
-/** El cliente: las operaciones de la API que este SDK cubre. */
+/** El cliente: la entrada al SDK y las familias de operaciones. */
 
-import { randomUUID } from 'node:crypto';
-
-import { ConfigurationError, InvalidRequestError } from './errors.js';
-import {
-  DEFAULT_RETRY,
-  Transport,
-  filenameFromContentDisposition,
-  type RetryConfig,
-} from './http.js';
-import { CEP_FORMATS, type CepDocument, type CepFormat } from './types.js';
-import type { ValidateTransferParams, Validation, ValidationRequest } from './types.js';
+import { ConfigurationError } from './errors.js';
+import { DEFAULT_RETRY, Transport, type RetryConfig } from './http.js';
+import { Catalog, Validations, Webhooks } from './resources.js';
+import type {
+  CepDocument,
+  CepFormat,
+  GetValidationOptions,
+  ValidateTransferParams,
+  Validation,
+  ValidationWithEtag,
+} from './types.js';
 
 export const DEFAULT_BASE_URL = 'https://api.veriko.mx/v1';
 export const DEFAULT_TIMEOUT_MS = 30_000;
 export const API_KEY_ENV_VAR = 'VERIKO_API_KEY';
 export const BASE_URL_ENV_VAR = 'VERIKO_BASE_URL';
 
-/** La versión que viaja en el `User-Agent`. La actualiza `scripts/finish-build.mjs`. */
-export const VERSION = '0.1.0';
+/** La versión que viaja en el `User-Agent`. `test/client.test.ts` la compara con `package.json`. */
+export const VERSION = '0.2.0';
 
 export interface VerikoOptions {
   /** La clave de API. Por omisión, `VERIKO_API_KEY`. */
@@ -48,6 +48,14 @@ export interface VerikoOptions {
  * entorno `VERIKO_API_KEY`. Empieza con `veriko_` y se obtiene en el panel:
  * https://app.veriko.mx
  *
+ * Las operaciones se agrupan por familia:
+ *
+ * - `client.validations`: validar, consultar, reintentar y descargar.
+ * - `client.webhooks`: endpoints y su historial de entregas.
+ * - `client.catalog`: bancos y estado del servicio de Banxico.
+ *
+ * Las tres de uso más frecuente están también en la raíz, como atajo:
+ *
  * ```ts
  * const client = new Veriko();
  *
@@ -61,6 +69,13 @@ export interface VerikoOptions {
  */
 export class Veriko {
   private readonly transport: Transport;
+
+  /** Validar, consultar, reintentar y descargar. */
+  readonly validations: Validations;
+  /** Endpoints de webhook y su historial de entregas. */
+  readonly webhooks: Webhooks;
+  /** Catálogo de bancos y estado del servicio de Banxico. */
+  readonly catalog: Catalog;
 
   constructor(options: VerikoOptions = {}) {
     const apiKey = options.apiKey ?? process.env[API_KEY_ENV_VAR] ?? '';
@@ -86,6 +101,10 @@ export class Veriko {
         userAgent: `veriko-js/${VERSION} (+https://github.com/veriko-mx-labs/veriko-js)${suffix}`,
         acceptLanguage: options.acceptLanguage,
       });
+
+    this.validations = new Validations(this.transport);
+    this.webhooks = new Webhooks(this.transport);
+    this.catalog = new Catalog(this.transport);
   }
 
   get baseUrl(): string {
@@ -93,10 +112,11 @@ export class Veriko {
   }
 
   /**
-   * Valida una transferencia SPEI contra el CEP de Banxico.
+   * Atajo de `client.validations.validate()`.
    *
-   * `POST /v1/validate`. Devuelve el veredicto en `attributes.status`: `valid`,
-   * `not_found`, `cep_unavailable`, `returned` o `error`.
+   * Valida una transferencia SPEI contra el CEP de Banxico. `POST /v1/validate`.
+   * Devuelve el veredicto en `attributes.status`: `valid`, `not_found`,
+   * `cep_unavailable`, `returned` o `error`.
    *
    * La operación exige `claveRastreo` o `referenciaNumerica`. Enviar las dos
    * precisa la búsqueda. La fecha es la de envío, en `YYYY-MM-DD`.
@@ -107,124 +127,33 @@ export class Veriko {
    *
    * Cada llamada consume cuota del plan, y se descuenta al aceptar la petición.
    */
-  async validateTransfer(params: ValidateTransferParams): Promise<Validation> {
-    if (!params.claveRastreo && !params.referenciaNumerica) {
-      throw new InvalidRequestError(
-        'Hace falta claveRastreo o referenciaNumerica para buscar la transferencia en el CEP',
-        { status: 422, code: 'clave_or_ref_required' },
-      );
-    }
-
-    const body: ValidationRequest = {
-      fecha: params.fecha,
-      monto: typeof params.monto === 'string' ? Number(params.monto) : params.monto,
-    };
-    if (params.claveRastreo !== undefined) body.clave_rastreo = params.claveRastreo;
-    if (params.referenciaNumerica !== undefined) {
-      body.referencia_numerica = params.referenciaNumerica;
-    }
-    if (params.cuentaBeneficiaria !== undefined) {
-      body.cuenta_beneficiaria = params.cuentaBeneficiaria;
-    }
-    if (params.emisor !== undefined) body.emisor = params.emisor;
-    if (params.receptor !== undefined) body.receptor = params.receptor;
-    if (params.receptorParticipante !== undefined) {
-      body.receptor_participante = params.receptorParticipante;
-    }
-    if (params.retryPolicy !== undefined) body.retry_policy = params.retryPolicy;
-
-    const response = await this.transport.request({
-      method: 'POST',
-      path: '/validate',
-      body,
-      headers: { 'idempotency-key': params.idempotencyKey ?? newIdempotencyKey() },
-    });
-    return readValidation(response.body);
+  validateTransfer(params: ValidateTransferParams): Promise<Validation> {
+    return this.validations.validate(params);
   }
 
   /**
-   * Lee una validación por su identificador.
+   * Atajo de `client.validations.get()`.
    *
-   * `GET /v1/validations/{id}`. Es la operación con la que se sigue una
-   * validación que quedó reintentando: el veredicto final aparece cuando
-   * `attributes.status` alcanza un estado terminal.
+   * Lee una validación por su identificador. `GET /v1/validations/{id}`. Es la
+   * operación con la que se sigue una validación que quedó reintentando: el
+   * veredicto final aparece cuando `attributes.status` alcanza un estado
+   * terminal.
    */
-  async getValidation(validationId: string): Promise<Validation> {
-    const response = await this.transport.request({
-      method: 'GET',
-      path: `/validations/${pathSegment(validationId)}`,
-    });
-    return readValidation(response.body);
+  getValidation(
+    validationId: string,
+    options: GetValidationOptions = {},
+  ): Promise<ValidationWithEtag> {
+    return this.validations.get(validationId, options);
   }
 
   /**
-   * Descarga el CEP oficial de una validación.
+   * Atajo de `client.validations.cep()`.
    *
-   * `GET /v1/validations/{id}/cep`. Devuelve el archivo: el XML que emitió
-   * Banxico, con su sello digital y su cadena original, o el PDF equivalente.
-   *
-   * Existe cuando la validación tiene comprobante (`hasCep()`). Cuando no, la
-   * API responde `404` con `cep_not_available` y el SDK lo lanza como
-   * `NotFoundError`.
+   * Descarga el CEP oficial de una validación. `GET /v1/validations/{id}/cep`.
+   * Devuelve el archivo: el XML que emitió Banxico, con su sello digital y su
+   * cadena original, o el PDF equivalente.
    */
-  async getCep(validationId: string, options: { format?: CepFormat } = {}): Promise<CepDocument> {
-    const format = options.format ?? 'xml';
-    if (!CEP_FORMATS.includes(format)) {
-      throw new ConfigurationError(
-        `El formato del CEP es 'xml' o 'pdf'; llegó ${JSON.stringify(format)}`,
-      );
-    }
-
-    const accept = format === 'xml' ? 'application/xml' : 'application/pdf';
-    const response = await this.transport.request({
-      method: 'GET',
-      path: `/validations/${pathSegment(validationId)}/cep`,
-      query: { format },
-      accept: `${accept}, application/json`,
-    });
-
-    return {
-      validationId,
-      content: response.body,
-      contentType: response.headers['content-type'] ?? accept,
-      format,
-      filename: filenameFromContentDisposition(
-        response.headers['content-disposition'],
-        `CEP-${validationId}.${format}`,
-      ),
-    };
+  getCep(validationId: string, options: { format?: CepFormat } = {}): Promise<CepDocument> {
+    return this.validations.cep(validationId, options);
   }
-}
-
-function readValidation(body: Uint8Array): Validation {
-  const document: unknown = JSON.parse(new TextDecoder().decode(body));
-  if (!document || typeof document !== 'object' || !('data' in document)) {
-    throw new ConfigurationError('La respuesta no trae el recurso `data` de la validación');
-  }
-  return (document as { data: Validation }).data;
-}
-
-/**
- * Una clave por llamada, estable entre los reintentos de esa misma llamada.
- *
- * Reintentar un `POST` sin clave de idempotencia puede duplicar la validación,
- * y su cargo, cuando la respuesta se perdió pero la petición llegó. Con clave,
- * el reintento devuelve la respuesta original.
- *
- * Esta clave no sobrevive al proceso que la generó. La que protege un reenvío
- * posterior es la que se pasa en `idempotencyKey`.
- */
-function newIdempotencyKey(): string {
-  return `veriko-js-${randomUUID().replace(/-/g, '')}`;
-}
-
-/** Un identificador que va en la ruta no puede traer barras ni espacios. */
-function pathSegment(value: string): string {
-  const cleaned = value.trim();
-  if (!cleaned || /[/?#]/.test(cleaned)) {
-    throw new ConfigurationError(
-      `Identificador de validación inservible: ${JSON.stringify(value)}`,
-    );
-  }
-  return encodeURIComponent(cleaned);
 }

@@ -142,6 +142,12 @@ export class RecordingServer {
     return this;
   }
 
+  /** Vacía las peticiones recibidas y las respuestas que quedaban por servir. */
+  reset(): void {
+    this.requests.length = 0;
+    this.queue.length = 0;
+  }
+
   private next(): RecordedResponse | undefined {
     return this.queue.shift();
   }

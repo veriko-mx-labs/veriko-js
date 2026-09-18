@@ -1,16 +1,21 @@
 /** Construcción del cliente: clave, raíz de la API y cabeceras. */
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
 import {
   API_KEY_ENV_VAR,
+  Catalog,
   ConfigurationError,
   DEFAULT_BASE_URL,
   VERSION,
+  Validations,
   Veriko,
+  Webhooks,
 } from '../src/index.js';
-import { RecordingServer } from './harness.js';
+import { PROJECT_ROOT, RecordingServer } from './harness.js';
 
 const TRANSFER = {
   fecha: '2025-03-15',
@@ -70,6 +75,22 @@ describe('new Veriko()', () => {
     await client.validateTransfer(TRANSFER);
 
     assert.ok(server.header(0, 'user-agent')?.startsWith(`veriko-js/${VERSION}`));
+  });
+
+  it('las operaciones se agrupan en tres familias', () => {
+    const client = new Veriko({ apiKey: 'veriko_x' });
+
+    assert.ok(client.validations instanceof Validations);
+    assert.ok(client.webhooks instanceof Webhooks);
+    assert.ok(client.catalog instanceof Catalog);
+  });
+
+  it('la versión del SDK es la del package.json', () => {
+    const manifest = JSON.parse(readFileSync(join(PROJECT_ROOT, 'package.json'), 'utf8')) as {
+      version: string;
+    };
+
+    assert.equal(VERSION, manifest.version);
   });
 
   it('el idioma de los mensajes se negocia por cabecera', async () => {

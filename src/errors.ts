@@ -122,3 +122,17 @@ export class ServerError extends ApiError {}
 
 /** La firma de un webhook no cuadra con el cuerpo recibido. */
 export class SignatureVerificationError extends VerikoError {}
+
+/** `waitFor()` agotó su tiempo sin que el veredicto de la validación quedara firme. */
+export class TimeoutError extends VerikoError {
+  /** La validación que se esperaba. */
+  readonly validationId: string;
+  /** El tiempo de espera que se agotó, en milisegundos. */
+  readonly timeoutMs: number;
+
+  constructor(message: string, validationId: string, timeoutMs: number) {
+    super(message);
+    this.validationId = validationId;
+    this.timeoutMs = timeoutMs;
+  }
+}

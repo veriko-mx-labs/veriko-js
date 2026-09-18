@@ -37,7 +37,10 @@ jobs:
         run: npm run check:types-fresh
 
       - name: Los ejemplos se analizan sin errores
-        run: node --check examples/validate.mjs && node --check examples/express-webhook.mjs
+        run: |
+          node --check examples/validate.mjs
+          node --check examples/async-and-webhooks.mjs
+          node --check examples/express-webhook.mjs
 
   test:
     name: Pruebas (Node ${{ matrix.node-version }})
@@ -86,9 +89,14 @@ jobs:
         working-directory: /tmp/consumo
         run: |
           node --input-type=module -e "
-            import { Veriko, verifyWebhook, computeSignature, SIGNATURE_HEADER } from '@veriko/sdk';
+            import { Veriko, verifyWebhook, computeSignature, isSettled, SIGNATURE_HEADER } from '@veriko/sdk';
             const firma = computeSignature('{}', 'sec');
             if (typeof Veriko !== 'function') throw new Error('Veriko no se exportó');
+            if (typeof isSettled !== 'function') throw new Error('isSettled no se exportó');
+            const client = new Veriko({ apiKey: 'veriko_prueba' });
+            for (const [familia, metodo] of [['validations', 'waitFor'], ['webhooks', 'create'], ['catalog', 'banks']]) {
+              if (typeof client[familia][metodo] !== 'function') throw new Error(familia + '.' + metodo + ' no existe');
+            }
             if (SIGNATURE_HEADER !== 'X-Webhook-Signature') throw new Error('cabecera inesperada');
             if (!verifyWebhook('{}', 'sha256=' + firma, 'sec')) throw new Error('la firma no cuadró');
             console.log('ESM correcto');
@@ -98,9 +106,14 @@ jobs:
         working-directory: /tmp/consumo
         run: |
           node --input-type=commonjs -e "
-            const { Veriko, verifyWebhook, computeSignature } = require('@veriko/sdk');
+            const { Veriko, verifyWebhook, computeSignature, isSettled } = require('@veriko/sdk');
             const firma = computeSignature('{}', 'sec');
             if (typeof Veriko !== 'function') throw new Error('Veriko no se exportó');
+            if (typeof isSettled !== 'function') throw new Error('isSettled no se exportó');
+            const client = new Veriko({ apiKey: 'veriko_prueba' });
+            for (const [familia, metodo] of [['validations', 'waitFor'], ['webhooks', 'create'], ['catalog', 'banks']]) {
+              if (typeof client[familia][metodo] !== 'function') throw new Error(familia + '.' + metodo + ' no existe');
+            }
             if (!verifyWebhook('{}', firma, 'sec')) throw new Error('la firma no cuadró');
             console.log('CommonJS correcto');
           "

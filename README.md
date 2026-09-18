@@ -51,6 +51,19 @@ una respuesta de Banxico sobre la transferencia, el segundo es la ausencia de re
 
 Con veredicto `valid`, el comprobante queda disponible en XML y en PDF.
 
+## Las familias de operaciones
+
+El cliente agrupa la API en tres familias:
+
+| familia              | qué cubre                                                                                                             |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `client.validations` | Validar por campos o por imagen, consultar, listar, exportar, la política de reintentos y la descarga del comprobante |
+| `client.webhooks`    | Registrar endpoints, rotar su secreto, enviar un evento de prueba y leer el historial de entregas                     |
+| `client.catalog`     | Catálogo de bancos SPEI, banco emisor de una tarjeta y estado del servicio de Banxico                                 |
+
+Las tres operaciones de uso más frecuente están también en la raíz del cliente, como atajo:
+`validateTransfer()`, `getValidation()` y `getCep()`.
+
 ## Instalación
 
 El paquete todavía no está publicado en npm. Mientras tanto se instala desde el repositorio:
@@ -105,6 +118,74 @@ conserva el suyo (`banxico_status`, `processing_time_ms`), porque es el tipo gen
 
 Cada llamada consume cuota del plan, y se descuenta al aceptar la petición.
 
+### Desde la imagen del comprobante
+
+```ts
+const validation = await client.validations.validateOcr({
+  image: 'comprobante.png', // ruta, Buffer o Uint8Array
+  cuentaBeneficiaria: '012180004412345678', // obligatoria para celular DiMo
+});
+```
+
+El SDK lee el archivo y lo codifica en base64. `imageUrl` recibe una imagen ya publicada en HTTPS, y
+si se envían `image` e `imageUrl`, la API sólo considera `image`. Formatos: JPEG, PNG o WebP, de
+hasta 12 MB.
+
+La imagen de una validación por OCR se descarga con `client.validations.image(id)`.
+
+### Sin esperar al veredicto
+
+Para volumen, la API acepta la petición y responde con el identificador:
+
+```ts
+const queued = await client.validations.enqueue({
+  fecha: '2025-03-15',
+  monto: 15000.5,
+  claveRastreo: 'MXBA20250315001234',
+});
+
+const validation = await client.validations.waitFor(queued.id); // sondea hasta el veredicto
+```
+
+`enqueue()` y `enqueueOcr()` son métodos aparte y no una opción de `validate()`, de modo que el
+tipo de retorno de cada uno es fijo.
+
+`waitFor()` manda el `ETag` de la respuesta anterior en cada vuelta, así que un sondeo que no
+encuentra cambios no descarga otra vez el mismo cuerpo. Espera a que el veredicto quede firme, no
+sólo a que el estado sea terminal: una validación con reintentos en marcha llega a `not_found` y
+sigue cambiando después. Esa distinción es `isSettled()`, junto a `isTerminal()` y `hasCep()`.
+
+El tiempo de espera se fija con `timeoutMs` (cinco minutos por omisión) y la pausa entre sondeos con
+`pollIntervalMs` (cinco segundos). Al agotarse el primero, `waitFor()` lanza `TimeoutError`.
+
+La alternativa a sondear es suscribirse al webhook `validation.completed`.
+
+### Listar y recorrer el historial
+
+```ts
+const page = await client.validations.list({ status: 'valid', perPage: 50 });
+console.log(page.total, 'validaciones,', page.totalPages, 'páginas');
+
+for await (const item of client.validations.iter({ from: '2025-03-01', to: '2025-03-31' })) {
+  console.log(item.id, item.attributes.status);
+}
+```
+
+`iter()` es un `AsyncIterable` y pide la página siguiente sólo cuando la anterior se agota. Con
+`maxPages` se acota el recorrido. Cada `Page` trae `items`, `page`, `perPage`, `total`,
+`totalPages` y `hasNext`.
+
+Los filtros (`status`, `type`, `from`, `to`, `search`, `playground`, `withDeleted`, `batchId`,
+`bank`, `amountMin`, `amountMax` y `retryState`) van en `camelCase`. `status` acepta un estado o una
+lista, y `withDeleted: true` devuelve sólo las validaciones retiradas, mientras que `false` devuelve
+sólo las activas.
+
+Un listado trae menos campos que `get()`: no incluye los datos enviados, el resultado de Banxico ni
+los enlaces al comprobante.
+
+El historial se exporta con `client.validations.export({ format: 'csv' })`, que admite también
+`xlsx` y los mismos filtros. `client.validations.stats()` devuelve los totales con esos filtros.
+
 ## Descargar el CEP
 
 ```ts
@@ -120,6 +201,64 @@ if (hasCep(validation)) {
 `getCep()` devuelve el archivo: el XML que emitió Banxico, con su sello digital y su cadena
 original, o el PDF equivalente. Cuando la validación no tiene comprobante, la API responde `404`
 con `cep_not_available` y el SDK lanza `NotFoundError`.
+
+Las descargas y las exportaciones devuelven el archivo y no un enlace: `content`, `contentType` y
+el `filename` que propone la API en `Content-Disposition`.
+
+## Registrar un webhook
+
+```ts
+const endpoint = await client.webhooks.create({
+  url: 'https://miapp.example.com/hooks/pagos',
+  events: ['validation.completed'],
+});
+
+console.log(endpoint.attributes.secret); // whsec_… La API no lo vuelve a entregar
+```
+
+El secreto de firma viaja **una sola vez**, en esta respuesta. Si se pierde,
+`client.webhooks.regenerateSecret(endpoint.id)` devuelve uno nuevo, y el anterior deja de valer.
+
+`client.webhooks.test(endpoint.id)` manda un evento de prueba y dice si el receptor lo aceptó. Las
+entregas de prueba no cuentan para el contador de fallos consecutivos que apaga un endpoint a los
+tres seguidos. Cuando eso pasa, el estado queda en `auto_disabled` y se reactiva con
+`client.webhooks.update(id, { status: 'active' })`.
+
+El historial de intentos está en `client.webhooks.deliveries()`, con o sin identificador de
+endpoint, y se recorre con `iterDeliveries()`. `exportDeliveries()` lo descarga en CSV o en XLSX.
+Los filtros `status` y `eventType` sólo existen en el listado global: con un endpoint y un filtro,
+el SDK consulta ese listado con `endpoint_id`.
+
+## Catálogo y estado de Banxico
+
+```ts
+const banks = await client.catalog.banks(); // instituciones SPEI con su código
+const card = await client.catalog.binLookup('455632'); // banco emisor de una tarjeta
+const status = await client.catalog.banxicoStatus();
+
+console.log(status.attributes.status); // 'operational'
+```
+
+`banxicoStatus()` sirve para distinguir un `cep_unavailable` propio de la transferencia de una caída
+del servicio, y `banxicoTimeseries()` devuelve la serie de latencia o de veredictos por ventana.
+
+## Lecturas condicionales
+
+`client.validations.get()` y `client.catalog.banks()` admiten `ifNoneMatch`. La respuesta trae el
+`ETag` en `etag`, y cuando nada cambió la API responde `304`, que el SDK lanza como `ApiError` con
+`status` 304.
+
+```ts
+import { ApiError } from '@veriko/sdk';
+
+const validation = await client.validations.get(id);
+
+try {
+  await client.validations.get(id, { ifNoneMatch: validation.etag });
+} catch (error) {
+  if (!(error instanceof ApiError && error.status === 304)) throw error;
+}
+```
 
 ## Verificar la firma de un webhook
 
@@ -204,7 +343,12 @@ const validation = await client.validateTransfer({
 ```
 
 El avance del ciclo se lee en `(await client.getValidation(id)).attributes.retry_state`, o se
-espera al webhook `validation.retry.resolved`.
+espera al webhook `validation.retry.resolved`. Los intentos ya hechos están en
+`client.validations.retryAttempts(id)`.
+
+La política de una validación ya creada se cambia con `client.validations.setRetryPolicy(id, policy)`
+y el ciclo se detiene con `client.validations.cancelRetries(id)`. Las dos devuelven el estado del
+ciclo, no la validación completa.
 
 ## Idempotencia
 
@@ -226,6 +370,8 @@ genera al azar en cada envío: una clave aleatoria por reintento anula la protec
 
 Sin `idempotencyKey`, el SDK genera una por llamada y la repite en sus propios reintentos. Esa
 clave no sobrevive al proceso que la generó, así que un reenvío posterior sí se ejecuta dos veces.
+Esto vale para `validate()`, `validateOcr()`, `enqueue()` y `enqueueOcr()`. `setRetryPolicy()` y
+`cancelRetries()` aceptan la clave, pero el SDK no genera una por su cuenta.
 
 ## Errores
 
@@ -251,17 +397,18 @@ try {
 }
 ```
 
-| excepción                    | estado                                     |
-| ---------------------------- | ------------------------------------------ |
-| `AuthenticationError`        | `401`                                      |
-| `ForbiddenError`             | `403`                                      |
-| `NotFoundError`              | `404`                                      |
-| `ConflictError`              | `409`                                      |
-| `InvalidRequestError`        | `400`, `413`, `422`                        |
-| `RateLimitError`             | `429`                                      |
-| `ServerError`                | `5xx`                                      |
-| `ConnectionError`            | Sin respuesta, con los reintentos agotados |
-| `SignatureVerificationError` | La firma de un webhook no cuadra           |
+| excepción                    | estado                                             |
+| ---------------------------- | -------------------------------------------------- |
+| `AuthenticationError`        | `401`                                              |
+| `ForbiddenError`             | `403`                                              |
+| `NotFoundError`              | `404`                                              |
+| `ConflictError`              | `409`                                              |
+| `InvalidRequestError`        | `400`, `413`, `422`                                |
+| `RateLimitError`             | `429`                                              |
+| `ServerError`                | `5xx`                                              |
+| `ConnectionError`            | Sin respuesta, con los reintentos agotados         |
+| `TimeoutError`               | `waitFor()` agotó su tiempo sin un veredicto firme |
+| `SignatureVerificationError` | La firma de un webhook no cuadra                   |
 
 Cada error de la API trae `requestId`, que identifica la petición en los registros del sistema.
 
@@ -282,20 +429,37 @@ del spec, filtrada por visibilidad. El bundle interno de la aplicación no se us
 Ese spec es neutral de marca por diseño de la plataforma, así que sus ejemplos citan un host
 genérico. La raíz real de la API la fija el SDK en `DEFAULT_BASE_URL`.
 
-El tipo del cuerpo de `POST /v1/validate` es la única excepción y se escribe a mano: su schema
-lleva un `anyOf` que el generador traduce a `unknown`. `test/spec.test.ts` falla si el spec añade,
-quita o renombra alguno de sus campos.
+Cada método devuelve el recurso `data` de la respuesta, tipado por el spec: `validation.attributes`,
+`endpoint.attributes.secret`, `bank.attributes.name`.
 
-Además de los tipos con nombre corto, el paquete reexporta `components` y `paths` completos, por si
-hace falta una operación que el SDK todavía no envuelve.
+Los cuerpos de `POST /v1/validate` y de `POST /v1/validate-ocr` son la única excepción y se escriben
+a mano: sus schemas llevan un `anyOf` que el generador traduce a `unknown`. `test/spec.test.ts`
+falla si el spec añade, quita o renombra alguno de sus campos.
+
+Además de los tipos con nombre corto, el paquete reexporta `components`, `operations` y `paths`
+completos, por si hace falta una operación que el SDK todavía no envuelve.
 
 ## Alcance de esta versión
 
-`validateTransfer()`, `getValidation()`, `getCep()` y la verificación de webhooks.
+27 operaciones de la API, repartidas en las tres familias del cliente:
 
-Fuera del alcance por ahora: el modo asíncrono (`?async=1`) con sondeo por `ETag`, la validación
-por OCR de una imagen, la importación masiva, los beneficiarios y las finanzas. Esas operaciones se
-consumen con cualquier cliente HTTP contra la [referencia](https://docs.veriko.mx).
+| familia              | operaciones | qué incluyen                                                                                                      |
+| -------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------- |
+| `client.validations` | 13          | La validación por campos y por imagen, el modo asíncrono con sondeo por `ETag`, la paginación y las exportaciones |
+| `client.webhooks`    | 10          | El ciclo de vida de los endpoints y su historial de entregas, con paginación y exportación                        |
+| `client.catalog`     | 4           | Bancos SPEI, banco emisor de una tarjeta, estado de Banxico y su serie temporal                                   |
+
+A ellas se suma la verificación de la firma de los webhooks, que no es una operación de la API.
+
+Fuera del alcance, y previsto para la siguiente versión: beneficiarios, con su importación masiva, y
+las métricas de consumo.
+
+La importación masiva de validaciones (`/validations/imports`) todavía no tiene método.
+
+Fuera del alcance a propósito: finanzas, métricas propias, catálogo de planes, suscripción y el
+resumen del panel. Son superficie de interfaz, se consumen una vez o desde la propia aplicación, y
+cada una arrastra formatos de exportación que no aportan al SDK. Están en la
+[referencia](https://docs.veriko.mx) para quien las necesite con un cliente HTTP.
 
 ## Desarrollo
 
@@ -308,7 +472,7 @@ npm run build          # dist/esm y dist/cjs
 ```
 
 Ninguna prueba llama a la API. El arnés levanta un servidor HTTP local que sirve las respuestas
-guardadas en [`test/recordings/`](test/recordings).
+guardadas en [`test/recordings/`](test/recordings), recortadas de los ejemplos del spec público.
 
 ## Enlaces
 
