@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Estilo, tipos y spec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - run: npm ci
+
+      - name: eslint
+        run: npm run lint
+
+      - name: prettier
+        run: npm run format:check
+
+      - name: tsc
+        run: npm run typecheck
+
+      - name: El spec versionado es el público, no el bundle interno
+        run: npm run check:spec-public
+
+      - name: Los tipos generados están al día con el spec
+        run: npm run check:types-fresh
+
+      - name: Los ejemplos se analizan sin errores
+        run: node --check examples/validate.mjs && node --check examples/express-webhook.mjs
+
+  test:
+    name: Pruebas (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['18', '20', '22', '24']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - run: npm ci
+
+      - run: npm test
+
+  build:
+    name: El paquete se consume en ESM y en CommonJS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Empaquetar
+        run: npm pack
+
+      # Se instala el tarball en un proyecto aparte: así se comprueba lo que
+      # recibe quien instala el paquete, no lo que hay en el árbol de trabajo.
+      - name: Instalar el paquete en un proyecto de prueba
+        run: |
+          mkdir -p /tmp/consumo && cd /tmp/consumo
+          npm init -y > /dev/null
+          npm install "$GITHUB_WORKSPACE"/veriko-sdk-*.tgz
+
+      - name: Importar desde ESM
+        working-directory: /tmp/consumo
+        run: |
+          node --input-type=module -e "
+            import { Veriko, verifyWebhook, computeSignature, SIGNATURE_HEADER } from '@veriko/sdk';
+            const firma = computeSignature('{}', 'sec');
+            if (typeof Veriko !== 'function') throw new Error('Veriko no se exportó');
+            if (SIGNATURE_HEADER !== 'X-Webhook-Signature') throw new Error('cabecera inesperada');
+            if (!verifyWebhook('{}', 'sha256=' + firma, 'sec')) throw new Error('la firma no cuadró');
+            console.log('ESM correcto');
+          "
+
+      - name: Requerir desde CommonJS
+        working-directory: /tmp/consumo
+        run: |
+          node --input-type=commonjs -e "
+            const { Veriko, verifyWebhook, computeSignature } = require('@veriko/sdk');
+            const firma = computeSignature('{}', 'sec');
+            if (typeof Veriko !== 'function') throw new Error('Veriko no se exportó');
+            if (!verifyWebhook('{}', firma, 'sec')) throw new Error('la firma no cuadró');
+            console.log('CommonJS correcto');
+          "
