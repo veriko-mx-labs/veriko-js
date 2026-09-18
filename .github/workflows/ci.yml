@@ -94,7 +94,7 @@ jobs:
             if (typeof Veriko !== 'function') throw new Error('Veriko no se exportó');
             if (typeof isSettled !== 'function') throw new Error('isSettled no se exportó');
             const client = new Veriko({ apiKey: 'veriko_prueba' });
-            for (const [familia, metodo] of [['validations', 'waitFor'], ['webhooks', 'create'], ['catalog', 'banks']]) {
+            for (const [familia, metodo] of [['validations', 'waitFor'], ['webhooks', 'create'], ['catalog', 'banks'], ['beneficiaries', 'importWait'], ['usage', 'summary']]) {
               if (typeof client[familia][metodo] !== 'function') throw new Error(familia + '.' + metodo + ' no existe');
             }
             if (SIGNATURE_HEADER !== 'X-Webhook-Signature') throw new Error('cabecera inesperada');
@@ -111,7 +111,7 @@ jobs:
             if (typeof Veriko !== 'function') throw new Error('Veriko no se exportó');
             if (typeof isSettled !== 'function') throw new Error('isSettled no se exportó');
             const client = new Veriko({ apiKey: 'veriko_prueba' });
-            for (const [familia, metodo] of [['validations', 'waitFor'], ['webhooks', 'create'], ['catalog', 'banks']]) {
+            for (const [familia, metodo] of [['validations', 'waitFor'], ['webhooks', 'create'], ['catalog', 'banks'], ['beneficiaries', 'importWait'], ['usage', 'summary']]) {
               if (typeof client[familia][metodo] !== 'function') throw new Error(familia + '.' + metodo + ' no existe');
             }
             if (!verifyWebhook('{}', firma, 'sec')) throw new Error('la firma no cuadró');

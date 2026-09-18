@@ -1,5 +1,5 @@
 /**
- * Las 27 operaciones que cubre el SDK, contra el spec.
+ * Las 49 operaciones que cubre el SDK, contra el spec.
  *
  * Cada caso llama a un método con todos sus argumentos opcionales y comprueba que
  * lo que llegó al servidor existe en el spec: el método y la ruta, los parámetros
@@ -102,6 +102,8 @@ function declared(template: string, operation: Operation, where: string): string
 
 const ID = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
 const WEBHOOK = '9f8e7d6c-5b4a-3210-fedc-ba9876543210';
+const IMPORT = 42;
+const ROW = 102;
 
 const FILTERS = {
   status: ['valid', 'not_found'],
@@ -370,9 +372,157 @@ const CASES: Case[] = [
     allQuery: true,
     call: (client) => client.catalog.banxicoTimeseries({ metric: 'verdict', window: '7d' }),
   },
+  {
+    operationId: 'createBeneficiary',
+    recording: 'beneficiary-created',
+    allBody: true,
+    call: (client) =>
+      client.beneficiaries.create({
+        accountNumber: '5512345678',
+        bankCode: '40012',
+        label: 'Proveedor X',
+      }),
+  },
+  {
+    operationId: 'listBeneficiaries',
+    recording: 'beneficiaries-list',
+    allQuery: true,
+    call: (client) => client.beneficiaries.list({ withArchived: false }),
+  },
+  {
+    operationId: 'updateBeneficiary',
+    recording: 'beneficiary-updated',
+    allBody: true,
+    call: (client) =>
+      client.beneficiaries.update(12, {
+        label: 'Proveedor Y',
+        accountNumber: '012180004412345678',
+        bankCode: '40012',
+      }),
+  },
+  {
+    operationId: 'deleteBeneficiary',
+    recording: 'no-content',
+    call: (client) => client.beneficiaries.delete(12),
+  },
+  {
+    operationId: 'validateAccount',
+    recording: 'account-validation',
+    allQuery: true,
+    call: (client) => client.beneficiaries.validateAccount('012180004412345678', { type: 'clabe' }),
+  },
+  {
+    operationId: 'lookupBeneficiaryAccount',
+    recording: 'beneficiary-lookup',
+    allQuery: true,
+    call: (client) => client.beneficiaries.lookup('012180004412345678'),
+  },
+  {
+    operationId: 'exportBeneficiaries',
+    recording: 'beneficiaries-export-csv',
+    allQuery: true,
+    call: (client) =>
+      client.beneficiaries.export({ format: 'xlsx', withArchived: true, limit: 10 }),
+  },
+  {
+    operationId: 'downloadBeneficiaryImportTemplate',
+    recording: 'beneficiaries-import-template',
+    allQuery: true,
+    call: (client) => client.beneficiaries.importTemplate({ format: 'xlsx' }),
+  },
+  {
+    operationId: 'createBeneficiaryImport',
+    recording: 'beneficiaries-import-created',
+    allBody: true,
+    call: (client) =>
+      client.beneficiaries.importStart(Buffer.from('cuenta,alias\n012180004412345678,X\n'), {
+        parseMode: 'free',
+        filename: 'lista.csv',
+      }),
+  },
+  {
+    operationId: 'getBeneficiaryImport',
+    recording: 'beneficiaries-import-status',
+    call: (client) => client.beneficiaries.importStatus(IMPORT),
+  },
+  {
+    operationId: 'cancelBeneficiaryImport',
+    recording: 'no-content',
+    call: (client) => client.beneficiaries.importCancel(IMPORT),
+  },
+  {
+    operationId: 'getBeneficiaryImportPreview',
+    recording: 'beneficiaries-import-preview',
+    allQuery: true,
+    call: (client) =>
+      client.beneficiaries.importPreview(IMPORT, { page: 2, perPage: 5, buckets: ['valid'] }),
+  },
+  {
+    operationId: 'patchBeneficiaryImportRow',
+    recording: 'beneficiaries-import-row-updated',
+    allBody: true,
+    call: (client) =>
+      client.beneficiaries.importEditRow(IMPORT, ROW, {
+        parsedAccount: '012180004412345678',
+        parsedLabel: 'Proveedor X',
+        parsedAccountType: 'clabe',
+        parsedBankCode: '40012',
+        parsedBankName: 'BBVA MEXICO',
+      }),
+  },
+  {
+    operationId: 'deleteBeneficiaryImportRow',
+    recording: 'no-content',
+    call: (client) => client.beneficiaries.importRemoveRow(IMPORT, ROW),
+  },
+  {
+    operationId: 'commitBeneficiaryImport',
+    recording: 'beneficiaries-import-committed',
+    call: (client) => client.beneficiaries.importCommit(IMPORT),
+  },
+  {
+    operationId: 'getUsageSummary',
+    recording: 'usage-summary',
+    call: (client) => client.usage.summary(),
+  },
+  {
+    operationId: 'getUsageHistory',
+    recording: 'usage-history',
+    allQuery: true,
+    call: (client) => client.usage.history({ months: 3 }),
+  },
+  {
+    operationId: 'getUsageBreakdown',
+    recording: 'usage-breakdown',
+    allQuery: true,
+    call: (client) => client.usage.breakdown({ period: 'current' }),
+  },
+  {
+    operationId: 'getUsageLimits',
+    recording: 'usage-limits',
+    call: (client) => client.usage.limits(),
+  },
+  {
+    operationId: 'getUsageHeatmap',
+    recording: 'usage-heatmap',
+    allQuery: true,
+    call: (client) => client.usage.heatmap({ days: 30 }),
+  },
+  {
+    operationId: 'getApiUsage',
+    recording: 'api-usage',
+    call: (client) => client.usage.apiUsage(),
+  },
+  {
+    operationId: 'exportApiUsage',
+    recording: 'api-usage-export-csv',
+    allQuery: true,
+    call: (client) =>
+      client.usage.export({ format: 'xlsx', from: '2025-01-01', to: '2025-03-31', limit: 100 }),
+  },
 ];
 
-/** Las 27 operaciones de esta versión. */
+/** Las 49 operaciones de esta versión. */
 const SDK_OPERATIONS = [
   'validateDirect',
   'validateOcr',
@@ -401,6 +551,28 @@ const SDK_OPERATIONS = [
   'lookupBin',
   'banxicoPublicStatus',
   'banxicoPublicTimeseries',
+  'createBeneficiary',
+  'listBeneficiaries',
+  'updateBeneficiary',
+  'deleteBeneficiary',
+  'validateAccount',
+  'lookupBeneficiaryAccount',
+  'exportBeneficiaries',
+  'downloadBeneficiaryImportTemplate',
+  'createBeneficiaryImport',
+  'getBeneficiaryImport',
+  'cancelBeneficiaryImport',
+  'getBeneficiaryImportPreview',
+  'patchBeneficiaryImportRow',
+  'deleteBeneficiaryImportRow',
+  'commitBeneficiaryImport',
+  'getUsageSummary',
+  'getUsageHistory',
+  'getUsageBreakdown',
+  'getUsageLimits',
+  'getUsageHeatmap',
+  'getApiUsage',
+  'exportApiUsage',
 ];
 
 describe('lo que el SDK envía existe en el spec', () => {
@@ -443,11 +615,23 @@ describe('lo que el SDK envía existe en el spec', () => {
         }
 
         if (sent.body.length > 0) {
-          const schema = resolveSchema(
-            operation.requestBody?.content?.['application/json']?.schema,
+          const contentType = (sent.headers['content-type'] ?? '').split(';')[0] ?? '';
+          const schema = resolveSchema(operation.requestBody?.content?.[contentType]?.schema);
+          assert.ok(
+            schema?.properties,
+            `${template}: el spec no describe el cuerpo ${contentType}`,
           );
-          assert.ok(schema?.properties, `${template}: el spec no describe el cuerpo`);
-          const bodyKeys = Object.keys(server.json(0));
+          // En un formulario multipart, los campos son los `name` de cada parte.
+          const bodyKeys =
+            contentType === 'application/json'
+              ? Object.keys(server.json(0))
+              : [
+                  ...new Set(
+                    [...sent.body.toString('latin1').matchAll(/; name="([^"]+)"/g)].map(
+                      (match) => match[1] ?? '',
+                    ),
+                  ),
+                ];
           for (const key of bodyKeys) {
             assert.ok(key in schema.properties, `${template}: el spec no declara el campo ${key}`);
           }
@@ -463,15 +647,22 @@ describe('lo que el SDK envía existe en el spec', () => {
 });
 
 describe('el conjunto de operaciones cubierto', () => {
-  it('son las 27 de esta versión', () => {
+  it('son las 49 de esta versión', () => {
     const covered = [...new Set(CASES.map((testCase) => testCase.operationId))].sort();
 
-    assert.equal(SDK_OPERATIONS.length, 27);
+    assert.equal(SDK_OPERATIONS.length, 49);
     assert.deepEqual(covered, [...SDK_OPERATIONS].sort());
   });
 
   it('las familias del spec no traen operaciones de máquina a máquina sin método', () => {
-    const families = new Set(['Validations', 'Webhooks', 'Public', 'Banxico Status']);
+    const families = new Set([
+      'Validations',
+      'Webhooks',
+      'Public',
+      'Banxico Status',
+      'Beneficiaries',
+      'Usage',
+    ]);
     const machineToMachine = allOperations()
       .filter((operation) => operation.tags?.some((tag) => families.has(tag)))
       .filter(acceptsApiKey)

@@ -53,13 +53,15 @@ Con veredicto `valid`, el comprobante queda disponible en XML y en PDF.
 
 ## Las familias de operaciones
 
-El cliente agrupa la API en tres familias:
+El cliente agrupa la API en cinco familias:
 
-| familia              | qué cubre                                                                                                             |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `client.validations` | Validar por campos o por imagen, consultar, listar, exportar, la política de reintentos y la descarga del comprobante |
-| `client.webhooks`    | Registrar endpoints, rotar su secreto, enviar un evento de prueba y leer el historial de entregas                     |
-| `client.catalog`     | Catálogo de bancos SPEI, banco emisor de una tarjeta y estado del servicio de Banxico                                 |
+| familia                | qué cubre                                                                                                             |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `client.validations`   | Validar por campos o por imagen, consultar, listar, exportar, la política de reintentos y la descarga del comprobante |
+| `client.webhooks`      | Registrar endpoints, rotar su secreto, enviar un evento de prueba y leer el historial de entregas                     |
+| `client.catalog`       | Catálogo de bancos SPEI, banco emisor de una tarjeta y estado del servicio de Banxico                                 |
+| `client.beneficiaries` | Cuentas beneficiarias guardadas y la importación masiva, como ciclo completo                                          |
+| `client.usage`         | Cuota de validaciones, límites de tasa y registro de actividad de la API                                              |
 
 Las tres operaciones de uso más frecuente están también en la raíz del cliente, como atajo:
 `validateTransfer()`, `getValidation()` y `getCep()`.
@@ -242,6 +244,65 @@ console.log(status.attributes.status); // 'operational'
 `banxicoStatus()` sirve para distinguir un `cep_unavailable` propio de la transferencia de una caída
 del servicio, y `banxicoTimeseries()` devuelve la serie de latencia o de veredictos por ventana.
 
+## Beneficiarios
+
+`client.beneficiaries` guarda las cuentas a las que se paga: CLABE, tarjeta o celular DiMo. El tipo
+se detecta por la longitud del número, y un celular exige `bankCode`.
+
+```ts
+const beneficiary = await client.beneficiaries.create({
+  accountNumber: '012180004412345678',
+  label: 'Proveedor ABC',
+});
+
+const found = await client.beneficiaries.lookup('012180004412345678'); // la cuenta ya guardada
+console.log(found.attributes.bank_name);
+```
+
+`validateAccount()` comprueba la estructura de un número sin gastar cuota. La lista completa se
+recorre con `client.beneficiaries.list()`, que no pagina, y `delete()` archiva una cuenta sin
+borrarla: `list({ withArchived: true })` devuelve sólo las archivadas. `export()` la baja en CSV o en
+XLSX.
+
+### Importación masiva
+
+La importación es un ciclo: descargar la plantilla, subir el archivo, revisar las filas y confirmar.
+
+```ts
+const template = await client.beneficiaries.importTemplate({ format: 'csv' }); // 1. descargar
+const started = await client.beneficiaries.importStart('beneficiarios.csv'); // 2. subir
+await client.beneficiaries.importWait(started.id); // 3. esperar la vista previa
+
+for await (const row of client.beneficiaries.iterImportPreview(started.id)) {
+  // 4. revisar
+  if (row.id !== undefined && row.attributes?.status === 'correctable') {
+    await client.beneficiaries.importEditRow(started.id, row.id, { parsedBankCode: '40012' });
+  }
+}
+
+await client.beneficiaries.importCommit(started.id); // 5. confirmar
+```
+
+`importStart()` recibe los bytes del archivo o su ruta, y lo sube como `multipart/form-data`. Nada
+se persiste hasta `importCommit()`. `importWait()` espera a `preview_ready` o a un estado final,
+que es lo que distingue `isImportSettled()`; el endpoint de estado no expone `ETag`, así que cada
+vuelta descarga el cuerpo. Una importación que todavía no se confirmó se cancela con
+`importCancel()`.
+
+## Consumo
+
+```ts
+const summary = await client.usage.summary();
+console.log(summary.attributes?.used, 'de', summary.attributes?.limit);
+
+const history = await client.usage.history({ months: 6 });
+const limits = await client.usage.limits();
+```
+
+`summary()` trae la cuota del plan en curso y `limits()` los límites de tasa, que son ajenos a esa
+cuota. `breakdown()`, `heatmap()` y `apiUsage()` desglosan el consumo, y
+`client.usage.export({ format: 'csv' })` baja el registro de actividad.
+
 ## Lecturas condicionales
 
 `client.validations.get()` y `client.catalog.banks()` admiten `ifNoneMatch`. La respuesta trae el
@@ -397,18 +458,18 @@ try {
 }
 ```
 
-| excepción                    | estado                                             |
-| ---------------------------- | -------------------------------------------------- |
-| `AuthenticationError`        | `401`                                              |
-| `ForbiddenError`             | `403`                                              |
-| `NotFoundError`              | `404`                                              |
-| `ConflictError`              | `409`                                              |
-| `InvalidRequestError`        | `400`, `413`, `422`                                |
-| `RateLimitError`             | `429`                                              |
-| `ServerError`                | `5xx`                                              |
-| `ConnectionError`            | Sin respuesta, con los reintentos agotados         |
-| `TimeoutError`               | `waitFor()` agotó su tiempo sin un veredicto firme |
-| `SignatureVerificationError` | La firma de un webhook no cuadra                   |
+| excepción                    | estado                                          |
+| ---------------------------- | ----------------------------------------------- |
+| `AuthenticationError`        | `401`                                           |
+| `ForbiddenError`             | `403`                                           |
+| `NotFoundError`              | `404`                                           |
+| `ConflictError`              | `409`                                           |
+| `InvalidRequestError`        | `400`, `413`, `422`                             |
+| `RateLimitError`             | `429`                                           |
+| `ServerError`                | `5xx`                                           |
+| `ConnectionError`            | Sin respuesta, con los reintentos agotados      |
+| `TimeoutError`               | `waitFor()` o `importWait()` agotaron su tiempo |
+| `SignatureVerificationError` | La firma de un webhook no cuadra                |
 
 Cada error de la API trae `requestId`, que identifica la petición en los registros del sistema.
 
@@ -441,18 +502,17 @@ completos, por si hace falta una operación que el SDK todavía no envuelve.
 
 ## Alcance de esta versión
 
-27 operaciones de la API, repartidas en las tres familias del cliente:
+49 operaciones de la API, repartidas en las cinco familias del cliente:
 
-| familia              | operaciones | qué incluyen                                                                                                      |
-| -------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------- |
-| `client.validations` | 13          | La validación por campos y por imagen, el modo asíncrono con sondeo por `ETag`, la paginación y las exportaciones |
-| `client.webhooks`    | 10          | El ciclo de vida de los endpoints y su historial de entregas, con paginación y exportación                        |
-| `client.catalog`     | 4           | Bancos SPEI, banco emisor de una tarjeta, estado de Banxico y su serie temporal                                   |
+| familia                | operaciones | qué incluyen                                                                                                      |
+| ---------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------- |
+| `client.validations`   | 13          | La validación por campos y por imagen, el modo asíncrono con sondeo por `ETag`, la paginación y las exportaciones |
+| `client.webhooks`      | 10          | El ciclo de vida de los endpoints y su historial de entregas, con paginación y exportación                        |
+| `client.catalog`       | 4           | Bancos SPEI, banco emisor de una tarjeta, estado de Banxico y su serie temporal                                   |
+| `client.beneficiaries` | 15          | La lista de cuentas beneficiarias y el ciclo completo de su importación masiva                                    |
+| `client.usage`         | 7           | La cuota del plan, los límites de tasa, el historial, el desglose, el mapa de calor y el registro de actividad    |
 
 A ellas se suma la verificación de la firma de los webhooks, que no es una operación de la API.
-
-Fuera del alcance, y previsto para la siguiente versión: beneficiarios, con su importación masiva, y
-las métricas de consumo.
 
 El SDK cubre sólo operaciones de máquina a máquina, las que aceptan la clave de API o son
 públicas. Las que únicamente aceptan la cookie de sesión son de la interfaz y no entran en ninguna

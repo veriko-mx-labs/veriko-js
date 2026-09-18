@@ -5,6 +5,35 @@ versiones según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+## [0.3.0] — 2026-09-18
+
+La superficie pasa de 27 operaciones a 49: se suman las familias `beneficiaries` y
+`usage`. Con ellas, el SDK cubre todas las operaciones de máquina a máquina de sus
+cinco familias.
+
+### Añadido
+
+- `client.beneficiaries`: registrar, listar, cambiar y archivar cuentas beneficiarias;
+  validación estructural de una cuenta sin gastar cuota (`validateAccount`); resolución
+  de una cuenta en la lista propia (`lookup`); exportación en CSV y XLSX; y la
+  importación masiva como ciclo (`importTemplate`, `importStart`, `importStatus`,
+  `importPreview`, `iterImportPreview`, `importEditRow`, `importRemoveRow`,
+  `importCommit`, `importCancel` e `importWait`).
+- `client.usage`: cuota del plan (`summary`), historial mensual (`history`), desglose por
+  operación (`breakdown`), límites de tasa (`limits`), mapa de calor (`heatmap`),
+  métricas de la API (`apiUsage`) y su exportación (`export`).
+- Los tipos de las respuestas y de los argumentos de las dos familias, tomados del spec.
+- `isImportSettled()` e `isImportTerminal()`: la condición que espera `importWait()`
+  (`preview_ready` o un estado final).
+- Subida de archivos `multipart/form-data` en el transporte, sin dependencias de runtime, y
+  parámetros de consulta repetidos para el filtro `buckets` de la vista previa.
+- `test/operations.test.ts` cubre las 49 operaciones, con sus cuerpos multipart.
+
+### Cambiado
+
+- `TimeoutError` expone `resourceId`, el recurso que se esperaba, porque ahora lo lanzan
+  `waitFor()` y `importWait()`. `validationId` sigue disponible como alias.
+
 ## [0.2.0] — 2026-09-18
 
 La superficie pasa de 3 operaciones a 27: las familias `validations`, `webhooks`
@@ -86,6 +115,7 @@ Primera versión del SDK oficial de JavaScript y TypeScript.
 - Validación por OCR de una imagen de comprobante.
 - Beneficiarios, importación masiva y finanzas.
 
-[No publicado]: https://github.com/veriko-mx-labs/veriko-js/compare/v0.2.0...HEAD
+[No publicado]: https://github.com/veriko-mx-labs/veriko-js/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/veriko-mx-labs/veriko-js/releases/tag/v0.3.0
 [0.2.0]: https://github.com/veriko-mx-labs/veriko-js/releases/tag/v0.2.0
 [0.1.0]: https://github.com/veriko-mx-labs/veriko-js/releases/tag/v0.1.0

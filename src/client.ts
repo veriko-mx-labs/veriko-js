@@ -2,7 +2,7 @@
 
 import { ConfigurationError } from './errors.js';
 import { DEFAULT_RETRY, Transport, type RetryConfig } from './http.js';
-import { Catalog, Validations, Webhooks } from './resources.js';
+import { Beneficiaries, Catalog, Usage, Validations, Webhooks } from './resources.js';
 import type {
   CepDocument,
   CepFormat,
@@ -18,7 +18,7 @@ export const API_KEY_ENV_VAR = 'VERIKO_API_KEY';
 export const BASE_URL_ENV_VAR = 'VERIKO_BASE_URL';
 
 /** La versión que viaja en el `User-Agent`. `test/client.test.ts` la compara con `package.json`. */
-export const VERSION = '0.2.0';
+export const VERSION = '0.3.0';
 
 export interface VerikoOptions {
   /** La clave de API. Por omisión, `VERIKO_API_KEY`. */
@@ -53,6 +53,8 @@ export interface VerikoOptions {
  * - `client.validations`: validar, consultar, reintentar y descargar.
  * - `client.webhooks`: endpoints y su historial de entregas.
  * - `client.catalog`: bancos y estado del servicio de Banxico.
+ * - `client.beneficiaries`: cuentas guardadas y su importación masiva.
+ * - `client.usage`: cuota, límites y registro de actividad.
  *
  * Las tres de uso más frecuente están también en la raíz, como atajo:
  *
@@ -76,6 +78,10 @@ export class Veriko {
   readonly webhooks: Webhooks;
   /** Catálogo de bancos y estado del servicio de Banxico. */
   readonly catalog: Catalog;
+  /** Cuentas beneficiarias guardadas y su importación masiva. */
+  readonly beneficiaries: Beneficiaries;
+  /** Cuota, límites y registro de actividad. */
+  readonly usage: Usage;
 
   constructor(options: VerikoOptions = {}) {
     const apiKey = options.apiKey ?? process.env[API_KEY_ENV_VAR] ?? '';
@@ -105,6 +111,8 @@ export class Veriko {
     this.validations = new Validations(this.transport);
     this.webhooks = new Webhooks(this.transport);
     this.catalog = new Catalog(this.transport);
+    this.beneficiaries = new Beneficiaries(this.transport);
+    this.usage = new Usage(this.transport);
   }
 
   get baseUrl(): string {

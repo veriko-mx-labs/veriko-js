@@ -123,16 +123,24 @@ export class ServerError extends ApiError {}
 /** La firma de un webhook no cuadra con el cuerpo recibido. */
 export class SignatureVerificationError extends VerikoError {}
 
-/** `waitFor()` agotó su tiempo sin que el veredicto de la validación quedara firme. */
+/**
+ * `waitFor()` o `importWait()` agotaron su tiempo sin que el recurso llegara a un
+ * estado firme.
+ */
 export class TimeoutError extends VerikoError {
-  /** La validación que se esperaba. */
-  readonly validationId: string;
+  /** El recurso que se esperaba: una validación o una importación. */
+  readonly resourceId: string;
   /** El tiempo de espera que se agotó, en milisegundos. */
   readonly timeoutMs: number;
 
-  constructor(message: string, validationId: string, timeoutMs: number) {
+  constructor(message: string, resourceId: string, timeoutMs: number) {
     super(message);
-    this.validationId = validationId;
+    this.resourceId = resourceId;
     this.timeoutMs = timeoutMs;
+  }
+
+  /** Es `resourceId` cuando lo que se esperaba era una validación. */
+  get validationId(): string {
+    return this.resourceId;
   }
 }

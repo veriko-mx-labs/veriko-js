@@ -8,6 +8,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
+import { basename, extname } from 'node:path';
 import { performance } from 'node:perf_hooks';
 
 import { ApiError, ConfigurationError, InvalidRequestError, TimeoutError } from './errors.js';
@@ -27,13 +28,43 @@ import {
   readDocument,
   readList,
   readMeta,
+  type EntityId,
   type Query,
 } from './internal.js';
 import { iteratePages, parsePage, type IterOptions, type Page } from './pagination.js';
 import {
   CEP_FORMATS,
   EXPORT_FORMATS,
+  IMPORT_TEMPLATE_FORMATS,
+  isImportSettled,
   isSettled,
+  type AccountValidation,
+  type ApiUsage,
+  type Beneficiary,
+  type BeneficiaryImportCommitted,
+  type BeneficiaryImportJob,
+  type BeneficiaryImportRow,
+  type BeneficiaryImportStarted,
+  type BeneficiaryLookup,
+  type CreateBeneficiaryParams,
+  type EditImportRowParams,
+  type ExportBeneficiariesParams,
+  type ExportUsageParams,
+  type ImportPreviewParams,
+  type ImportStartOptions,
+  type ImportTemplateFormat,
+  type ImportTemplateOptions,
+  type ListBeneficiariesParams,
+  type UpdateBeneficiaryParams,
+  type UsageBreakdown,
+  type UsageBreakdownParams,
+  type UsageHeatmap,
+  type UsageHeatmapParams,
+  type UsageHistory,
+  type UsageHistoryParams,
+  type UsageLimits,
+  type UsageSummary,
+  type ValidateAccountOptions,
   type Bank,
   type BankList,
   type BanksOptions,
@@ -234,6 +265,7 @@ async function exportFile(
   format: ExportFormat,
   query: Query,
   fallbackName: string,
+  extraAccept?: string,
 ): Promise<DownloadedFile> {
   if (!EXPORT_FORMATS.includes(format)) {
     throw new ConfigurationError(
@@ -245,7 +277,7 @@ async function exportFile(
     method: 'GET',
     path,
     query: { ...query, format },
-    accept: `${accept}, application/json`,
+    accept: [accept, extraAccept, 'application/json'].filter(Boolean).join(', '),
   });
   return toFile(response, `${fallbackName}.${format}`, response.headers['content-type'] ?? accept);
 }
@@ -910,5 +942,506 @@ export class Catalog {
       query: { metric: params.metric, window: params.window },
     });
     return readData<BanxicoTimeseries>(response, 'de la serie');
+  }
+}
+
+// ── Beneficiarios ───────────────────────────────────────────────────────────
+
+const IMPORT_CONTENT_TYPES: Record<string, string> = {
+  '.csv': 'text/csv',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.xls': 'application/vnd.ms-excel',
+  '.txt': 'text/plain',
+  '.pdf': 'application/pdf',
+};
+
+const TEMPLATE_CONTENT_TYPES: Record<ImportTemplateFormat, string> = {
+  csv: 'text/csv',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  xls: 'application/vnd.ms-excel',
+  txt: 'text/plain',
+  json: 'application/json',
+};
+
+const DEFAULT_IMPORT_POLL_INTERVAL_MS = 2_000;
+
+/** El contenido de un archivo de importación, su nombre y su tipo. */
+async function importFile(
+  file: Uint8Array | string,
+  filename: string | undefined,
+): Promise<{ content: Uint8Array; filename: string; contentType: string }> {
+  let content: Uint8Array;
+  let name: string;
+  if (typeof file === 'string') {
+    try {
+      content = await readFile(file);
+    } catch {
+      throw new ConfigurationError(`No existe el archivo: ${file}`);
+    }
+    name = filename ?? basename(file);
+  } else {
+    content = file;
+    name = filename ?? 'beneficiarios.csv';
+  }
+  return {
+    content,
+    filename: name,
+    contentType: IMPORT_CONTENT_TYPES[extname(name).toLowerCase()] ?? 'application/octet-stream',
+  };
+}
+
+function noValidFields(what: string): InvalidRequestError {
+  return new InvalidRequestError(`No hay nada que cambiar: pasa ${what}`, {
+    status: 422,
+    code: 'no_valid_fields',
+  });
+}
+
+/** Cuentas beneficiarias guardadas y su importación masiva. */
+export class Beneficiaries {
+  private readonly transport: Transport;
+
+  constructor(transport: Transport) {
+    this.transport = transport;
+  }
+
+  // La lista blanca
+
+  /**
+   * Registra una cuenta beneficiaria.
+   *
+   * `POST /v1/beneficiaries`. El tipo se detecta por longitud: CLABE (18 dígitos),
+   * tarjeta (16) o celular DiMo (10). Para un celular, `bankCode` es obligatorio;
+   * en CLABE y tarjeta se deriva del número. Un alta de una cuenta archivada la
+   * reactiva.
+   */
+  async create(params: CreateBeneficiaryParams): Promise<Beneficiary> {
+    // Quien llama desde JavaScript puede omitirlo; el tipo lo declara obligatorio.
+    const accountNumber: string | undefined = params.accountNumber;
+    if (!accountNumber) {
+      throw new InvalidRequestError('Hace falta accountNumber para registrar el beneficiario', {
+        status: 422,
+        code: 'account_number_required',
+      });
+    }
+    const body: Schemas['CreateBeneficiaryRequest'] = { account_number: accountNumber };
+    if (params.bankCode !== undefined) body.bank_code = params.bankCode;
+    if (params.label !== undefined) body.label = params.label;
+
+    const response = await this.transport.request({ method: 'POST', path: '/beneficiaries', body });
+    return readData<Beneficiary>(response, 'del beneficiario');
+  }
+
+  /**
+   * Lista las cuentas beneficiarias guardadas.
+   *
+   * `GET /v1/beneficiaries`. Sin paginar: devuelve la lista completa.
+   * `withArchived: true` trae sólo las archivadas y `false` sólo las activas.
+   */
+  async list(params: ListBeneficiariesParams = {}): Promise<Beneficiary[]> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: '/beneficiaries',
+      query: { with_archived: flag(params.withArchived) },
+    });
+    return readList<Beneficiary>(response, 'de los beneficiarios');
+  }
+
+  /**
+   * Cambia la etiqueta, la cuenta o el banco de un beneficiario.
+   *
+   * `PUT /v1/beneficiaries/{id}`. Un `accountNumber` nuevo vuelve a derivar el
+   * tipo y el banco; `bankCode` sólo se aplica sobre cuentas de tipo celular.
+   */
+  async update(beneficiaryId: EntityId, params: UpdateBeneficiaryParams): Promise<Beneficiary> {
+    const body: Schemas['UpdateBeneficiaryRequest'] = {};
+    if (params.label !== undefined) body.label = params.label;
+    if (params.accountNumber !== undefined) body.account_number = params.accountNumber;
+    if (params.bankCode !== undefined) body.bank_code = params.bankCode;
+    if (Object.keys(body).length === 0) throw noValidFields('label, accountNumber o bankCode');
+
+    const response = await this.transport.request({
+      method: 'PUT',
+      path: `/beneficiaries/${pathSegment(String(beneficiaryId))}`,
+      body,
+    });
+    return readData<Beneficiary>(response, 'del beneficiario');
+  }
+
+  /**
+   * Archiva un beneficiario.
+   *
+   * `DELETE /v1/beneficiaries/{id}`. El registro no se borra: sale de la lista
+   * activa y se consulta con `withArchived: true`. Un alta posterior con la misma
+   * cuenta lo reactiva. La API responde `204`.
+   */
+  async delete(beneficiaryId: EntityId): Promise<void> {
+    await this.transport.request({
+      method: 'DELETE',
+      path: `/beneficiaries/${pathSegment(String(beneficiaryId))}`,
+    });
+  }
+
+  /**
+   * Comprueba la estructura de un número de cuenta.
+   *
+   * `GET /v1/beneficiaries/validate-account`. Verifica el dígito de control de la
+   * CLABE o el Luhn de la tarjeta y resuelve el banco. No consume cuota del plan.
+   * Un número mal formado no es un error: se lee en `attributes.checksum_valid` o
+   * en `attributes.account_type`.
+   */
+  async validateAccount(
+    account: string,
+    options: ValidateAccountOptions = {},
+  ): Promise<AccountValidation> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: '/beneficiaries/validate-account',
+      query: { account, type: options.type },
+    });
+    return readData<AccountValidation>(response, 'de la cuenta');
+  }
+
+  /**
+   * Resuelve una cuenta concreta dentro de la lista propia.
+   *
+   * `GET /v1/beneficiaries/lookup`. Devuelve los datos del banco cuando la cuenta
+   * está entre las guardadas; si no, la API responde `404`.
+   */
+  async lookup(account: string): Promise<BeneficiaryLookup> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: '/beneficiaries/lookup',
+      query: { account },
+    });
+    return readData<BeneficiaryLookup>(response, 'de la cuenta');
+  }
+
+  /**
+   * Exporta la lista de beneficiarios en CSV o en XLSX.
+   *
+   * `GET /v1/beneficiaries/export`. Los números salen enmascarados salvo la CLABE;
+   * `limit` sólo baja el tope de 100 000 filas.
+   */
+  export(params: ExportBeneficiariesParams = {}): Promise<DownloadedFile> {
+    return exportFile(
+      this.transport,
+      '/beneficiaries/export',
+      params.format ?? 'csv',
+      { with_archived: flag(params.withArchived), limit: params.limit },
+      'beneficiarios',
+      'application/octet-stream',
+    );
+  }
+
+  // Importación masiva
+
+  /**
+   * Descarga la plantilla para la importación masiva.
+   *
+   * `GET /v1/beneficiaries/imports/template`. Es el punto de partida del ciclo:
+   * descargar, rellenar, subir, revisar y confirmar.
+   */
+  async importTemplate(options: ImportTemplateOptions = {}): Promise<DownloadedFile> {
+    const format = options.format ?? 'csv';
+    if (!IMPORT_TEMPLATE_FORMATS.includes(format)) {
+      throw new ConfigurationError(
+        `El formato de plantilla es 'csv', 'xlsx', 'xls', 'txt' o 'json'; llegó ${JSON.stringify(format)}`,
+      );
+    }
+    const accept = TEMPLATE_CONTENT_TYPES[format];
+    const response = await this.transport.request({
+      method: 'GET',
+      path: '/beneficiaries/imports/template',
+      query: { format },
+      accept: `${accept}, application/octet-stream, application/json`,
+    });
+    return toFile(
+      response,
+      `beneficiarios-plantilla.${format}`,
+      response.headers['content-type'] ?? accept,
+    );
+  }
+
+  /**
+   * Sube un archivo y abre un trabajo de importación.
+   *
+   * `POST /v1/beneficiaries/imports`. `file` son los bytes del archivo o su ruta,
+   * que el SDK lee del disco. `parseMode` es `template` (encabezados canónicos) o
+   * `free` (formato libre). La respuesta es un `202` con el trabajo en estado
+   * `pending`; nada se persiste hasta `importCommit()`.
+   */
+  async importStart(
+    file: Uint8Array | string,
+    options: ImportStartOptions = {},
+  ): Promise<BeneficiaryImportStarted> {
+    const upload = await importFile(file, options.filename);
+    const form = new FormData();
+    form.append('parse_mode', options.parseMode ?? 'template');
+    form.append('file', new Blob([upload.content], { type: upload.contentType }), upload.filename);
+
+    const response = await this.transport.request({
+      method: 'POST',
+      path: '/beneficiaries/imports',
+      body: form,
+    });
+    return readData<BeneficiaryImportStarted>(response, 'de la importación');
+  }
+
+  /**
+   * Lee el estado de un trabajo de importación y sus contadores.
+   *
+   * `GET /v1/beneficiaries/imports/{id}`.
+   */
+  async importStatus(importId: EntityId): Promise<BeneficiaryImportJob> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: `/beneficiaries/imports/${pathSegment(String(importId))}`,
+    });
+    return readData<BeneficiaryImportJob>(response, 'de la importación');
+  }
+
+  /**
+   * Cancela una importación que todavía no se confirmó.
+   *
+   * `DELETE /v1/beneficiaries/imports/{id}`. Admite los estados `pending`,
+   * `parsing` y `preview_ready`; con uno terminal o en `committing`, la API
+   * responde `404`. Las cuentas que una confirmación ya persistió se archivan una
+   * a una con `delete()`. La API responde `204`.
+   */
+  async importCancel(importId: EntityId): Promise<void> {
+    await this.transport.request({
+      method: 'DELETE',
+      path: `/beneficiaries/imports/${pathSegment(String(importId))}`,
+    });
+  }
+
+  /**
+   * Lista las filas extraídas de la importación, paginadas.
+   *
+   * `GET /v1/beneficiaries/imports/{id}/preview`. Disponible en `preview_ready` o
+   * después. `buckets` filtra por grupo (`valid`, `correctable`, `fatal`,
+   * `duplicate_account`, `duplicate_alias`).
+   */
+  async importPreview(
+    importId: EntityId,
+    params: ImportPreviewParams = {},
+  ): Promise<Page<BeneficiaryImportRow>> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: `/beneficiaries/imports/${pathSegment(String(importId))}/preview`,
+      query: { page: params.page, per_page: params.perPage, buckets: params.buckets },
+    });
+    return parsePage<BeneficiaryImportRow>(response);
+  }
+
+  /**
+   * Recorre todas las filas de la vista previa, página a página.
+   *
+   * Acepta los mismos argumentos que `importPreview()`, más `maxPages`.
+   */
+  iterImportPreview(
+    importId: EntityId,
+    params: ImportPreviewParams & IterOptions = {},
+  ): AsyncIterable<BeneficiaryImportRow> {
+    const { maxPages, page, ...filters } = params;
+    return iteratePages((number) => this.importPreview(importId, { ...filters, page: number }), {
+      startPage: page ?? 1,
+      maxPages,
+    });
+  }
+
+  /**
+   * Corrige una fila de la vista previa antes de confirmar.
+   *
+   * `PATCH /v1/beneficiaries/imports/{id}/rows/{row_id}`. Sólo los campos
+   * presentes se sobrescriben; la fila se reprocesa y su grupo puede cambiar con
+   * la corrección.
+   */
+  async importEditRow(
+    importId: EntityId,
+    rowId: EntityId,
+    params: EditImportRowParams,
+  ): Promise<BeneficiaryImportRow> {
+    const body: Schemas['PatchBeneficiaryImportRowRequest'] = {};
+    if (params.parsedAccount !== undefined) body.parsed_account = params.parsedAccount;
+    if (params.parsedLabel !== undefined) body.parsed_label = params.parsedLabel;
+    if (params.parsedAccountType !== undefined) {
+      body.parsed_account_type = params.parsedAccountType;
+    }
+    if (params.parsedBankCode !== undefined) body.parsed_bank_code = params.parsedBankCode;
+    if (params.parsedBankName !== undefined) body.parsed_bank_name = params.parsedBankName;
+    if (Object.keys(body).length === 0) throw noValidFields('alguno de los campos parsed*');
+
+    const response = await this.transport.request({
+      method: 'PATCH',
+      path: `/beneficiaries/imports/${pathSegment(String(importId))}/rows/${pathSegment(String(rowId))}`,
+      body,
+    });
+    return readData<BeneficiaryImportRow>(response, 'de la fila');
+  }
+
+  /**
+   * Quita una fila de la vista previa.
+   *
+   * `DELETE /v1/beneficiaries/imports/{id}/rows/{row_id}`. La API responde `204`.
+   */
+  async importRemoveRow(importId: EntityId, rowId: EntityId): Promise<void> {
+    await this.transport.request({
+      method: 'DELETE',
+      path: `/beneficiaries/imports/${pathSegment(String(importId))}/rows/${pathSegment(String(rowId))}`,
+    });
+  }
+
+  /**
+   * Confirma la importación y dispara la persistencia de sus filas.
+   *
+   * `POST /v1/beneficiaries/imports/{id}/commit`. La operación es asíncrona: la
+   * respuesta es un `202` con el trabajo en `committing`, y el resultado se sigue
+   * con `importWait()`.
+   */
+  async importCommit(importId: EntityId): Promise<BeneficiaryImportCommitted> {
+    const response = await this.transport.request({
+      method: 'POST',
+      path: `/beneficiaries/imports/${pathSegment(String(importId))}/commit`,
+    });
+    return readData<BeneficiaryImportCommitted>(response, 'de la importación');
+  }
+
+  /**
+   * Sondea una importación hasta que su avance se detiene.
+   *
+   * Espera a `isImportSettled()`: `preview_ready` o un estado final. A diferencia
+   * de `validations.waitFor()`, aquí no hay `ETag` que reutilizar: el endpoint de
+   * estado no lo expone, así que cada sondeo descarga el cuerpo entero.
+   *
+   * @throws {TimeoutError} Si se agota `timeoutMs` sin llegar a un estado firme.
+   */
+  async importWait(
+    importId: EntityId,
+    options: WaitForOptions = {},
+  ): Promise<BeneficiaryImportJob> {
+    const timeoutMs = options.timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS;
+    const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_IMPORT_POLL_INTERVAL_MS;
+    const sleep = options.sleep ?? defaultSleep;
+    const deadline = performance.now() + timeoutMs;
+
+    for (;;) {
+      const job = await this.importStatus(importId);
+      if (isImportSettled(job)) return job;
+      if (performance.now() >= deadline) {
+        throw new TimeoutError(
+          `La importación ${String(importId)} no llegó a preview_ready ni a un estado final en ${String(timeoutMs)} ms`,
+          String(importId),
+          timeoutMs,
+        );
+      }
+      await sleep(pollIntervalMs);
+    }
+  }
+}
+
+// ── Consumo ─────────────────────────────────────────────────────────────────
+
+/** Consumo y límites: la cuota del plan y el registro de actividad. */
+export class Usage {
+  private readonly transport: Transport;
+
+  constructor(transport: Transport) {
+    this.transport = transport;
+  }
+
+  /**
+   * Devuelve la cuota de validaciones del plan en curso.
+   *
+   * `GET /v1/usage/summary`. Trae el límite, lo consumido, lo restante y el nivel
+   * de aviso en `attributes.tone`.
+   */
+  async summary(): Promise<UsageSummary> {
+    const response = await this.transport.request({ method: 'GET', path: '/usage/summary' });
+    return readData<UsageSummary>(response, 'del consumo');
+  }
+
+  /**
+   * Devuelve el consumo mensual de los últimos `months` meses.
+   *
+   * `GET /v1/usage/history`. De más reciente a más antiguo. El límite que
+   * acompaña a cada fila es el de hoy, no el que regía aquel mes.
+   */
+  async history(params: UsageHistoryParams = {}): Promise<UsageHistory> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: '/usage/history',
+      query: { months: params.months },
+    });
+    return readData<UsageHistory>(response, 'del historial');
+  }
+
+  /**
+   * Desglosa el consumo por tipo de operación contabilizada.
+   *
+   * `GET /v1/usage/breakdown`. `period` es `current` para el mes en curso o una
+   * cadena `YYYY-MM`.
+   */
+  async breakdown(params: UsageBreakdownParams = {}): Promise<UsageBreakdown> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: '/usage/breakdown',
+      query: { period: params.period },
+    });
+    return readData<UsageBreakdown>(response, 'del desglose');
+  }
+
+  /**
+   * Devuelve los límites de tasa aplicables, por contexto.
+   *
+   * `GET /v1/usage/limits`. Sólo la configuración vigente, sin contadores en
+   * vivo; son ajenos a la cuota mensual de `summary()`.
+   */
+  async limits(): Promise<UsageLimits> {
+    const response = await this.transport.request({ method: 'GET', path: '/usage/limits' });
+    return readData<UsageLimits>(response, 'de los límites');
+  }
+
+  /**
+   * Devuelve las validaciones agrupadas por día y hora.
+   *
+   * `GET /v1/usage/heatmap`. Cubre los últimos `days` días (máximo 90) y sólo trae
+   * las celdas con al menos una validación.
+   */
+  async heatmap(params: UsageHeatmapParams = {}): Promise<UsageHeatmap> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: '/usage/heatmap',
+      query: { days: params.days },
+    });
+    return readData<UsageHeatmap>(response, 'del mapa de calor');
+  }
+
+  /**
+   * Devuelve las métricas de uso de la API de la cuenta.
+   *
+   * `GET /v1/api/usage`. Reúne las peticiones de hoy y del mes, la cuota del plan,
+   * las últimas peticiones y el estado del servicio de Banxico.
+   */
+  async apiUsage(): Promise<ApiUsage> {
+    const response = await this.transport.request({ method: 'GET', path: '/api/usage' });
+    return readData<ApiUsage>(response, 'de las métricas');
+  }
+
+  /**
+   * Exporta el registro de actividad en CSV o en XLSX.
+   *
+   * `GET /v1/api/usage/export`. `from` y `to` acotan el rango, las dos inclusive;
+   * `limit` sólo baja el tope de 100 000 filas.
+   */
+  export(params: ExportUsageParams = {}): Promise<DownloadedFile> {
+    return exportFile(
+      this.transport,
+      '/api/usage/export',
+      params.format ?? 'csv',
+      { from: params.from, to: params.to, limit: params.limit },
+      'actividad-api',
+    );
   }
 }

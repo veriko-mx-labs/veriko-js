@@ -47,7 +47,8 @@ export interface RequestOptions {
   method: string;
   path: string;
   body?: unknown;
-  query?: Record<string, string | number | undefined>;
+  /** Un valor repetido (`buckets=a&buckets=b`) se pasa como arreglo. */
+  query?: Record<string, string | number | readonly string[] | undefined>;
   headers?: Record<string, string | undefined>;
   accept?: string;
 }
@@ -134,8 +135,11 @@ export class Transport {
       if (value !== undefined) headers[name.toLowerCase()] = value;
     }
 
-    let payload: string | undefined;
-    if (options.body !== undefined) {
+    let payload: string | FormData | undefined;
+    if (options.body instanceof FormData) {
+      // `fetch` fija el `Content-Type` con el boundary del formulario.
+      payload = options.body;
+    } else if (options.body !== undefined) {
       payload = JSON.stringify(options.body);
       headers['content-type'] = 'application/json; charset=utf-8';
     }
@@ -186,7 +190,12 @@ export class Transport {
   private buildUrl(path: string, query: RequestOptions['query']): string {
     const url = new URL(`${this.baseUrl}/${path.replace(/^\/+/, '')}`);
     for (const [key, value] of Object.entries(query ?? {})) {
-      if (value !== undefined) url.searchParams.set(key, String(value));
+      if (value === undefined) continue;
+      if (typeof value === 'object') {
+        for (const item of value) url.searchParams.append(key, item);
+      } else {
+        url.searchParams.set(key, String(value));
+      }
     }
     return url.toString();
   }
@@ -194,7 +203,7 @@ export class Transport {
   private async send(
     url: string,
     method: string,
-    payload: string | undefined,
+    payload: string | FormData | undefined,
     headers: Record<string, string>,
   ): Promise<RawResponse> {
     const controller = new AbortController();

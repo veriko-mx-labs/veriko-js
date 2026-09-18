@@ -482,3 +482,181 @@ export interface BanksOptions {
   /** El `ETag` de una lectura anterior; con él, un catálogo sin cambios responde `304`. */
   ifNoneMatch?: string;
 }
+
+// ── Familias `beneficiaries` y `usage` ──────────────────────────────────────
+
+/** Una cuenta beneficiaria guardada: CLABE, tarjeta o celular DiMo. */
+export type Beneficiary = Schemas['Beneficiary'];
+
+/** La cuenta que resuelve `beneficiaries.lookup()` dentro de la lista propia. */
+export type BeneficiaryLookup = Schemas['BeneficiaryLookupResource'];
+
+/** La estructura de un número de cuenta: tipo, dígito de control y banco. */
+export type AccountValidation = Schemas['ValidateAccountResource'];
+
+/** El acuse de una importación recién abierta, siempre en estado `pending`. */
+export type BeneficiaryImportStarted = Schemas['CreateBeneficiaryImportResource'];
+
+/** Un trabajo de importación masiva y su avance. */
+export type BeneficiaryImportJob = Schemas['BeneficiaryImportJob'];
+
+/** Una fila extraída de un archivo de importación, con su grupo y sus correcciones. */
+export type BeneficiaryImportRow = Schemas['BeneficiaryImportRow'];
+
+/** El acuse de la confirmación de una importación, en estado `committing`. */
+export type BeneficiaryImportCommitted = Schemas['CommitBeneficiaryImportResource'];
+
+/** La cuota de validaciones del plan en curso. */
+export type UsageSummary = ResourceOf<'getUsageSummary', 200>;
+
+/** El consumo mensual de los últimos meses. */
+export type UsageHistory = ResourceOf<'getUsageHistory', 200>;
+
+/** El consumo desglosado por tipo de operación. */
+export type UsageBreakdown = ResourceOf<'getUsageBreakdown', 200>;
+
+/** Los límites de tasa aplicables, por contexto. */
+export type UsageLimits = ResourceOf<'getUsageLimits', 200>;
+
+/** Las validaciones agrupadas por día y hora. */
+export type UsageHeatmap = Schemas['UsageHeatmapResource'];
+
+/** Las métricas de uso de la API de la cuenta. */
+export type ApiUsage = ResourceOf<'getApiUsage', 200>;
+
+/** Tipo de una cuenta beneficiaria. */
+export type BeneficiaryAccountType = Beneficiary['attributes']['account_type'];
+
+/** El grupo de una fila de la vista previa, para filtrar. */
+export type ImportRowBucket = NonNullable<
+  NonNullable<BeneficiaryImportRow['attributes']>['status']
+>;
+
+/** Cómo se lee el archivo: `template` (encabezados canónicos) o `free` (formato libre). */
+export type ImportParseMode = Schemas['CreateBeneficiaryImportRequest']['parse_mode'];
+
+type ValidateAccountQuery = NonNullable<operations['validateAccount']['parameters']['query']>;
+
+/** Qué se comprueba en `validateAccount()`: una CLABE o un BIN. */
+export type AccountCheckType = NonNullable<ValidateAccountQuery['type']>;
+
+/** Formatos de la plantilla de importación. */
+export const IMPORT_TEMPLATE_FORMATS = ['csv', 'xlsx', 'xls', 'txt', 'json'] as const;
+export type ImportTemplateFormat = (typeof IMPORT_TEMPLATE_FORMATS)[number];
+
+/** Estados finales de una importación de beneficiarios. */
+export const IMPORT_TERMINAL_STATUSES = ['completed', 'failed', 'cancelled'] as const;
+
+/** `true` cuando el trabajo terminó, con éxito o no. */
+export function isImportTerminal(status: string | undefined): boolean {
+  return IMPORT_TERMINAL_STATUSES.includes(status as (typeof IMPORT_TERMINAL_STATUSES)[number]);
+}
+
+/**
+ * `true` cuando el trabajo ya no avanza por sí solo.
+ *
+ * Cubre `preview_ready`, donde el avance se detiene a esperar la revisión, y los
+ * estados finales. Es lo que espera `importWait()`.
+ */
+export function isImportSettled(job: BeneficiaryImportJob): boolean {
+  const status = job.attributes?.status;
+  return status === 'preview_ready' || isImportTerminal(status);
+}
+
+/** Los argumentos de `beneficiaries.create()`. */
+export interface CreateBeneficiaryParams {
+  /** CLABE (18 dígitos), tarjeta (16) o celular DiMo (10). */
+  accountNumber: string;
+  /** Obligatorio para un celular; en CLABE y tarjeta se deriva del número. */
+  bankCode?: string;
+  label?: string;
+}
+
+/** Los argumentos de `beneficiaries.update()`. Hace falta al menos uno. */
+export interface UpdateBeneficiaryParams {
+  label?: string;
+  accountNumber?: string;
+  /** Sólo se aplica sobre cuentas de tipo celular. */
+  bankCode?: string;
+}
+
+/** Los argumentos de `beneficiaries.list()`. */
+export interface ListBeneficiariesParams {
+  /** `true` sólo las archivadas, `false` sólo las activas; sin él, ambas. */
+  withArchived?: boolean;
+}
+
+/** Las opciones de `beneficiaries.validateAccount()`. */
+export interface ValidateAccountOptions {
+  type?: AccountCheckType;
+}
+
+/** Los argumentos de `beneficiaries.export()`. */
+export interface ExportBeneficiariesParams {
+  /** `csv` por omisión. */
+  format?: ExportFormat;
+  withArchived?: boolean;
+  /** Tope de filas, de 1 a 100 000. */
+  limit?: number;
+}
+
+/** Las opciones de `beneficiaries.importTemplate()`. */
+export interface ImportTemplateOptions {
+  /** `csv` por omisión. */
+  format?: ImportTemplateFormat;
+}
+
+/** Las opciones de `beneficiaries.importStart()`. */
+export interface ImportStartOptions {
+  /** `template` por omisión. */
+  parseMode?: ImportParseMode;
+  /** El nombre con que viaja el archivo. Por omisión, el de la ruta o `beneficiarios.csv`. */
+  filename?: string;
+}
+
+/** Los argumentos de `beneficiaries.importPreview()`. */
+export interface ImportPreviewParams {
+  page?: number;
+  /** De 1 a 100. */
+  perPage?: number;
+  buckets?: readonly ImportRowBucket[];
+}
+
+/** Los argumentos de `beneficiaries.importEditRow()`. Hace falta al menos uno. */
+export interface EditImportRowParams {
+  parsedAccount?: string;
+  parsedLabel?: string;
+  parsedAccountType?: BeneficiaryAccountType;
+  parsedBankCode?: string;
+  parsedBankName?: string;
+}
+
+/** Los argumentos de `usage.history()`. */
+export interface UsageHistoryParams {
+  /** De 1 a 24; 6 por omisión. */
+  months?: number;
+}
+
+/** Los argumentos de `usage.breakdown()`. */
+export interface UsageBreakdownParams {
+  /** `current` para el mes en curso, o `YYYY-MM`. */
+  period?: string;
+}
+
+/** Los argumentos de `usage.heatmap()`. */
+export interface UsageHeatmapParams {
+  /** De 1 a 90; 30 por omisión. */
+  days?: number;
+}
+
+/** Los argumentos de `usage.export()`. */
+export interface ExportUsageParams {
+  /** `csv` por omisión. */
+  format?: ExportFormat;
+  /** Inicio del rango, inclusive. */
+  from?: string;
+  /** Fin del rango, inclusive. */
+  to?: string;
+  /** Tope de filas, a partir de 1 y hasta 100 000. */
+  limit?: number;
+}

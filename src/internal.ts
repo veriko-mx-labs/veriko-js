@@ -32,13 +32,16 @@ export function checkedId(value: string): string {
   return cleaned;
 }
 
+/** El identificador numérico de un recurso, que la API acepta como número o como cadena. */
+export type EntityId = string | number;
+
 /** Un identificador ya validado, listo para ir en la ruta. */
 export function pathSegment(value: string): string {
   return encodeURIComponent(checkedId(value));
 }
 
 /** Los filtros de una consulta: lo que no se pasa no viaja. */
-export type Query = Record<string, string | number | undefined>;
+export type Query = Record<string, string | number | readonly string[] | undefined>;
 
 /** Une una lista de valores con comas, que es como la API recibe varios estados. */
 export function joinList(value: string | readonly string[] | undefined): string | undefined {
