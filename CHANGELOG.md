@@ -32,8 +32,9 @@ y `catalog`.
 - `OcrValidationRequest`, escrito a mano por el mismo `anyOf` que afecta a
   `ValidationRequest`, con su candado en `test/spec.test.ts`.
 - `test/operations.test.ts`: contrasta cada operación con el spec (método, ruta,
-  parámetros, cabeceras y campos del cuerpo) y comprueba que las familias del
-  spec no traigan operaciones sin método.
+  parámetros, cabeceras y campos del cuerpo), exige que sea de máquina a máquina
+  (que acepte la clave de API o sea pública) y comprueba que las familias del
+  spec no traigan operaciones así sin método.
 - El ejemplo `examples/async-and-webhooks.mjs`.
 
 ### Cambiado

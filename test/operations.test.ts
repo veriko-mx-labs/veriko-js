@@ -6,8 +6,11 @@
  * de consulta, las cabeceras y los campos del cuerpo. Un cuerpo sin el envoltorio
  * `retry_policy`, o un filtro con otro nombre, fallan aquí.
  *
+ * Además cada operación tiene que ser de máquina a máquina: la que sólo acepta la
+ * cookie de sesión es de la interfaz y no entra en el SDK, en ninguna versión.
+ *
  * La segunda parte compara el conjunto cubierto con las familias del spec, de modo
- * que una operación nueva en ellas no pase sin método.
+ * que una operación nueva de máquina a máquina en ellas no pase sin método.
  */
 
 import assert from 'node:assert/strict';
@@ -34,16 +37,36 @@ interface Schema {
 interface Operation {
   operationId: string;
   tags?: string[];
+  security?: Record<string, unknown>[];
   parameters?: Parameter[];
   requestBody?: { content?: Record<string, { schema?: Schema }> };
 }
 
 interface Spec {
+  security?: Record<string, unknown>[];
   paths: Record<string, Record<string, unknown>>;
   components: { parameters: Record<string, Parameter>; schemas: Record<string, Schema> };
 }
 
 const spec = parse(readFileSync(join(PROJECT_ROOT, 'spec', 'openapi.yaml'), 'utf8')) as Spec;
+
+/**
+ * `true` si la operación se usa de máquina a máquina: acepta la clave de API o es
+ * pública y no pide autenticación. La que sólo acepta la cookie es de la interfaz.
+ */
+function acceptsApiKey(operation: Operation): boolean {
+  const schemes = operation.security ?? spec.security ?? [];
+  return schemes.length === 0 || schemes.some((alternative) => 'ApiKeyAuth' in alternative);
+}
+
+/** Todas las operaciones del spec. */
+function allOperations(): Operation[] {
+  return Object.values(spec.paths).flatMap((item) =>
+    ['get', 'post', 'put', 'delete', 'patch']
+      .map((method) => item[method] as Operation | undefined)
+      .filter((operation): operation is Operation => operation !== undefined),
+  );
+}
 
 function resolveParameter(parameter: Parameter): Parameter {
   if (!parameter.$ref) return parameter;
@@ -395,6 +418,7 @@ describe('lo que el SDK envía existe en el spec', () => {
         const { template, operation } = locate(sent.method, url.pathname.replace(/^\/v1/, ''));
 
         assert.equal(operation.operationId, testCase.operationId, `${sent.method} ${url.pathname}`);
+        assert.ok(acceptsApiKey(operation), `${template} sólo acepta la cookie de sesión`);
 
         const queryNames = declared(template, operation, 'query');
         const sentQuery = [...url.searchParams.keys()];
@@ -446,20 +470,26 @@ describe('el conjunto de operaciones cubierto', () => {
     assert.deepEqual(covered, [...SDK_OPERATIONS].sort());
   });
 
-  it('las familias del spec no traen operaciones sin método', () => {
+  it('las familias del spec no traen operaciones de máquina a máquina sin método', () => {
     const families = new Set(['Validations', 'Webhooks', 'Public', 'Banxico Status']);
-    const inFamilies: string[] = [];
-    for (const [template, item] of Object.entries(spec.paths)) {
-      // La importación masiva de validaciones cuelga de la etiqueta `Validations`
-      // pero no forma parte de esta versión.
-      if (template.startsWith('/validations/imports')) continue;
-      for (const method of ['get', 'post', 'put', 'delete', 'patch']) {
-        const operation = item[method] as Operation | undefined;
-        if (operation?.tags?.some((tag) => families.has(tag)))
-          inFamilies.push(operation.operationId);
-      }
-    }
+    const machineToMachine = allOperations()
+      .filter((operation) => operation.tags?.some((tag) => families.has(tag)))
+      .filter(acceptsApiKey)
+      .map((operation) => operation.operationId);
 
-    assert.deepEqual(inFamilies.sort(), [...SDK_OPERATIONS].sort());
+    assert.deepEqual(machineToMachine.sort(), [...SDK_OPERATIONS].sort());
+  });
+
+  it('ninguna operación que sólo acepta la cookie de sesión tiene método', () => {
+    const cookieOnly = allOperations()
+      .filter((operation) => !acceptsApiKey(operation))
+      .map((operation) => operation.operationId);
+
+    // La importación masiva de validaciones es una de ellas.
+    assert.ok(cookieOnly.includes('createValidationImport'));
+    assert.deepEqual(
+      cookieOnly.filter((operationId) => SDK_OPERATIONS.includes(operationId)),
+      [],
+    );
   });
 });

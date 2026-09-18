@@ -454,7 +454,10 @@ A ellas se suma la verificación de la firma de los webhooks, que no es una oper
 Fuera del alcance, y previsto para la siguiente versión: beneficiarios, con su importación masiva, y
 las métricas de consumo.
 
-La importación masiva de validaciones (`/validations/imports`) todavía no tiene método.
+El SDK cubre sólo operaciones de máquina a máquina, las que aceptan la clave de API o son
+públicas. Las que únicamente aceptan la cookie de sesión son de la interfaz y no entran en ninguna
+versión: la importación masiva de validaciones, las sesiones de usuario, el playground y el
+directorio de cuentas.
 
 Fuera del alcance a propósito: finanzas, métricas propias, catálogo de planes, suscripción y el
 resumen del panel. Son superficie de interfaz, se consumen una vez o desde la propia aplicación, y
