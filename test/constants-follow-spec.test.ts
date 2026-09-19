@@ -18,6 +18,7 @@ import { PROJECT_ROOT } from './harness.js';
 interface Schema {
   $ref?: string;
   enum?: string[];
+  'x-terminal-values'?: string[];
   items?: Schema;
   properties?: Record<string, Schema>;
   allOf?: Schema[];
@@ -74,12 +75,17 @@ function parameterSchema(operationId: string, name: string): Schema {
 }
 
 describe('las constantes que espejan el spec', () => {
-  it('conservan los nueve estados de validación', () => {
+  it('conservan los estados de validación y cuáles son terminales', () => {
     const validation = properties(spec.components.schemas['Validation']!);
     const attributes = properties(validation['attributes']!);
+    const status = attributes['status'];
     const statuses = ['queued', 'processing', ...TERMINAL_STATUSES];
 
-    assert.deepEqual([...statuses].sort(), [...(attributes['status']?.enum ?? [])].sort());
+    assert.deepEqual([...statuses].sort(), [...(status?.enum ?? [])].sort());
+    assert.deepEqual(
+      [...TERMINAL_STATUSES].sort(),
+      [...(status?.['x-terminal-values'] ?? [])].sort(),
+    );
   });
 
   it('conserva los resultados reintentables', () => {
