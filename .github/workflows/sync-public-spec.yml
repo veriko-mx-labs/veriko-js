@@ -14,6 +14,8 @@ jobs:
     uses: veriko-mx-labs/.github/.github/workflows/sync-public-spec.yml@main
     with:
       regenerate_command: npm ci && npm run gen:types
+      base_branch: automation/sync-drill-base
+      sync_branch: automation/sync-drill-pr
       auto_merge: false
     secrets:
       app_id: ${{ secrets.VERIKO_LABS_APP_ID }}

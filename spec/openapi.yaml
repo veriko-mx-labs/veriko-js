@@ -7809,7 +7809,6 @@ paths:
 
             {% /callout %}
       security:
-        - ApiKeyAuth: []
         - CookieAuth: []
   /webhooks:
     get:

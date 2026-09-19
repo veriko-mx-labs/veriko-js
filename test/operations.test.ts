@@ -1,5 +1,5 @@
 /**
- * Las 49 operaciones que cubre el SDK, contra el spec.
+ * Las 48 operaciones que cubre este punto de partida, contra el spec.
  *
  * Cada caso llama a un método con todos sus argumentos opcionales y comprueba que
  * lo que llegó al servidor existe en el spec: el método y la ruta, los parámetros
@@ -367,12 +367,6 @@ const CASES: Case[] = [
     call: (client) => client.catalog.banxicoStatus(),
   },
   {
-    operationId: 'banxicoPublicTimeseries',
-    recording: 'banxico-timeseries',
-    allQuery: true,
-    call: (client) => client.catalog.banxicoTimeseries({ metric: 'verdict', window: '7d' }),
-  },
-  {
     operationId: 'createBeneficiary',
     recording: 'beneficiary-created',
     allBody: true,
@@ -522,7 +516,7 @@ const CASES: Case[] = [
   },
 ];
 
-/** Las 49 operaciones de esta versión. */
+/** Las 48 operaciones de este punto de partida. */
 const SDK_OPERATIONS = [
   'validateDirect',
   'validateOcr',
@@ -550,7 +544,6 @@ const SDK_OPERATIONS = [
   'listBanks',
   'lookupBin',
   'banxicoPublicStatus',
-  'banxicoPublicTimeseries',
   'createBeneficiary',
   'listBeneficiaries',
   'updateBeneficiary',
@@ -647,10 +640,10 @@ describe('lo que el SDK envía existe en el spec', () => {
 });
 
 describe('el conjunto de operaciones cubierto', () => {
-  it('son las 49 de esta versión', () => {
+  it('son las 48 de este punto de partida', () => {
     const covered = [...new Set(CASES.map((testCase) => testCase.operationId))].sort();
 
-    assert.equal(SDK_OPERATIONS.length, 49);
+    assert.equal(SDK_OPERATIONS.length, 48);
     assert.deepEqual(covered, [...SDK_OPERATIONS].sort());
   });
 
