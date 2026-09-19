@@ -98,7 +98,14 @@ jobs:
           path: package/
 
       - name: Publicar en npm
-        run: npm publish package/*.tgz --access public
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if npm view "@veriko/sdk@$version" version >/dev/null 2>&1; then
+            echo "@veriko/sdk@$version ya está publicado."
+          else
+            npm publish package/*.tgz --access public
+          fi
 
   release:
     name: Publicar las notas
