@@ -7,6 +7,12 @@ versiones según [SemVer](https://semver.org/lang/es/).
 
 Sin cambios todavía.
 
+## [0.4.1] — 2026-09-19
+
+Primera versión disponible públicamente en npm. Conserva la superficie de
+`0.4.0` y corrige la ruta del tarball que impidió que aquel workflow alcanzara
+el registro.
+
 ## [0.4.0] — 2026-09-19
 
 ### Añadido
@@ -146,7 +152,8 @@ Primera versión del SDK oficial de JavaScript y TypeScript.
 - Validación por OCR de una imagen de comprobante.
 - Beneficiarios, importación masiva y finanzas.
 
-[No publicado]: https://github.com/veriko-mx-labs/veriko-js/compare/v0.4.0...HEAD
+[No publicado]: https://github.com/veriko-mx-labs/veriko-js/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/veriko-mx-labs/veriko-js/releases/tag/v0.4.1
 [0.4.0]: https://github.com/veriko-mx-labs/veriko-js/releases/tag/v0.4.0
 [0.3.1]: https://github.com/veriko-mx-labs/veriko-js/releases/tag/v0.3.1
 [0.3.0]: https://github.com/veriko-mx-labs/veriko-js/releases/tag/v0.3.0

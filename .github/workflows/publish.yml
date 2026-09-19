@@ -107,7 +107,7 @@ jobs:
           if npm view "@veriko-mx/sdk@$version" version --userconfig "$public_npmrc" >/dev/null 2>&1; then
             echo "@veriko-mx/sdk@$version ya está publicado y es visible sin credenciales."
           else
-            npm publish package/*.tgz --access public
+            npm publish ./package/*.tgz --access public
           fi
 
           for attempt in 1 2 3 4 5 6; do
