@@ -1,4 +1,4 @@
-# @veriko/sdk · SDK de JavaScript y TypeScript para la API del CEP
+# @veriko-mx/sdk · SDK de JavaScript y TypeScript para la API del CEP
 
 Cliente oficial de [Veriko](https://veriko.mx) para Node. Valida transferencias SPEI mexicanas
 contra el CEP de Banco de México, descarga el comprobante oficial y verifica la firma de los
@@ -8,7 +8,7 @@ Sin dependencias de runtime. Tipos generados del spec de OpenAPI. Node 18 o supe
 CommonJS.
 
 ```ts
-import { Veriko } from '@veriko/sdk';
+import { Veriko } from '@veriko-mx/sdk';
 
 const client = new Veriko(); // lee VERIKO_API_KEY del entorno
 
@@ -69,7 +69,7 @@ Las tres operaciones de uso más frecuente están también en la raíz del clien
 ## Instalación
 
 ```bash
-npm install @veriko/sdk
+npm install @veriko-mx/sdk
 ```
 
 Mientras la versión sea `0.x`, una versión menor puede ajustar la superficie pública del SDK.
@@ -97,7 +97,7 @@ numérica**. Enviar las dos precisa la búsqueda. El banco emisor, el receptor y
 beneficiaria son opcionales y mejoran la identificación.
 
 ```ts
-import { Veriko } from '@veriko/sdk';
+import { Veriko } from '@veriko-mx/sdk';
 
 const client = new Veriko();
 
@@ -193,7 +193,7 @@ El historial se exporta con `client.validations.export({ format: 'csv' })`, que 
 
 ```ts
 import { writeFile } from 'node:fs/promises';
-import { hasCep } from '@veriko/sdk';
+import { hasCep } from '@veriko-mx/sdk';
 
 if (hasCep(validation)) {
   const cep = await client.getCep(validation.id, { format: 'pdf' }); // o 'xml'
@@ -311,7 +311,7 @@ cuota. `breakdown()`, `heatmap()` y `apiUsage()` desglosan el consumo, y
 `status` 304.
 
 ```ts
-import { ApiError } from '@veriko/sdk';
+import { ApiError } from '@veriko-mx/sdk';
 
 const validation = await client.validations.get(id);
 
@@ -337,7 +337,7 @@ del webhook, no `express.json()`.
 
 ```ts
 import express from 'express';
-import { SignatureVerificationError, parseWebhook } from '@veriko/sdk';
+import { SignatureVerificationError, parseWebhook } from '@veriko-mx/sdk';
 
 const app = express();
 const SECRET = process.env.VERIKO_WEBHOOK_SECRET;
@@ -441,7 +441,7 @@ Todas las excepciones heredan de `VerikoError`. Las de la API traen `code`, que 
 estable, y `detail`, que se traduce y puede reformularse entre versiones.
 
 ```ts
-import { InvalidRequestError, NotFoundError, RateLimitError } from '@veriko/sdk';
+import { InvalidRequestError, NotFoundError, RateLimitError } from '@veriko-mx/sdk';
 
 try {
   const validation = await client.validateTransfer(params);

@@ -5,7 +5,7 @@
  * Electrónico de Pago) que emite el Banco de México, y devuelve un veredicto.
  *
  * ```ts
- * import { Veriko, hasCep } from '@veriko/sdk';
+ * import { Veriko, hasCep } from '@veriko-mx/sdk';
  *
  * const client = new Veriko(); // lee VERIKO_API_KEY del entorno
  *

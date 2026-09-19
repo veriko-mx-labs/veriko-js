@@ -19,7 +19,7 @@
 
 import express from 'express';
 
-import { SignatureVerificationError, parseWebhook } from '@veriko/sdk';
+import { SignatureVerificationError, parseWebhook } from '@veriko-mx/sdk';
 
 const app = express();
 const SECRET = process.env.VERIKO_WEBHOOK_SECRET;

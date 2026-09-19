@@ -65,9 +65,9 @@ jobs:
           mkdir /tmp/veriko-consumer
           cd /tmp/veriko-consumer
           npm init -y >/dev/null
-          npm install "$GITHUB_WORKSPACE"/package/veriko-sdk-*.tgz
-          node --input-type=module -e "import { Veriko } from '@veriko/sdk'; if (typeof Veriko !== 'function') throw new Error('Veriko no se exportó')"
-          node --input-type=commonjs -e "const { Veriko } = require('@veriko/sdk'); if (typeof Veriko !== 'function') throw new Error('Veriko no se exportó')"
+          npm install "$GITHUB_WORKSPACE"/package/veriko-mx-sdk-*.tgz
+          node --input-type=module -e "import { Veriko } from '@veriko-mx/sdk'; if (typeof Veriko !== 'function') throw new Error('Veriko no se exportó')"
+          node --input-type=commonjs -e "const { Veriko } = require('@veriko-mx/sdk'); if (typeof Veriko !== 'function') throw new Error('Veriko no se exportó')"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -81,7 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: npm
-      url: https://www.npmjs.com/package/@veriko/sdk
+      url: https://www.npmjs.com/package/@veriko-mx/sdk
     permissions:
       contents: read
       id-token: write
@@ -101,8 +101,8 @@ jobs:
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
-          if npm view "@veriko/sdk@$version" version >/dev/null 2>&1; then
-            echo "@veriko/sdk@$version ya está publicado."
+          if npm view "@veriko-mx/sdk@$version" version >/dev/null 2>&1; then
+            echo "@veriko-mx/sdk@$version ya está publicado."
           else
             npm publish package/*.tgz --access public
           fi

@@ -4,7 +4,7 @@
  * `tsc` emite los dos árboles, pero Node decide si un `.js` es ESM o CommonJS
  * por el `type` del `package.json` más cercano. Sin estos dos archivos, el
  * árbol de `dist/cjs` se interpreta como ESM —el `package.json` raíz dice
- * `"type": "module"`— y `require('@veriko/sdk')` falla.
+ * `"type": "module"`— y `require('@veriko-mx/sdk')` falla.
  */
 
 import { writeFileSync } from 'node:fs';

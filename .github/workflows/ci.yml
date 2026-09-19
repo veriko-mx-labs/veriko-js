@@ -83,13 +83,13 @@ jobs:
         run: |
           mkdir -p /tmp/consumo && cd /tmp/consumo
           npm init -y > /dev/null
-          npm install "$GITHUB_WORKSPACE"/veriko-sdk-*.tgz
+          npm install "$GITHUB_WORKSPACE"/veriko-mx-sdk-*.tgz
 
       - name: Importar desde ESM
         working-directory: /tmp/consumo
         run: |
           node --input-type=module -e "
-            import { Veriko, verifyWebhook, computeSignature, isSettled, SIGNATURE_HEADER } from '@veriko/sdk';
+            import { Veriko, verifyWebhook, computeSignature, isSettled, SIGNATURE_HEADER } from '@veriko-mx/sdk';
             const firma = computeSignature('{}', 'sec');
             if (typeof Veriko !== 'function') throw new Error('Veriko no se exportó');
             if (typeof isSettled !== 'function') throw new Error('isSettled no se exportó');
@@ -106,7 +106,7 @@ jobs:
         working-directory: /tmp/consumo
         run: |
           node --input-type=commonjs -e "
-            const { Veriko, verifyWebhook, computeSignature, isSettled } = require('@veriko/sdk');
+            const { Veriko, verifyWebhook, computeSignature, isSettled } = require('@veriko-mx/sdk');
             const firma = computeSignature('{}', 'sec');
             if (typeof Veriko !== 'function') throw new Error('Veriko no se exportó');
             if (typeof isSettled !== 'function') throw new Error('isSettled no se exportó');

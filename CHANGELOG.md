@@ -7,8 +7,8 @@ versiones según [SemVer](https://semver.org/lang/es/).
 
 ## [0.3.1] — 2026-09-19
 
-Primera versión publicada en npm. No cambia la superficie del SDK respecto de
-`0.3.0`.
+Primera versión publicada en npm como `@veriko-mx/sdk`. No cambia la superficie
+del SDK respecto de `0.3.0`.
 
 Los cambios del producto se documentan en el
 [changelog de la API](https://docs.veriko.mx/es/changelog).

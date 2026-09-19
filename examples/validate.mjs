@@ -11,7 +11,7 @@
 
 import { writeFile } from 'node:fs/promises';
 
-import { ApiError, RateLimitError, Veriko, hasCep } from '@veriko/sdk';
+import { ApiError, RateLimitError, Veriko, hasCep } from '@veriko-mx/sdk';
 
 const client = new Veriko(); // lee VERIKO_API_KEY del entorno
 
