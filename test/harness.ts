@@ -117,6 +117,7 @@ export class RecordingServer {
         };
         response.writeHead(recorded.status, {
           ...recorded.headers,
+          Connection: 'close',
           'Content-Length': String(recorded.body.length),
         });
         response.end(recorded.body);
