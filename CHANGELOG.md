@@ -5,6 +5,14 @@ versiones según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+## [0.3.1] — 2026-09-19
+
+Primera versión publicada en npm. No cambia la superficie del SDK respecto de
+`0.3.0`.
+
+Los cambios del producto se documentan en el
+[changelog de la API](https://docs.veriko.mx/es/changelog).
+
 ## [0.3.0] — 2026-09-18
 
 La superficie pasa de 27 operaciones a 49: se suman las familias `beneficiaries` y
@@ -115,7 +123,8 @@ Primera versión del SDK oficial de JavaScript y TypeScript.
 - Validación por OCR de una imagen de comprobante.
 - Beneficiarios, importación masiva y finanzas.
 
-[No publicado]: https://github.com/veriko-mx-labs/veriko-js/compare/v0.3.0...HEAD
+[No publicado]: https://github.com/veriko-mx-labs/veriko-js/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/veriko-mx-labs/veriko-js/releases/tag/v0.3.1
 [0.3.0]: https://github.com/veriko-mx-labs/veriko-js/releases/tag/v0.3.0
 [0.2.0]: https://github.com/veriko-mx-labs/veriko-js/releases/tag/v0.2.0
 [0.1.0]: https://github.com/veriko-mx-labs/veriko-js/releases/tag/v0.1.0

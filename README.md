@@ -68,11 +68,12 @@ Las tres operaciones de uso más frecuente están también en la raíz del clien
 
 ## Instalación
 
-El paquete todavía no está publicado en npm. Mientras tanto se instala desde el repositorio:
-
 ```bash
-npm install "github:veriko-mx-labs/veriko-js"
+npm install @veriko/sdk
 ```
+
+Mientras la versión sea `0.x`, una versión menor puede ajustar la superficie pública del SDK.
+La versión `1.0.0` se reservará para una integración estable en producción.
 
 ## Autenticación
 

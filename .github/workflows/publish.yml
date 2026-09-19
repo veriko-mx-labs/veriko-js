@@ -1,0 +1,137 @@
+name: Publicar en npm
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Pruebas (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['18', '20', '22', '24']
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - run: npm ci
+      - run: npm test
+
+  build:
+    name: Verificar y construir
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Verificar la etiqueta
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "La etiqueta $GITHUB_REF_NAME no coincide con la versión $version." >&2
+            exit 1
+          fi
+          git fetch origin main
+          git merge-base --is-ancestor "$(git rev-list -n 1 "$GITHUB_REF_NAME")" origin/main
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run check:spec-public
+      - run: npm run check:types-fresh
+      - run: npm run build
+
+      - name: Empaquetar y probar el artefacto
+        shell: bash
+        run: |
+          mkdir package
+          npm pack --pack-destination package
+          mkdir /tmp/veriko-consumer
+          cd /tmp/veriko-consumer
+          npm init -y >/dev/null
+          npm install "$GITHUB_WORKSPACE"/package/veriko-sdk-*.tgz
+          node --input-type=module -e "import { Veriko } from '@veriko/sdk'; if (typeof Veriko !== 'function') throw new Error('Veriko no se exportó')"
+          node --input-type=commonjs -e "const { Veriko } = require('@veriko/sdk'); if (typeof Veriko !== 'function') throw new Error('Veriko no se exportó')"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: package/*.tgz
+          if-no-files-found: error
+
+  publish:
+    name: Publicar
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/@veriko/sdk
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: package/
+
+      - name: Publicar en npm
+        run: npm publish package/*.tgz --access public
+
+  release:
+    name: Publicar las notas
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Extraer la entrada del changelog
+        env:
+          VERSION: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          version = os.environ['VERSION'].removeprefix('v')
+          changelog = Path('CHANGELOG.md').read_text(encoding='utf-8')
+          match = re.search(
+              rf'^## \[{re.escape(version)}\][^\n]*\n(?P<body>.*?)(?=^## \[|\Z)',
+              changelog,
+              flags=re.MULTILINE | re.DOTALL,
+          )
+          if match is None:
+              raise SystemExit(f'No existe una entrada para {version} en CHANGELOG.md')
+          Path('release-notes.md').write_text(match.group('body').strip() + '\n', encoding='utf-8')
+          PY
+
+      - name: Crear la release de GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file release-notes.md
