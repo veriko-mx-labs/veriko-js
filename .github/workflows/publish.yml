@@ -101,11 +101,26 @@ jobs:
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
-          if npm view "@veriko-mx/sdk@$version" version >/dev/null 2>&1; then
-            echo "@veriko-mx/sdk@$version ya está publicado."
+          public_npmrc="$(mktemp)"
+          trap 'rm -f "$public_npmrc"' EXIT
+
+          if npm view "@veriko-mx/sdk@$version" version --userconfig "$public_npmrc" >/dev/null 2>&1; then
+            echo "@veriko-mx/sdk@$version ya está publicado y es visible sin credenciales."
           else
             npm publish package/*.tgz --access public
           fi
+
+          for attempt in 1 2 3 4 5 6; do
+            if npm view "@veriko-mx/sdk@$version" version --userconfig "$public_npmrc" >/dev/null 2>&1; then
+              echo "@veriko-mx/sdk@$version está disponible en el registro público."
+              exit 0
+            fi
+            echo "Esperando propagación pública de npm ($attempt/6)..."
+            sleep 5
+          done
+
+          echo "@veriko-mx/sdk@$version no es visible en npm sin credenciales." >&2
+          exit 1
 
   release:
     name: Publicar las notas

@@ -1,16 +1,17 @@
 /**
- * Las 49 operaciones que cubre el SDK, contra el spec.
+ * Las 66 operaciones M2M que cubre el SDK, contra el spec público filtrado.
  *
  * Cada caso llama a un método con todos sus argumentos opcionales y comprueba que
  * lo que llegó al servidor existe en el spec: el método y la ruta, los parámetros
  * de consulta, las cabeceras y los campos del cuerpo. Un cuerpo sin el envoltorio
  * `retry_policy`, o un filtro con otro nombre, fallan aquí.
  *
- * Además cada operación tiene que ser de máquina a máquina: la que sólo acepta la
- * cookie de sesión es de la interfaz y no entra en el SDK, en ninguna versión.
+ * Además cada operación tiene que ser de máquina a máquina: acepta `ApiKeyAuth`
+ * o es pública con `security: []`. Una operación que sólo acepta la cookie de
+ * sesión no puede entrar ni en este spec ni en el SDK.
  *
- * La segunda parte compara el conjunto cubierto con las familias del spec, de modo
- * que una operación nueva de máquina a máquina en ellas no pase sin método.
+ * La segunda parte compara el conjunto completo, sin depender de etiquetas ni de
+ * una lista de familias. Una operación M2M nueva no puede pasar sin método.
  */
 
 import assert from 'node:assert/strict';
@@ -20,7 +21,7 @@ import { describe, it } from 'node:test';
 
 import { parse } from 'yaml';
 
-import type { ValidationFilters, Veriko } from '../src/index.js';
+import { Veriko, type ValidationFilters } from '../src/index.js';
 import { PROJECT_ROOT, RecordingServer, makeClient } from './harness.js';
 
 interface Parameter {
@@ -406,12 +407,6 @@ const CASES: Case[] = [
     call: (client) => client.beneficiaries.delete(12),
   },
   {
-    operationId: 'validateAccount',
-    recording: 'account-validation',
-    allQuery: true,
-    call: (client) => client.beneficiaries.validateAccount('012180004412345678', { type: 'clabe' }),
-  },
-  {
     operationId: 'lookupBeneficiaryAccount',
     recording: 'beneficiary-lookup',
     allQuery: true,
@@ -520,9 +515,126 @@ const CASES: Case[] = [
     call: (client) =>
       client.usage.export({ format: 'xlsx', from: '2025-01-01', to: '2025-03-31', limit: 100 }),
   },
+  {
+    operationId: 'myProfile',
+    recording: 'account-profile',
+    call: (client) => client.account.myProfile(),
+  },
+  {
+    operationId: 'getMyRetryPolicy',
+    recording: 'account-retry-policy',
+    call: (client) => client.account.getMyRetryPolicy(),
+  },
+  {
+    operationId: 'updateMyRetryPolicy',
+    recording: 'account-retry-policy-updated',
+    allBody: true,
+    call: (client) => client.account.updateMyRetryPolicy(POLICY, { idempotencyKey: 'pedido-5' }),
+  },
+  {
+    operationId: 'getDashboardSummary',
+    recording: 'dashboard-summary',
+    allQuery: true,
+    call: (client) => client.dashboard.getSummary({ limit: 5 }),
+  },
+  {
+    operationId: 'listPublicPlans',
+    recording: 'public-plans',
+    call: (client) => client.plans.listPublic(),
+  },
+  {
+    operationId: 'getPublicPlanComparison',
+    recording: 'public-plan-comparison',
+    call: (client) => client.plans.getPublicPlanComparison(),
+  },
+  {
+    operationId: 'getUserInsightsOverview',
+    recording: 'insights-overview',
+    call: (client) => client.insights.getOverview(),
+  },
+  {
+    operationId: 'getUserInsightsTrends',
+    recording: 'insights-trends',
+    allQuery: true,
+    call: (client) => client.insights.getTrends({ range: '30d', metric: 'latency' }),
+  },
+  {
+    operationId: 'getUserInsightsTopBanks',
+    recording: 'insights-top-banks',
+    allQuery: true,
+    call: (client) => client.insights.getTopBanks({ metric: 'errors', limit: 10 }),
+  },
+  {
+    operationId: 'getUserInsightsTopBeneficiaries',
+    recording: 'insights-top-beneficiaries',
+    allQuery: true,
+    call: (client) => client.insights.getTopBeneficiaries({ limit: 10 }),
+  },
+  {
+    operationId: 'getFinanceSummary',
+    recording: 'finance-summary',
+    allQuery: true,
+    call: (client) => client.finance.getSummary({ month: '2026-04', userId: ID }),
+  },
+  {
+    operationId: 'getFinanceStatement',
+    recording: 'finance-statement',
+    allQuery: true,
+    call: (client) => client.finance.getStatement({ month: '2026-04', format: 'pdf', userId: ID }),
+  },
+  {
+    operationId: 'getFinanceMonthly',
+    recording: 'finance-monthly',
+    allQuery: true,
+    call: (client) =>
+      client.finance.getMonthly({ month: '2026-04', format: 'preview', userId: ID, limit: 100 }),
+  },
+  {
+    operationId: 'getFinanceCounterparties',
+    recording: 'finance-counterparties',
+    allQuery: true,
+    call: (client) =>
+      client.finance.getCounterparties({
+        month: '2026-04',
+        format: 'preview',
+        userId: ID,
+        limit: 100,
+      }),
+  },
+  {
+    operationId: 'getFinanceByBank',
+    recording: 'finance-by-bank',
+    allQuery: true,
+    call: (client) =>
+      client.finance.getByBank({ month: '2026-04', format: 'preview', userId: ID, limit: 100 }),
+  },
+  {
+    operationId: 'getFinanceAccounting',
+    recording: 'finance-accounting',
+    allQuery: true,
+    call: (client) =>
+      client.finance.getAccounting({
+        month: '2026-04',
+        format: 'preview',
+        userId: ID,
+        limit: 100,
+        decimal: 'dot',
+      }),
+  },
+  {
+    operationId: 'getFinanceCeps',
+    recording: 'finance-ceps',
+    allQuery: true,
+    call: (client) => client.finance.getCeps({ from: '2026-04-01', to: '2026-04-30', userId: ID }),
+  },
+  {
+    operationId: 'billingGetSubscription',
+    recording: 'billing-subscription',
+    call: (client) => client.billing.getSubscription(),
+  },
 ];
 
-/** Las 49 operaciones de esta versión. */
+/** La superficie M2M completa deriva del spec público filtrado. */
 const SDK_OPERATIONS = [
   'validateDirect',
   'validateOcr',
@@ -555,7 +667,6 @@ const SDK_OPERATIONS = [
   'listBeneficiaries',
   'updateBeneficiary',
   'deleteBeneficiary',
-  'validateAccount',
   'lookupBeneficiaryAccount',
   'exportBeneficiaries',
   'downloadBeneficiaryImportTemplate',
@@ -573,7 +684,62 @@ const SDK_OPERATIONS = [
   'getUsageHeatmap',
   'getApiUsage',
   'exportApiUsage',
+  'myProfile',
+  'getMyRetryPolicy',
+  'updateMyRetryPolicy',
+  'getDashboardSummary',
+  'listPublicPlans',
+  'getPublicPlanComparison',
+  'getUserInsightsOverview',
+  'getUserInsightsTrends',
+  'getUserInsightsTopBanks',
+  'getUserInsightsTopBeneficiaries',
+  'getFinanceSummary',
+  'getFinanceStatement',
+  'getFinanceMonthly',
+  'getFinanceCounterparties',
+  'getFinanceByBank',
+  'getFinanceAccounting',
+  'getFinanceCeps',
+  'billingGetSubscription',
 ];
+
+/**
+ * Deuda temporal durante una migración. La versión final debe salir vacía: el
+ * test de abajo impide convertirla en una allowlist permanente.
+ */
+const KNOWN_GAPS = new Set<string>();
+
+function m2mOperationIds(): Set<string> {
+  return new Set(
+    allOperations()
+      .filter(acceptsApiKey)
+      .map((operation) => operation.operationId),
+  );
+}
+
+function coverageErrors(
+  contract: ReadonlySet<string>,
+  implemented: ReadonlySet<string>,
+  knownGaps: ReadonlySet<string>,
+): string[] {
+  const errors: string[] = [];
+  const missing = [...contract].filter(
+    (operationId) => !implemented.has(operationId) && !knownGaps.has(operationId),
+  );
+  const obsolete = [...implemented].filter((operationId) => !contract.has(operationId));
+  const implementedGaps = [...knownGaps].filter((operationId) => implemented.has(operationId));
+  const staleGaps = [...knownGaps].filter((operationId) => !contract.has(operationId));
+
+  if (missing.length) errors.push(`Faltan métodos para M2M: ${missing.sort().join(', ')}`);
+  if (obsolete.length)
+    errors.push(`Hay métodos fuera del contrato M2M: ${obsolete.sort().join(', ')}`);
+  if (implementedGaps.length)
+    errors.push(`known_gaps ya tiene método: ${implementedGaps.sort().join(', ')}`);
+  if (staleGaps.length)
+    errors.push(`known_gaps ya no existe en el contrato: ${staleGaps.sort().join(', ')}`);
+  return errors;
+}
 
 describe('lo que el SDK envía existe en el spec', () => {
   for (const testCase of CASES) {
@@ -646,41 +812,99 @@ describe('lo que el SDK envía existe en el spec', () => {
   }
 });
 
-describe('el conjunto de operaciones cubierto', () => {
-  it('son las 49 de esta versión', () => {
-    const covered = [...new Set(CASES.map((testCase) => testCase.operationId))].sort();
+describe('el conjunto de operaciones M2M cubierto', () => {
+  const implemented = new Set(SDK_OPERATIONS);
+  const covered = new Set(CASES.map((testCase) => testCase.operationId));
 
-    assert.equal(SDK_OPERATIONS.length, 49);
-    assert.deepEqual(covered, [...SDK_OPERATIONS].sort());
+  it('cubre exactamente las 66 operaciones del contrato, sin familias parciales', () => {
+    assert.equal(implemented.size, 66);
+    assert.deepEqual(covered, implemented);
+    assert.deepEqual(coverageErrors(m2mOperationIds(), implemented, KNOWN_GAPS), []);
   });
 
-  it('las familias del spec no traen operaciones de máquina a máquina sin método', () => {
-    const families = new Set([
-      'Validations',
-      'Webhooks',
-      'Public',
-      'Banxico Status',
-      'Beneficiaries',
-      'Usage',
-    ]);
-    const machineToMachine = allOperations()
-      .filter((operation) => operation.tags?.some((tag) => families.has(tag)))
-      .filter(acceptsApiKey)
-      .map((operation) => operation.operationId);
-
-    assert.deepEqual(machineToMachine.sort(), [...SDK_OPERATIONS].sort());
-  });
-
-  it('ninguna operación que sólo acepta la cookie de sesión tiene método', () => {
+  it('no deja una operación de cookie dentro del spec público ni de los métodos', () => {
     const cookieOnly = allOperations()
       .filter((operation) => !acceptsApiKey(operation))
       .map((operation) => operation.operationId);
 
-    // La importación masiva de validaciones es una de ellas.
-    assert.ok(cookieOnly.includes('createValidationImport'));
     assert.deepEqual(
-      cookieOnly.filter((operationId) => SDK_OPERATIONS.includes(operationId)),
+      cookieOnly,
+      [],
+      `El spec público expone sólo-cookie: ${cookieOnly.join(', ')}`,
+    );
+    assert.deepEqual(
+      cookieOnly.filter((operationId) => implemented.has(operationId)),
       [],
     );
   });
+
+  it('exige eliminar los huecos temporales antes de liberar', () => {
+    assert.equal(KNOWN_GAPS.size, 0, 'known_gaps debe estar vacío antes de liberar el SDK');
+  });
+
+  it('falla cerrado si se agrega, retira u oculta una operación M2M', () => {
+    const contract = m2mOperationIds();
+    const removed = 'myProfile';
+    const future = 'futureM2mOperation';
+
+    assert.deepEqual(coverageErrors(new Set([...contract, future]), implemented, new Set()), [
+      `Faltan métodos para M2M: ${future}`,
+    ]);
+    assert.deepEqual(
+      coverageErrors(
+        new Set([...contract].filter((operationId) => operationId !== removed)),
+        implemented,
+        new Set(),
+      ),
+      [`Hay métodos fuera del contrato M2M: ${removed}`],
+    );
+    assert.deepEqual(coverageErrors(contract, implemented, new Set([removed])), [
+      `known_gaps ya tiene método: ${removed}`,
+    ]);
+    assert.deepEqual(coverageErrors(contract, implemented, new Set([future])), [
+      `known_gaps ya no existe en el contrato: ${future}`,
+    ]);
+  });
+});
+
+it('los planes públicos funcionan sin API key y no envían Authorization', async () => {
+  const server = await RecordingServer.start();
+  try {
+    server.enqueue('public-plans');
+    const client = new Veriko({ apiKey: '', baseUrl: server.baseUrl, maxRetries: 0 });
+
+    await client.plans.listPublic();
+
+    assert.equal(server.header(0, 'authorization'), undefined);
+  } finally {
+    await server.close();
+  }
+});
+
+it('los reportes financieros conservan csv como formato predeterminado', async () => {
+  const server = await RecordingServer.start();
+  try {
+    server.enqueue('deliveries-export-csv', 4);
+    const client = new Veriko({ apiKey: 'veriko_test', baseUrl: server.baseUrl, maxRetries: 0 });
+
+    await client.finance.getMonthly({ month: '2026-04' });
+    await client.finance.getCounterparties({ month: '2026-04' });
+    await client.finance.getByBank({ month: '2026-04' });
+    await client.finance.getAccounting({ month: '2026-04' });
+
+    const expectedPaths = [
+      '/v1/finance/monthly',
+      '/v1/finance/counterparties',
+      '/v1/finance/by-bank',
+      '/v1/finance/accounting',
+    ];
+    for (const [index, expectedPath] of expectedPaths.entries()) {
+      const url = new URL(server.request(index).url, 'http://localhost');
+      assert.equal(url.pathname, expectedPath);
+      assert.equal(url.searchParams.get('month'), '2026-04');
+      assert.equal(url.searchParams.get('format'), 'csv');
+    }
+  } finally {
+    await server.close();
+  }
 });

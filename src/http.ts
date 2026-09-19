@@ -14,6 +14,7 @@
 import {
   ApiError,
   AuthenticationError,
+  ConfigurationError,
   ConflictError,
   ConnectionError,
   ForbiddenError,
@@ -46,6 +47,8 @@ export const DEFAULT_RETRY: RetryConfig = {
 export interface RequestOptions {
   method: string;
   path: string;
+  /** Las operaciones públicas no envían una cabecera de autenticación. */
+  authenticated?: boolean;
   body?: unknown;
   /** Un valor repetido (`buckets=a&buckets=b`) se pasa como arreglo. */
   query?: Record<string, string | number | readonly string[] | undefined>;
@@ -126,10 +129,17 @@ export class Transport {
   async request(options: RequestOptions): Promise<RawResponse> {
     const url = this.buildUrl(options.path, options.query);
     const headers: Record<string, string> = {
-      authorization: `Bearer ${this.apiKey}`,
       accept: options.accept ?? 'application/json',
       'user-agent': this.userAgent,
     };
+    if (options.authenticated ?? true) {
+      if (!this.apiKey) {
+        throw new ConfigurationError(
+          'Falta la clave de API. Pásala en apiKey o configura VERIKO_API_KEY.',
+        );
+      }
+      headers.authorization = `Bearer ${this.apiKey}`;
+    }
     if (this.acceptLanguage) headers['accept-language'] = this.acceptLanguage;
     for (const [name, value] of Object.entries(options.headers ?? {})) {
       if (value !== undefined) headers[name.toLowerCase()] = value;

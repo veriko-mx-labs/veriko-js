@@ -326,6 +326,76 @@ export type BanxicoStatus = Schemas['BanxicoPublicStatusResource'];
 /** Serie temporal de la salud del servicio de Banxico. */
 export type BanxicoTimeseries = Schemas['BanxicoPublicTimeseriesResource'];
 
+/** Perfil consolidado de la cuenta autenticada. */
+export type UserProfile = ResourceOf<'myProfile', 200>;
+
+/** Política de reintentos predeterminada de la cuenta. */
+export type UserRetryPolicy = ResourceOf<'getMyRetryPolicy', 200>;
+
+/** Resumen del panel de la cuenta. */
+export type DashboardSummary = ResourceOf<'getDashboardSummary', 200>;
+
+/** Planes visibles para una integración sin autenticación. */
+export type PublicPlans = ResourceOf<'listPublicPlans', 200>;
+
+/** Matriz comparativa de planes visibles. */
+export type PublicPlanComparison = ResourceOf<'getPublicPlanComparison', 200>;
+
+export type InsightsOverview = ResourceOf<'getUserInsightsOverview', 200>;
+export type InsightsTrends = ResourceOf<'getUserInsightsTrends', 200>;
+export type InsightsTopBanks = ResourceOf<'getUserInsightsTopBanks', 200>;
+export type InsightsTopBeneficiaries = ResourceOf<'getUserInsightsTopBeneficiaries', 200>;
+
+export type FinanceSummary = ResourceOf<'getFinanceSummary', 200>;
+export type FinancePreview = ResourceOf<'getFinanceMonthly', 200>;
+export type BillingSubscription = ResourceOf<'billingGetSubscription', 200>;
+
+export type FinanceStatementFormat = 'pdf' | 'xlsx' | 'csv' | 'html';
+export type FinancePreviewFormat = 'csv' | 'xlsx' | 'pdf' | 'preview';
+export type FinanceDecimal = 'comma' | 'dot';
+
+export interface DashboardSummaryParams {
+  limit?: number;
+}
+
+export interface UserInsightsTrendsParams {
+  range?: '24h' | '7d' | '30d' | '90d';
+  metric?: 'volume' | 'latency';
+}
+
+export interface UserInsightsTopBanksParams {
+  metric?: 'volume' | 'errors';
+  limit?: number;
+}
+
+export interface UserInsightsTopBeneficiariesParams {
+  limit?: number;
+}
+
+export interface FinanceParams {
+  month: string;
+  userId?: string;
+}
+
+export interface FinancePreviewParams extends FinanceParams {
+  format?: FinancePreviewFormat;
+  limit?: number;
+}
+
+export interface FinanceStatementParams extends FinanceParams {
+  format?: FinanceStatementFormat;
+}
+
+export interface FinanceAccountingParams extends FinancePreviewParams {
+  decimal?: FinanceDecimal;
+}
+
+export interface FinanceCepsParams {
+  from: string;
+  to: string;
+  userId?: string;
+}
+
 type ListValidationsQuery = NonNullable<operations['listValidations']['parameters']['query']>;
 type TimeseriesQuery = NonNullable<operations['banxicoPublicTimeseries']['parameters']['query']>;
 type DeliveriesQuery = NonNullable<operations['listAllDeliveries']['parameters']['query']>;
@@ -492,7 +562,6 @@ export type Beneficiary = Schemas['Beneficiary'];
 export type BeneficiaryLookup = Schemas['BeneficiaryLookupResource'];
 
 /** La estructura de un número de cuenta: tipo, dígito de control y banco. */
-export type AccountValidation = Schemas['ValidateAccountResource'];
 
 /** El acuse de una importación recién abierta, siempre en estado `pending`. */
 export type BeneficiaryImportStarted = Schemas['CreateBeneficiaryImportResource'];
@@ -534,11 +603,6 @@ export type ImportRowBucket = NonNullable<
 
 /** Cómo se lee el archivo: `template` (encabezados canónicos) o `free` (formato libre). */
 export type ImportParseMode = Schemas['CreateBeneficiaryImportRequest']['parse_mode'];
-
-type ValidateAccountQuery = NonNullable<operations['validateAccount']['parameters']['query']>;
-
-/** Qué se comprueba en `validateAccount()`: una CLABE o un BIN. */
-export type AccountCheckType = NonNullable<ValidateAccountQuery['type']>;
 
 /** Formatos de la plantilla de importación. */
 export const IMPORT_TEMPLATE_FORMATS = ['csv', 'xlsx', 'xls', 'txt', 'json'] as const;
@@ -584,11 +648,6 @@ export interface UpdateBeneficiaryParams {
 export interface ListBeneficiariesParams {
   /** `true` sólo las archivadas, `false` sólo las activas; sin él, ambas. */
   withArchived?: boolean;
-}
-
-/** Las opciones de `beneficiaries.validateAccount()`. */
-export interface ValidateAccountOptions {
-  type?: AccountCheckType;
 }
 
 /** Los argumentos de `beneficiaries.export()`. */
