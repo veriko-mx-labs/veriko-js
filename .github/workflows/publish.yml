@@ -102,12 +102,42 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           public_npmrc="$(mktemp)"
-          trap 'rm -f "$public_npmrc"' EXIT
+          publish_log="$(mktemp)"
+          trap 'rm -f "$public_npmrc" "$publish_log"' EXIT
 
           if npm view "@veriko-mx/sdk@$version" version --userconfig "$public_npmrc" >/dev/null 2>&1; then
             echo "@veriko-mx/sdk@$version ya está publicado y es visible sin credenciales."
           else
-            npm publish ./package/*.tgz --access public
+            for attempt in 1 2 3 4; do
+              if npm view "@veriko-mx/sdk@$version" version --userconfig "$public_npmrc" >/dev/null 2>&1; then
+                echo "@veriko-mx/sdk@$version apareció publicado antes del reintento."
+                break
+              fi
+
+              if npm publish ./package/*.tgz --access public >"$publish_log" 2>&1; then
+                cat "$publish_log"
+                break
+              else
+                status=$?
+                cat "$publish_log" >&2
+              fi
+
+              if ! grep -Eiq \
+                'E(429|500|502|503|504)|429 Too Many Requests|5(00|02|03|04) (Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout)|ECONNRESET|ETIMEDOUT|EAI_AGAIN' \
+                "$publish_log"; then
+                echo "npm publish falló con un error no transitorio; no se reintentará." >&2
+                exit "$status"
+              fi
+
+              if [ "$attempt" -eq 4 ]; then
+                echo "npm publish agotó los reintentos por errores transitorios." >&2
+                exit "$status"
+              fi
+
+              delay=$((15 * 2 ** (attempt - 1)))
+              echo "npm no está disponible temporalmente; reintento $((attempt + 1))/4 en ${delay}s..."
+              sleep "$delay"
+            done
           fi
 
           for attempt in 1 2 3 4 5 6; do
