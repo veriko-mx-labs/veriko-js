@@ -432,7 +432,7 @@ export interface IdempotentOptions {
 
 /** Los argumentos de `webhooks.create()`. */
 export interface CreateWebhookParams {
-  /** HTTPS, de hasta 2048 caracteres y sin resolver a una dirección privada. */
+  /** HTTPS, máximo 2048 caracteres y sin resolver a una dirección privada. */
   url: string;
   /** De 1 a 10 eventos. */
   events: readonly WebhookSubscriptionEvent[];

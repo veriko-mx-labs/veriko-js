@@ -1,9 +1,9 @@
 /**
  * Errores del SDK.
  *
- * La API devuelve los errores en un arreglo `errors`, y el campo estable de cada
- * entrada es `code` — no `detail`, que se traduce según `Accept-Language` y puede
- * reformularse entre versiones. Por eso todas las excepciones exponen `code` y la
+ * La API devuelve los errores en un arreglo `errors`, y `code` es el campo estable
+ * de cada entrada. `detail` se traduce según `Accept-Language` y puede reformularse
+ * entre versiones. Por eso todas las excepciones exponen `code` y la
  * lista completa de `errors`: ramificar sobre el texto es el error más silencioso
  * al integrar esta API.
  *
