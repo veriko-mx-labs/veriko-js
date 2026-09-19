@@ -149,20 +149,6 @@ describe('client.beneficiaries', () => {
       assert.equal(server.request(0).url, '/v1/beneficiaries/51');
     });
 
-    it('comprobar la estructura de una cuenta', async () => {
-      server.enqueue('account-validation');
-
-      const check = await client.beneficiaries.validateAccount('012180004412345678', {
-        type: 'clabe',
-      });
-
-      assert.equal(query(0).get('account'), '012180004412345678');
-      assert.equal(query(0).get('type'), 'clabe');
-      assert.equal(check.attributes.checksum_valid, true);
-      assert.equal(check.attributes.account_type, 'clabe');
-      assert.equal(check.attributes.bank?.name, 'BBVA MEXICO');
-    });
-
     it('resolver una cuenta de la lista propia', async () => {
       server.enqueue('beneficiary-lookup');
 

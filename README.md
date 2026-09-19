@@ -53,7 +53,7 @@ Con veredicto `valid`, el comprobante queda disponible en XML y en PDF.
 
 ## Las familias de operaciones
 
-El cliente agrupa la API en cinco familias:
+El cliente agrupa las 66 operaciones M2M de la API en once familias:
 
 | familia                | qué cubre                                                                                                             |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------- |
@@ -62,6 +62,12 @@ El cliente agrupa la API en cinco familias:
 | `client.catalog`       | Catálogo de bancos SPEI, banco emisor de una tarjeta y estado del servicio de Banxico                                 |
 | `client.beneficiaries` | Cuentas beneficiarias guardadas y la importación masiva, como ciclo completo                                          |
 | `client.usage`         | Cuota de validaciones, límites de tasa y registro de actividad de la API                                              |
+| `client.account`       | Perfil y política de reintentos predeterminada de la cuenta                                                           |
+| `client.dashboard`     | Resumen del panel                                                                                                     |
+| `client.plans`         | Catálogo y comparación de planes públicos, sin clave de API                                                           |
+| `client.insights`      | Resumen, tendencias, bancos y beneficiarios principales                                                               |
+| `client.finance`       | Resumen, estado de cuenta, vistas previas y descargas financieras                                                     |
+| `client.billing`       | Suscripción activa                                                                                                    |
 
 Las tres operaciones de uso más frecuente están también en la raíz del cliente, como atajo:
 `validateTransfer()`, `getValidation()` y `getCep()`.
@@ -83,6 +89,10 @@ La clave de API se obtiene en el panel ([app.veriko.mx](https://app.veriko.mx)) 
 ```bash
 export VERIKO_API_KEY=veriko_tu_clave_aqui
 ```
+
+Sólo `client.plans.listPublic()` y `client.plans.getPublicPlanComparison()` se pueden usar sin
+clave y no envían `Authorization`. El resto conserva la autenticación de la API: una petición sin
+clave falla localmente antes de salir a la red.
 
 La opción `apiKey` la recibe directamente cuando la gestiona otro mecanismo:
 
@@ -260,8 +270,7 @@ const found = await client.beneficiaries.lookup('012180004412345678'); // la cue
 console.log(found.attributes.bank_name);
 ```
 
-`validateAccount()` comprueba la estructura de un número sin gastar cuota. La lista completa se
-recorre con `client.beneficiaries.list()`, que no pagina, y `delete()` archiva una cuenta sin
+La lista completa se recorre con `client.beneficiaries.list()`, que no pagina, y `delete()` archiva una cuenta sin
 borrarla: `list({ withArchived: true })` devuelve sólo las archivadas. `export()` la baja en CSV o en
 XLSX.
 
@@ -501,29 +510,30 @@ falla si el spec añade, quita o renombra alguno de sus campos.
 Además de los tipos con nombre corto, el paquete reexporta `components`, `operations` y `paths`
 completos, por si hace falta una operación que el SDK todavía no envuelve.
 
-## Alcance de esta versión
+## Superficie M2M
 
-49 operaciones de la API, repartidas en las cinco familias del cliente:
+El SDK cubre exactamente las 66 operaciones que el spec público clasifica como M2M: `security: []`
+para las públicas, o una alternativa con `ApiKeyAuth` para las autenticadas. No se infiere de
+`x-auth`, etiquetas ni familias. Cualquier operación que sólo admita `CookieAuth` queda fuera.
 
-| familia                | operaciones | qué incluyen                                                                                                      |
-| ---------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------- |
-| `client.validations`   | 13          | La validación por campos y por imagen, el modo asíncrono con sondeo por `ETag`, la paginación y las exportaciones |
-| `client.webhooks`      | 10          | El ciclo de vida de los endpoints y su historial de entregas, con paginación y exportación                        |
-| `client.catalog`       | 4           | Bancos SPEI, banco emisor de una tarjeta, estado de Banxico y su serie temporal                                   |
-| `client.beneficiaries` | 15          | La lista de cuentas beneficiarias y el ciclo completo de su importación masiva                                    |
-| `client.usage`         | 7           | La cuota del plan, los límites de tasa, el historial, el desglose, el mapa de calor y el registro de actividad    |
+Las 18 incorporadas en esta alineación son el perfil y su política de reintentos, el resumen del
+panel, los dos endpoints públicos de planes, las cuatro vistas de insights, las siete operaciones
+financieras y la suscripción. Por ejemplo:
 
-A ellas se suma la verificación de la firma de los webhooks, que no es una operación de la API.
+```ts
+const profile = await client.account.myProfile();
+const trends = await client.insights.getTrends({ range: '30d', metric: 'latency' });
+const statement = await client.finance.getStatement({ month: '2026-04', format: 'pdf' });
+await writeFile(statement.filename, statement.content);
+```
 
-El SDK cubre sólo operaciones de máquina a máquina, las que aceptan la clave de API o son
-públicas. Las que únicamente aceptan la cookie de sesión son de la interfaz y no entran en ninguna
-versión: la importación masiva de validaciones, las sesiones de usuario, el playground y el
-directorio de cuentas.
+Los reportes mensual, por contraparte, por banco y contable conservan el default de la API:
+`format: 'csv'`. Usa `format: 'preview'` explícitamente cuando necesites la respuesta JSON para
+procesarla en memoria.
 
-Fuera del alcance a propósito: finanzas, métricas propias, catálogo de planes, suscripción y el
-resumen del panel. Son superficie de interfaz, se consumen una vez o desde la propia aplicación, y
-cada una arrastra formatos de exportación que no aportan al SDK. Están en la
-[referencia](https://docs.veriko.mx) para quien las necesite con un cliente HTTP.
+La importación masiva de validaciones, las sesiones de usuario y el playground siguen fuera: sólo
+aceptan cookie de sesión. La corrección también retira el antiguo `validateAccount()`; ya no forma
+parte del contrato M2M público.
 
 ## Desarrollo
 
@@ -534,6 +544,10 @@ npm run lint           # eslint
 npm run typecheck      # tsc --noEmit
 npm run build          # dist/esm y dist/cjs
 ```
+
+`test/operations.test.ts` compara el conjunto completo de métodos con el spec filtrado, ejerce cada
+ruta contra un servidor HTTP local y falla si aparece una operación M2M sin método, un método ajeno
+al contrato o una excepción temporal que no se eliminó.
 
 Ninguna prueba llama a la API. El arnés levanta un servidor HTTP local que sirve las respuestas
 guardadas en [`test/recordings/`](test/recordings), recortadas de los ejemplos del spec público.

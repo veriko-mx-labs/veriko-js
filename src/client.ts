@@ -1,8 +1,19 @@
 /** El cliente: la entrada al SDK y las familias de operaciones. */
 
-import { ConfigurationError } from './errors.js';
 import { DEFAULT_RETRY, Transport, type RetryConfig } from './http.js';
-import { Beneficiaries, Catalog, Usage, Validations, Webhooks } from './resources.js';
+import {
+  Account,
+  Beneficiaries,
+  Billing,
+  Catalog,
+  Dashboard,
+  Finance,
+  Insights,
+  Plans,
+  Usage,
+  Validations,
+  Webhooks,
+} from './resources.js';
 import type {
   CepDocument,
   CepFormat,
@@ -18,7 +29,7 @@ export const API_KEY_ENV_VAR = 'VERIKO_API_KEY';
 export const BASE_URL_ENV_VAR = 'VERIKO_BASE_URL';
 
 /** La versión que viaja en el `User-Agent`. `test/client.test.ts` la compara con `package.json`. */
-export const VERSION = '0.3.1';
+export const VERSION = '0.4.0';
 
 export interface VerikoOptions {
   /** La clave de API. Por omisión, `VERIKO_API_KEY`. */
@@ -55,6 +66,12 @@ export interface VerikoOptions {
  * - `client.catalog`: bancos y estado del servicio de Banxico.
  * - `client.beneficiaries`: cuentas guardadas y su importación masiva.
  * - `client.usage`: cuota, límites y registro de actividad.
+ * - `client.account`: perfil y política de reintentos predeterminada.
+ * - `client.dashboard`: resumen del panel.
+ * - `client.plans`: catálogo y comparación de planes públicos.
+ * - `client.insights`: métricas agregadas de la cuenta.
+ * - `client.finance`: resúmenes y descargas financieras.
+ * - `client.billing`: suscripción activa.
  *
  * Las tres de uso más frecuente están también en la raíz, como atajo:
  *
@@ -82,16 +99,21 @@ export class Veriko {
   readonly beneficiaries: Beneficiaries;
   /** Cuota, límites y registro de actividad. */
   readonly usage: Usage;
+  /** Perfil y preferencias de la cuenta autenticada. */
+  readonly account: Account;
+  /** Resumen del panel. */
+  readonly dashboard: Dashboard;
+  /** Catálogo público de planes. */
+  readonly plans: Plans;
+  /** Métricas agregadas de la cuenta. */
+  readonly insights: Insights;
+  /** Resúmenes y descargas financieras. */
+  readonly finance: Finance;
+  /** Suscripción activa de la cuenta. */
+  readonly billing: Billing;
 
   constructor(options: VerikoOptions = {}) {
     const apiKey = options.apiKey ?? process.env[API_KEY_ENV_VAR] ?? '';
-    if (!options.transport && !apiKey) {
-      throw new ConfigurationError(
-        `Falta la clave de API. Pásala como new Veriko({ apiKey }) o pon ${API_KEY_ENV_VAR} ` +
-          'en el entorno. Se obtiene en https://app.veriko.mx',
-      );
-    }
-
     const suffix = options.userAgentSuffix ? ` ${options.userAgentSuffix}` : '';
     this.transport =
       options.transport ??
@@ -113,6 +135,12 @@ export class Veriko {
     this.catalog = new Catalog(this.transport);
     this.beneficiaries = new Beneficiaries(this.transport);
     this.usage = new Usage(this.transport);
+    this.account = new Account(this.transport);
+    this.dashboard = new Dashboard(this.transport);
+    this.plans = new Plans(this.transport);
+    this.insights = new Insights(this.transport);
+    this.finance = new Finance(this.transport);
+    this.billing = new Billing(this.transport);
   }
 
   get baseUrl(): string {

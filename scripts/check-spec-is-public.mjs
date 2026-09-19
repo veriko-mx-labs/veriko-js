@@ -27,15 +27,22 @@ if (rutas.length === 0) {
   fallos.push(`${SPEC} no declara ninguna ruta.`);
 }
 
-for (const marca of ['x-visibility', 'x-permission', 'x-admin-notes']) {
+for (const marca of ['x-visibility', 'x-permission', 'x-admin-notes', 'x-auth', 'x-integration']) {
   if (spec.includes(`${marca}:`)) {
     fallos.push(`${SPEC} conserva la extensión interna \`${marca}\`. Es el bundle sin sanear.`);
   }
 }
 
+if (/\bCookieAuth\b/.test(spec)) {
+  fallos.push(`${SPEC} conserva CookieAuth. El contrato público M2M sólo declara ApiKeyAuth.`);
+}
+
 const generated = readFileSync(GENERATED, 'utf8');
 if (/^ +"\/admin/m.test(generated)) {
   fallos.push(`${GENERATED} declara rutas /admin. Regenera desde el spec público.`);
+}
+if (/\bCookieAuth\b/.test(generated)) {
+  fallos.push(`${GENERATED} conserva tipos de CookieAuth. Regenera desde el spec público.`);
 }
 
 if (fallos.length > 0) {

@@ -7,9 +7,17 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 
 import {
   API_KEY_ENV_VAR,
+  Account,
+  Beneficiaries,
+  Billing,
   Catalog,
   ConfigurationError,
   DEFAULT_BASE_URL,
+  Dashboard,
+  Finance,
+  Insights,
+  Plans,
+  Usage,
   VERSION,
   Validations,
   Veriko,
@@ -43,15 +51,20 @@ describe('new Veriko()', () => {
     Reflect.deleteProperty(process.env, API_KEY_ENV_VAR);
   });
 
-  it('sin clave de API falla al construir', () => {
-    assert.throws(
-      () => new Veriko(),
-      (error: unknown) => {
-        assert.ok(error instanceof ConfigurationError);
-        assert.match(error.message, /VERIKO_API_KEY/);
-        return true;
-      },
+  it('sin clave de API construye el cliente para sus operaciones públicas', () => {
+    const client = new Veriko();
+
+    assert.equal(client.baseUrl, DEFAULT_BASE_URL);
+  });
+
+  it('sin clave de API rechaza una operación autenticada antes de salir a la red', async () => {
+    const client = new Veriko({ apiKey: '', baseUrl: server.baseUrl });
+
+    await assert.rejects(
+      () => client.validateTransfer(TRANSFER),
+      (error: unknown) => error instanceof ConfigurationError,
     );
+    assert.equal(server.requests.length, 0);
   });
 
   it('la clave se lee del entorno', () => {
@@ -77,12 +90,20 @@ describe('new Veriko()', () => {
     assert.ok(server.header(0, 'user-agent')?.startsWith(`veriko-js/${VERSION}`));
   });
 
-  it('las operaciones se agrupan en tres familias', () => {
+  it('las operaciones se agrupan en once familias', () => {
     const client = new Veriko({ apiKey: 'veriko_x' });
 
     assert.ok(client.validations instanceof Validations);
     assert.ok(client.webhooks instanceof Webhooks);
     assert.ok(client.catalog instanceof Catalog);
+    assert.ok(client.beneficiaries instanceof Beneficiaries);
+    assert.ok(client.usage instanceof Usage);
+    assert.ok(client.account instanceof Account);
+    assert.ok(client.dashboard instanceof Dashboard);
+    assert.ok(client.plans instanceof Plans);
+    assert.ok(client.insights instanceof Insights);
+    assert.ok(client.finance instanceof Finance);
+    assert.ok(client.billing instanceof Billing);
   });
 
   it('la versión del SDK es la del package.json', () => {

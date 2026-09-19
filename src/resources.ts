@@ -38,7 +38,6 @@ import {
   IMPORT_TEMPLATE_FORMATS,
   isImportSettled,
   isSettled,
-  type AccountValidation,
   type ApiUsage,
   type Beneficiary,
   type BeneficiaryImportCommitted,
@@ -64,7 +63,27 @@ import {
   type UsageHistoryParams,
   type UsageLimits,
   type UsageSummary,
-  type ValidateAccountOptions,
+  type BillingSubscription,
+  type DashboardSummary,
+  type DashboardSummaryParams,
+  type FinanceAccountingParams,
+  type FinanceCepsParams,
+  type FinanceParams,
+  type FinancePreview,
+  type FinancePreviewParams,
+  type FinanceStatementParams,
+  type FinanceSummary,
+  type InsightsOverview,
+  type InsightsTopBanks,
+  type UserInsightsTopBanksParams,
+  type InsightsTopBeneficiaries,
+  type UserInsightsTopBeneficiariesParams,
+  type InsightsTrends,
+  type UserInsightsTrendsParams,
+  type PublicPlanComparison,
+  type PublicPlans,
+  type UserProfile,
+  type UserRetryPolicy,
   type Bank,
   type BankList,
   type BanksOptions,
@@ -1083,26 +1102,6 @@ export class Beneficiaries {
   }
 
   /**
-   * Comprueba la estructura de un número de cuenta.
-   *
-   * `GET /v1/beneficiaries/validate-account`. Verifica el dígito de control de la
-   * CLABE o el Luhn de la tarjeta y resuelve el banco. No consume cuota del plan.
-   * Un número mal formado no es un error: se lee en `attributes.checksum_valid` o
-   * en `attributes.account_type`.
-   */
-  async validateAccount(
-    account: string,
-    options: ValidateAccountOptions = {},
-  ): Promise<AccountValidation> {
-    const response = await this.transport.request({
-      method: 'GET',
-      path: '/beneficiaries/validate-account',
-      query: { account, type: options.type },
-    });
-    return readData<AccountValidation>(response, 'de la cuenta');
-  }
-
-  /**
    * Resuelve una cuenta concreta dentro de la lista propia.
    *
    * `GET /v1/beneficiaries/lookup`. Devuelve los datos del banco cuando la cuenta
@@ -1443,5 +1442,332 @@ export class Usage {
       { from: params.from, to: params.to, limit: params.limit },
       'actividad-api',
     );
+  }
+}
+
+// ── Cuenta, panel, planes, insights, finanzas y facturación ────────────────
+
+/** Perfil y preferencias de la cuenta autenticada. */
+export class Account {
+  constructor(private readonly transport: Transport) {}
+
+  /** `GET /v1/users/me`. */
+  async myProfile(): Promise<UserProfile> {
+    const response = await this.transport.request({ method: 'GET', path: '/users/me' });
+    return readData<UserProfile>(response, 'del perfil');
+  }
+
+  profile(): Promise<UserProfile> {
+    return this.myProfile();
+  }
+
+  /** `GET /v1/users/me/retry-policy`. */
+  async getMyRetryPolicy(): Promise<UserRetryPolicy> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: '/users/me/retry-policy',
+    });
+    return readData<UserRetryPolicy>(response, 'de la política de reintentos');
+  }
+
+  retryPolicy(): Promise<UserRetryPolicy> {
+    return this.getMyRetryPolicy();
+  }
+
+  /** `PUT /v1/users/me/retry-policy`. */
+  async updateMyRetryPolicy(
+    policy: RetryPolicy,
+    options: IdempotentOptions = {},
+  ): Promise<UserRetryPolicy> {
+    const body: Schemas['UpdateUserRetryPolicyRequest'] = { retry_policy: policy };
+    const response = await this.transport.request({
+      method: 'PUT',
+      path: '/users/me/retry-policy',
+      body,
+      headers: idempotencyHeader(options.idempotencyKey),
+    });
+    return readData<UserRetryPolicy>(response, 'de la política de reintentos');
+  }
+}
+
+/** Resumen del panel de la cuenta. */
+export class Dashboard {
+  constructor(private readonly transport: Transport) {}
+
+  /** `GET /v1/summary`. */
+  async getSummary(params: DashboardSummaryParams = {}): Promise<DashboardSummary> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: '/summary',
+      query: { limit: params.limit },
+    });
+    return readData<DashboardSummary>(response, 'del resumen del panel');
+  }
+
+  summary(params: DashboardSummaryParams = {}): Promise<DashboardSummary> {
+    return this.getSummary(params);
+  }
+}
+
+/** Catálogo de planes que no requiere API key. */
+export class Plans {
+  constructor(private readonly transport: Transport) {}
+
+  /** `GET /v1/plans/public`. */
+  async listPublic(): Promise<PublicPlans> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: '/plans/public',
+      authenticated: false,
+    });
+    return readData<PublicPlans>(response, 'de los planes públicos');
+  }
+
+  list(): Promise<PublicPlans> {
+    return this.listPublic();
+  }
+
+  /** `GET /v1/plans/public/comparison`. */
+  async getPublicPlanComparison(): Promise<PublicPlanComparison> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: '/plans/public/comparison',
+      authenticated: false,
+    });
+    return readData<PublicPlanComparison>(response, 'de la comparación de planes');
+  }
+
+  comparison(): Promise<PublicPlanComparison> {
+    return this.getPublicPlanComparison();
+  }
+}
+
+/** Métricas agregadas de la cuenta autenticada. */
+export class Insights {
+  constructor(private readonly transport: Transport) {}
+
+  async getOverview(): Promise<InsightsOverview> {
+    const response = await this.transport.request({ method: 'GET', path: '/insights/overview' });
+    return readData<InsightsOverview>(response, 'de insights');
+  }
+
+  overview(): Promise<InsightsOverview> {
+    return this.getOverview();
+  }
+
+  async getTrends(params: UserInsightsTrendsParams = {}): Promise<InsightsTrends> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: '/insights/trends',
+      query: { range: params.range, metric: params.metric },
+    });
+    return readData<InsightsTrends>(response, 'de las tendencias');
+  }
+
+  trends(params: UserInsightsTrendsParams = {}): Promise<InsightsTrends> {
+    return this.getTrends(params);
+  }
+
+  async getTopBanks(params: UserInsightsTopBanksParams = {}): Promise<InsightsTopBanks> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: '/insights/top-banks',
+      query: { metric: params.metric, limit: params.limit },
+    });
+    return readData<InsightsTopBanks>(response, 'de los bancos principales');
+  }
+
+  topBanks(params: UserInsightsTopBanksParams = {}): Promise<InsightsTopBanks> {
+    return this.getTopBanks(params);
+  }
+
+  async getTopBeneficiaries(
+    params: UserInsightsTopBeneficiariesParams = {},
+  ): Promise<InsightsTopBeneficiaries> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: '/insights/top-beneficiaries',
+      query: { limit: params.limit },
+    });
+    return readData<InsightsTopBeneficiaries>(response, 'de los beneficiarios principales');
+  }
+
+  topBeneficiaries(
+    params: UserInsightsTopBeneficiariesParams = {},
+  ): Promise<InsightsTopBeneficiaries> {
+    return this.getTopBeneficiaries(params);
+  }
+}
+
+const FINANCE_CONTENT_TYPES: Record<string, string> = {
+  pdf: 'application/pdf',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  csv: 'text/csv',
+  html: 'text/html',
+  zip: 'application/zip',
+};
+
+async function financeFile(
+  transport: Transport,
+  path: string,
+  query: Query,
+  format: string,
+  fallback: string,
+  includeFormat = true,
+): Promise<DownloadedFile> {
+  const contentType = FINANCE_CONTENT_TYPES[format] ?? 'application/octet-stream';
+  const response = await transport.request({
+    method: 'GET',
+    path,
+    query: includeFormat ? { ...query, format } : query,
+    accept: `${contentType}, application/json`,
+  });
+  return toFile(response, `${fallback}.${format}`, response.headers['content-type'] ?? contentType);
+}
+
+/** Resúmenes y descargas financieras. */
+export class Finance {
+  constructor(private readonly transport: Transport) {}
+
+  async getSummary(params: FinanceParams): Promise<FinanceSummary> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: '/finance/summary',
+      query: { month: params.month, user_id: params.userId },
+    });
+    return readData<FinanceSummary>(response, 'del resumen financiero');
+  }
+
+  summary(params: FinanceParams): Promise<FinanceSummary> {
+    return this.getSummary(params);
+  }
+
+  getStatement(params: FinanceStatementParams): Promise<DownloadedFile> {
+    return financeFile(
+      this.transport,
+      '/finance/statement',
+      { month: params.month, user_id: params.userId },
+      params.format ?? 'pdf',
+      'estado-de-cuenta',
+    );
+  }
+
+  statement(params: FinanceStatementParams): Promise<DownloadedFile> {
+    return this.getStatement(params);
+  }
+
+  private preview(
+    path: string,
+    params: FinancePreviewParams,
+    fallback: string,
+  ): Promise<FinancePreview | DownloadedFile> {
+    const format = params.format ?? 'csv';
+    if (format !== 'preview') {
+      return financeFile(
+        this.transport,
+        path,
+        { month: params.month, user_id: params.userId, limit: params.limit },
+        format,
+        fallback,
+      );
+    }
+    return this.transport
+      .request({
+        method: 'GET',
+        path,
+        query: { month: params.month, user_id: params.userId, limit: params.limit, format },
+      })
+      .then((response) => readData<FinancePreview>(response, `de ${fallback}`));
+  }
+
+  getMonthly(params: FinancePreviewParams): Promise<FinancePreview | DownloadedFile> {
+    return this.preview('/finance/monthly', params, 'finanzas-mensuales');
+  }
+
+  monthly(params: FinancePreviewParams): Promise<FinancePreview | DownloadedFile> {
+    return this.getMonthly(params);
+  }
+
+  getCounterparties(params: FinancePreviewParams): Promise<FinancePreview | DownloadedFile> {
+    return this.preview('/finance/counterparties', params, 'contrapartes');
+  }
+
+  counterparties(params: FinancePreviewParams): Promise<FinancePreview | DownloadedFile> {
+    return this.getCounterparties(params);
+  }
+
+  getByBank(params: FinancePreviewParams): Promise<FinancePreview | DownloadedFile> {
+    return this.preview('/finance/by-bank', params, 'finanzas-por-banco');
+  }
+
+  byBank(params: FinancePreviewParams): Promise<FinancePreview | DownloadedFile> {
+    return this.getByBank(params);
+  }
+
+  getAccounting(params: FinanceAccountingParams): Promise<FinancePreview | DownloadedFile> {
+    const format = params.format ?? 'csv';
+    if (format !== 'preview') {
+      return financeFile(
+        this.transport,
+        '/finance/accounting',
+        {
+          month: params.month,
+          user_id: params.userId,
+          limit: params.limit,
+          decimal: params.decimal,
+        },
+        format,
+        'contabilidad',
+      );
+    }
+    return this.transport
+      .request({
+        method: 'GET',
+        path: '/finance/accounting',
+        query: {
+          month: params.month,
+          user_id: params.userId,
+          limit: params.limit,
+          decimal: params.decimal,
+          format,
+        },
+      })
+      .then((response) => readData<FinancePreview>(response, 'de contabilidad'));
+  }
+
+  accounting(params: FinanceAccountingParams): Promise<FinancePreview | DownloadedFile> {
+    return this.getAccounting(params);
+  }
+
+  getCeps(params: FinanceCepsParams): Promise<DownloadedFile> {
+    return financeFile(
+      this.transport,
+      '/finance/ceps',
+      { from: params.from, to: params.to, user_id: params.userId },
+      'zip',
+      'ceps',
+      false,
+    );
+  }
+
+  ceps(params: FinanceCepsParams): Promise<DownloadedFile> {
+    return this.getCeps(params);
+  }
+}
+
+/** Suscripción activa de la cuenta autenticada. */
+export class Billing {
+  constructor(private readonly transport: Transport) {}
+
+  async getSubscription(): Promise<BillingSubscription> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: '/billing/subscription',
+    });
+    return readData<BillingSubscription>(response, 'de la suscripción');
+  }
+
+  subscription(): Promise<BillingSubscription> {
+    return this.getSubscription();
   }
 }

@@ -5,10 +5,34 @@ versiones según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+Sin cambios todavía.
+
+## [0.4.0] — 2026-09-19
+
+### Añadido
+
+- Las 18 operaciones M2M que faltaban: perfil y política de reintentos de cuenta,
+  resumen del panel, planes públicos, insights, finanzas y suscripción. Los planes
+  públicos se solicitan sin cabecera `Authorization`.
+- El candado de superficie compara las 66 operaciones completas del spec público,
+  ejercita rutas contra grabaciones sanitizadas en un servidor HTTP local y prueba
+  mutaciones de alta, baja y `known_gaps`.
+
+### Cambiado
+
+- `validateAccount()` deja de formar parte del SDK: su operación ya no es M2M
+  pública. En `0.x` esta retirada es incompatible.
+- Los reportes mensuales, por contraparte, por banco y contables usan `csv` por
+  omisión, igual que el contrato público. `preview` se solicita explícitamente.
+- La publicación no se considera exitosa hasta que npm devuelve la versión sin
+  credenciales. Esto evita repetir el falso positivo de `0.3.1`, que quedó con
+  acceso restringido aunque el workflow terminara en verde.
+
 ## [0.3.1] — 2026-09-19
 
-Primera versión publicada en npm como `@veriko-mx/sdk`. No cambia la superficie
-del SDK respecto de `0.3.0`.
+Primer intento de publicación en npm como `@veriko-mx/sdk`. No cambia la
+superficie del SDK respecto de `0.3.0`; el paquete quedó con acceso restringido
+y no llegó a estar disponible públicamente.
 
 Los cambios del producto se documentan en el
 [changelog de la API](https://docs.veriko.mx/es/changelog).
@@ -22,8 +46,7 @@ cinco familias.
 ### Añadido
 
 - `client.beneficiaries`: registrar, listar, cambiar y archivar cuentas beneficiarias;
-  validación estructural de una cuenta sin gastar cuota (`validateAccount`); resolución
-  de una cuenta en la lista propia (`lookup`); exportación en CSV y XLSX; y la
+  resolución de una cuenta en la lista propia (`lookup`); exportación en CSV y XLSX; y la
   importación masiva como ciclo (`importTemplate`, `importStart`, `importStatus`,
   `importPreview`, `iterImportPreview`, `importEditRow`, `importRemoveRow`,
   `importCommit`, `importCancel` e `importWait`).
@@ -123,7 +146,8 @@ Primera versión del SDK oficial de JavaScript y TypeScript.
 - Validación por OCR de una imagen de comprobante.
 - Beneficiarios, importación masiva y finanzas.
 
-[No publicado]: https://github.com/veriko-mx-labs/veriko-js/compare/v0.3.1...HEAD
+[No publicado]: https://github.com/veriko-mx-labs/veriko-js/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/veriko-mx-labs/veriko-js/releases/tag/v0.4.0
 [0.3.1]: https://github.com/veriko-mx-labs/veriko-js/releases/tag/v0.3.1
 [0.3.0]: https://github.com/veriko-mx-labs/veriko-js/releases/tag/v0.3.0
 [0.2.0]: https://github.com/veriko-mx-labs/veriko-js/releases/tag/v0.2.0
