@@ -1,8 +1,8 @@
 # @veriko-mx/sdk · SDK de JavaScript y TypeScript para la API de Veriko
 
-Cliente oficial de [Veriko](https://veriko.mx) para Node. Valida transferencias SPEI mexicanas
-contra el CEP de Banco de México, descarga el comprobante oficial y verifica la firma de los
-webhooks.
+Cliente oficial de [Veriko](https://veriko.mx) para Node.
+Valida transferencias SPEI mexicanas contra el CEP de Banco de México, descarga el comprobante
+oficial y verifica la firma de los webhooks.
 
 Sin dependencias de runtime. Tipos generados del spec de OpenAPI. Node 18 o superior, en ESM y en
 CommonJS.
