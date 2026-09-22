@@ -1,0 +1,78 @@
+{
+  "name": "@veriko-mx/sdk",
+  "version": "0.4.5",
+  "description": "SDK oficial de Veriko: valida transferencias SPEI contra el CEP de Banxico",
+  "keywords": [
+    "cep",
+    "spei",
+    "banxico",
+    "veriko",
+    "mexico",
+    "payments",
+    "api",
+    "sdk",
+    "typescript"
+  ],
+  "homepage": "https://docs.veriko.mx",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/veriko-mx-labs/veriko-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/veriko-mx-labs/veriko-js/issues"
+  },
+  "license": "MIT",
+  "author": "Veriko <soporte@veriko.mx>",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "CHANGELOG.md",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "npm run build:esm && npm run build:cjs && node scripts/finish-build.mjs",
+    "build:esm": "tsc -p tsconfig.build.json --outDir dist/esm",
+    "build:cjs": "tsc -p tsconfig.build.json --module commonjs --moduleResolution node10 --outDir dist/cjs",
+    "gen:types": "openapi-typescript spec/openapi.yaml -o src/generated/openapi.ts",
+    "check:types-fresh": "node scripts/check-generated-types.mjs",
+    "check:spec-public": "node scripts/check-spec-is-public.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "pretest": "tsc -p tsconfig.test.json",
+    "test": "node scripts/run-tests.mjs",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true});require('node:fs').rmSync('dist-test',{recursive:true,force:true})\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "@types/node": "^22.7.0",
+    "ajv": "^8.20.0",
+    "eslint": "^9.13.0",
+    "openapi-typescript": "^7.4.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.10.0",
+    "yaml": "^2.9.1"
+  }
+}
