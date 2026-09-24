@@ -1967,6 +1967,16 @@ export interface components {
             /** @description Identificador del recurso, único dentro de su `type`. Viaja siempre como cadena, incluso cuando su origen es una columna autonumérica. */
             id?: string;
         };
+        /**
+         * Format: date-time
+         * @description Timestamp ISO 8601 en UTC con sufijo `Z` explícito; por ejemplo,
+         *     `"2026-05-01T05:14:38Z"`.
+         *
+         *     Los campos `*_at`, `*_end`, `*_start` y `*_date` adoptan esta forma.
+         *     `meta.datetime` describe el mismo contrato en la respuesta.
+         * @example 2026-05-01T05:14:38Z
+         */
+        TimestampUTC: string;
         /** @description Conjunto consolidado del usuario autenticado que devuelve `GET /v1/users/me`: perfil, metadatos de la clave de API, suscripción activa, estado de la autenticación de 2 factores (2FA), permisos del rol y resumen de notificaciones en una sola llamada. */
         UserMeBundle: {
             /**
@@ -2119,16 +2129,6 @@ export interface components {
              */
             _warnings?: ("subscription_unavailable" | "permissions_unavailable" | "notifications_unread_count_unavailable" | "notifications_push_unavailable" | "notifications_telegram_unavailable" | "legal_accepted_unavailable")[];
         };
-        /**
-         * Format: date-time
-         * @description Timestamp ISO 8601 en UTC con sufijo `Z` explícito; por ejemplo,
-         *     `"2026-05-01T05:14:38Z"`.
-         *
-         *     Los campos `*_at`, `*_end`, `*_start` y `*_date` adoptan esta forma.
-         *     `meta.datetime` describe el mismo contrato en la respuesta.
-         * @example 2026-05-01T05:14:38Z
-         */
-        TimestampUTC: string;
         /** @description Política de reintentos de una validación: activación, límite, intervalo y resultados elegibles. */
         RetryPolicy: {
             /**
@@ -2166,12 +2166,12 @@ export interface components {
             fecha: string;
             /**
              * Format: double
-             * @description Importe de la transferencia (en pesos mexicanos — MXN), mayor que cero y con hasta dos decimales.
+             * @description Importe de la transferencia (en pesos mexicanos — MXN), mayor que cero y con hasta dos decimales. No se acepta en notación científica (por ejemplo `1e-5`) cuando se envía como texto.
              * @example 15000.5
              */
             monto: number;
             /**
-             * @description Clave de rastreo de la transferencia (entre 1 a 30 caracteres). Acepta letras, números, guiones, diagonales y espacios. Requerida si `referencia_numerica` no es enviada; ambas pueden incluirse simultáneamente para mayor precisión de búsqueda.
+             * @description Clave de rastreo de la transferencia (entre 1 a 30 caracteres). Acepta letras, números, guiones, diagonales y espacios. Se recorta y se le quitan caracteres invisibles de ancho cero antes de validarse, para que la misma clave copiada y pegada compare igual en toda la plataforma. Requerida si `referencia_numerica` no es enviada; ambas pueden incluirse simultáneamente para mayor precisión de búsqueda.
              * @example MXBA20250315001234
              */
             clave_rastreo?: string;
@@ -2191,7 +2191,7 @@ export interface components {
              */
             receptor?: string;
             /**
-             * @description Cuenta bancaria receptora de la transferencia. Puede ser CLABE (18 dígitos), tarjeta (16 dígitos) o celular DiMo (10 dígitos), y el tipo se identifica por la longitud. Para celular DiMo, si el banco receptor no puede resolverse por el campo `receptor`, por los beneficiarios registrados ni por el directorio de cuentas, la respuesta es un estado HTTP `422` (con `bank_code_unresolvable_for_phone` en el cuerpo).
+             * @description Cuenta bancaria receptora de la transferencia. Puede ser CLABE (18 dígitos), tarjeta (16 dígitos) o celular DiMo (10 dígitos), y el tipo se identifica por la longitud de sus dígitos. Los espacios y guiones que separan grupos ("0121 8000 4412 345678") se ignoran automáticamente antes de contar la longitud. Para celular DiMo, si el banco receptor no puede resolverse por el campo `receptor`, por los beneficiarios registrados ni por el directorio de cuentas, la respuesta es un estado HTTP `422` (con `bank_code_unresolvable_for_phone` en el cuerpo).
              * @example 012180004412345678
              */
             cuenta_beneficiaria?: string;
@@ -3766,7 +3766,7 @@ export interface components {
             /** @description Eventos a los que se suscribe el endpoint webhook. Entre 1 y 10. */
             events: ("validation.completed" | "validation.failed" | "validation.error" | "validation.retry.scheduled" | "validation.retry.resolved" | "validation.retry.exhausted" | "billing.payment_succeeded" | "billing.payment_failed" | "billing.trial_will_end" | "billing.subscription_canceled" | "billing.invoice_upcoming")[];
             /**
-             * @description Etiqueta libre para distinguir el endpoint webhook de los demás. `null` la omite; el servicio recorta el texto a 255 caracteres.
+             * @description Etiqueta libre para distinguir el endpoint webhook de los demás. `null` la omite; más de 255 caracteres responde `422 webhook_description_too_long`.
              * @example Alta de pagos en el ERP
              */
             description?: string | null;
@@ -3782,7 +3782,7 @@ export interface components {
             /** @description Nuevos eventos a los que se suscribe el endpoint webhook. Sustituyen a la lista anterior. Entre 1 y 10. */
             events?: ("validation.completed" | "validation.failed" | "validation.error" | "validation.retry.scheduled" | "validation.retry.resolved" | "validation.retry.exhausted" | "billing.payment_succeeded" | "billing.payment_failed" | "billing.trial_will_end" | "billing.subscription_canceled" | "billing.invoice_upcoming")[];
             /**
-             * @description Nueva etiqueta libre para distinguir el endpoint webhook de los demás. `null` la elimina; el servicio recorta el texto a 255 caracteres.
+             * @description Nueva etiqueta libre para distinguir el endpoint webhook de los demás. `null` la elimina; más de 255 caracteres responde `422 webhook_description_too_long`.
              * @example Alta de pagos en el ERP
              */
             description?: string | null;
@@ -4993,11 +4993,20 @@ export interface components {
                  *       ],
                  *       "meta": {
                  *         "version": "1.51.0",
-                 *         "request_id": "f7a8b9c0d1e2"
+                 *         "request_id": "f7a8b9c0d1e2",
+                 *         "retry_after": 45
                  *       }
                  *     }
                  */
-                "application/json": components["schemas"]["ErrorResponse"];
+                "application/json": components["schemas"]["ErrorResponse"] & {
+                    meta?: {
+                        /**
+                         * @description Segundos a esperar antes de reintentar — mismo valor que la cabecera `Retry-After`, ahora también en el cuerpo JSON (PR beneficiario/CLABE, 2026-09-24) para clientes que no leen cabeceras HTTP.
+                         * @example 45
+                         */
+                        retry_after?: number;
+                    };
+                };
             };
         };
         /** @description Validación asíncrona aceptada. Se debe sondear `GET /v1/validations/{id}` hasta uno de los estados terminales (`valid`, `not_found`, `cep_unavailable`, `invalid`, `returned`, `failed`, `error`). `meta.next_poll_after_seconds` indica el intervalo recomendado para el primer sondeo. */
@@ -5239,7 +5248,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             409: components["responses"]["IdempotencyKeyInProgress"];
             413: components["responses"]["PayloadTooLarge"];
-            /** @description Falló la validación de la petición. Códigos típicos: `clave_or_ref_required`, `required` (fecha/monto), `invalid_date`, `invalid_amount`, `invalid_account_format`, `invalid_account_length`, `invalid_clabe_checksum`, `invalid_card_luhn`, `invalid_receptor_participante`, `retry_policy_invalid`, `retry_pending_cap_exceeded`. También se emite cuando se reutiliza `Idempotency-Key` con un cuerpo distinto (`idempotency_key_reused`). */
+            /** @description Falló la validación de la petición. Códigos típicos: `clave_or_ref_required`, `required` (fecha/monto), `invalid_date`, `invalid_amount`, `invalid_account_format`, `invalid_account_length`, `invalid_clabe_checksum`, `invalid_card_luhn`, `invalid_bank_code` (`emisor`/`receptor` no reconocidos), `intra_bank_no_cep` (emisor y receptor son el mismo banco), `invalid_field_type` (un campo que debe ser texto llegó como arreglo u objeto — p. ej. `emisor`, `receptor` o `referencia_numerica`), `invalid_receptor_participante`, `retry_policy_invalid`, `retry_pending_cap_exceeded`. También se emite cuando se reutiliza `Idempotency-Key` con un cuerpo distinto (`idempotency_key_reused`). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -5342,17 +5351,17 @@ export interface operations {
                  */
                 type?: "direct" | "ocr";
                 /**
-                 * @description Filtro — Fecha inicial inclusiva, aplicada sobre la creación de la validación.
+                 * @description Filtro — Fecha inicial inclusiva, aplicada sobre la creación de la validación. Enviarlo como lista (`from[]=`) devuelve un estado HTTP `422` con `invalid_filter`.
                  * @example 2025-01-01
                  */
                 from?: string;
                 /**
-                 * @description Filtro — Fecha final inclusiva, aplicada sobre la creación de la validación.
+                 * @description Filtro — Fecha final inclusiva, aplicada sobre la creación de la validación. Enviarlo como lista (`to[]=`) devuelve un estado HTTP `422` con `invalid_filter`.
                  * @example 2025-03-31
                  */
                 to?: string;
                 /**
-                 * @description Filtro — Texto buscado, sin distinguir mayúsculas y minúsculas, en los datos enviados, normalizados y devueltos por Banxico. `%` y `_` se tratan como caracteres literales.
+                 * @description Filtro — Texto buscado, sin distinguir mayúsculas y minúsculas, en los datos enviados, normalizados y devueltos por Banxico. `%` y `_` se tratan como caracteres literales, y los 100 caracteres se cuentan por carácter (no por byte), así que un acento no se parte a la mitad. Si el texto, sin espacios ni guiones, queda compuesto sólo por dígitos, también se busca esa forma sin separadores contra la cuenta beneficiaria.
                  * @example scotiabank
                  */
                 search?: string;
@@ -5367,22 +5376,22 @@ export interface operations {
                  */
                 with_deleted?: "0" | "1";
                 /**
-                 * @description Filtro — Identificador del trabajo de importación que generó las validaciones.
+                 * @description Filtro — Identificador del trabajo de importación que generó las validaciones. Enviarlo como lista (`batch_id[]=`) devuelve un estado HTTP `422` con `invalid_filter` en vez de ignorarse.
                  * @example 42
                  */
                 batch_id?: number;
                 /**
-                 * @description Filtro — Clave SPEI del banco emisor o receptor en la petición original. Los valores que no tengan de 1 a 5 dígitos se ignoran.
+                 * @description Filtro — Clave SPEI del banco emisor o receptor en la petición original. Los valores que no tengan de 1 a 5 dígitos se ignoran; enviarlo como lista (`bank[]=`) devuelve un estado HTTP `422` con `invalid_filter`.
                  * @example 012
                  */
                 bank?: string;
                 /**
-                 * @description Filtro — Importe mínimo inclusivo. Se aplica de forma independiente de `amount_max`.
+                 * @description Filtro — Importe mínimo inclusivo, como número. El servidor también tolera enviarlo como texto con separador de miles o símbolo de moneda ("1,000.50", "$500") y lo normaliza con el mismo algoritmo que el resto de la plataforma, pero el contrato es un número: un cliente tipado debe mandarlo así. Un valor no vacío que no se reconozca como número devuelve un estado HTTP `422` con `invalid_filter`, en vez de ignorarse en silencio. Se aplica de forma independiente de `amount_max`.
                  * @example 1000.5
                  */
                 amount_min?: number;
                 /**
-                 * @description Filtro — Importe máximo inclusivo. Se aplica de forma independiente de `amount_min`.
+                 * @description Filtro — Importe máximo inclusivo, como número. Mismas reglas de tolerancia de formato y de error que `amount_min`. Se aplica de forma independiente de `amount_min`.
                  * @example 50000
                  */
                 amount_max?: number;
@@ -5422,7 +5431,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
-            /** @description Valor inválido para `retry_state` (código `invalid_filter`). */
+            /** @description Un filtro no se pudo aplicar (código `invalid_filter`): valor no admitido en `retry_state`, `playground` o `amount_min`/`amount_max` con formato irreconocible; o tipo incorrecto en `from`, `to`, `search`, `bank` o `batch_id` (por ejemplo, enviados como lista `from[]=`). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -6292,7 +6301,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             413: components["responses"]["PayloadTooLarge"];
-            /** @description La cuenta no pasó la validación, o el alta chocó con un tope. Los códigos posibles son `account_number_required`, `invalid_account_length`, `clabe_prefix_not_recognized`, `bank_code_required_for_phone`, `beneficiary_already_registered` y `plan_cap_exceeded`. */
+            /** @description La cuenta no pasó la validación, o el alta chocó con un tope. Los códigos posibles son `account_number_required`, `account_number_invalid_type`, `label_invalid_type`, `invalid_account_length`, `clabe_prefix_not_recognized`, `bank_code_required_for_phone`, `beneficiary_already_registered` y `plan_cap_exceeded`. `account_number_invalid_type` y `label_invalid_type` aparecen cuando el campo llega con un tipo distinto de cadena de texto. Todo error de campo trae `source.pointer`. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -6367,7 +6376,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             413: components["responses"]["PayloadTooLarge"];
-            /** @description El cuerpo no pasó la validación. Los códigos posibles son `no_valid_fields`, `invalid_account_length`, `clabe_prefix_not_recognized` y `bank_code_required_for_phone`. */
+            /** @description El cuerpo no pasó la validación. Los códigos posibles son `no_valid_fields`, `invalid_account_length`, `clabe_prefix_not_recognized`, `bank_code_required_for_phone`, `account_number_invalid_type` y `label_invalid_type`. Las dos últimas aparecen cuando `account_number` o `label` llegan con un tipo distinto de cadena de texto (por ejemplo, un número o un arreglo). Todo error de campo trae `source.pointer`. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -7218,7 +7227,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             413: components["responses"]["PayloadTooLarge"];
-            /** @description La URL o la lista de eventos no superan la validación, o la cuenta de usuario alcanzó su tope de endpoints. */
+            /** @description La URL, la lista de eventos o `description` no superan la validación, o la cuenta de usuario alcanzó su tope de endpoints. `webhook_url_invalid_type` y `webhook_description_invalid_type` aparecen cuando el campo llega con un tipo distinto de cadena de texto; `webhook_description_too_long` cuando `description` excede 255 caracteres (antes se recortaba en silencio). Todo error de campo trae `source.pointer`. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -7290,7 +7299,7 @@ export interface operations {
                 };
             };
             413: components["responses"]["PayloadTooLarge"];
-            /** @description Datos inválidos. Códigos posibles: `webhook_url_empty`, `webhook_url_too_long`, `webhook_url_invalid_format`, `webhook_url_not_https`, `webhook_events_required`, `webhook_events_too_many`, `webhook_event_invalid`, `webhook_status_invalid`, `no_valid_fields`. */
+            /** @description Datos inválidos. Códigos posibles: `webhook_url_invalid_type`, `webhook_url_empty`, `webhook_url_too_long`, `webhook_url_invalid_format`, `webhook_url_not_https`, `webhook_events_required`, `webhook_events_too_many`, `webhook_event_invalid`, `webhook_description_invalid_type`, `webhook_description_too_long`, `webhook_status_invalid`, `no_valid_fields`. `description` ya no se recorta en silencio a 255 caracteres: excederlos responde `webhook_description_too_long`. Todo error de campo trae `source.pointer`. */
             422: {
                 headers: {
                     [name: string]: unknown;
