@@ -5001,7 +5001,7 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"] & {
                     meta?: {
                         /**
-                         * @description Segundos a esperar antes de reintentar — mismo valor que la cabecera `Retry-After`, ahora también en el cuerpo JSON (PR beneficiario/CLABE, 2026-09-24) para clientes que no leen cabeceras HTTP.
+                         * @description Segundos a esperar antes de reintentar. Es el mismo valor que la cabecera `Retry-After`, para clientes que no leen cabeceras HTTP.
                          * @example 45
                          */
                         retry_after?: number;
@@ -7227,7 +7227,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             413: components["responses"]["PayloadTooLarge"];
-            /** @description La URL, la lista de eventos o `description` no superan la validación, o la cuenta de usuario alcanzó su tope de endpoints. `webhook_url_invalid_type` y `webhook_description_invalid_type` aparecen cuando el campo llega con un tipo distinto de cadena de texto; `webhook_description_too_long` cuando `description` excede 255 caracteres (antes se recortaba en silencio). Todo error de campo trae `source.pointer`. */
+            /** @description La URL, la lista de eventos o `description` no superan la validación, o la cuenta de usuario alcanzó su tope de endpoints. `webhook_url_invalid_type` y `webhook_description_invalid_type` aparecen cuando el campo llega con un tipo distinto de cadena de texto; `webhook_description_too_long` cuando `description` excede 255 caracteres. Todo error de campo trae `source.pointer`. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -7299,7 +7299,7 @@ export interface operations {
                 };
             };
             413: components["responses"]["PayloadTooLarge"];
-            /** @description Datos inválidos. Códigos posibles: `webhook_url_invalid_type`, `webhook_url_empty`, `webhook_url_too_long`, `webhook_url_invalid_format`, `webhook_url_not_https`, `webhook_events_required`, `webhook_events_too_many`, `webhook_event_invalid`, `webhook_description_invalid_type`, `webhook_description_too_long`, `webhook_status_invalid`, `no_valid_fields`. `description` ya no se recorta en silencio a 255 caracteres: excederlos responde `webhook_description_too_long`. Todo error de campo trae `source.pointer`. */
+            /** @description Datos inválidos. Códigos posibles: `webhook_url_invalid_type`, `webhook_url_empty`, `webhook_url_too_long`, `webhook_url_invalid_format`, `webhook_url_not_https`, `webhook_events_required`, `webhook_events_too_many`, `webhook_event_invalid`, `webhook_description_invalid_type`, `webhook_description_too_long`, `webhook_status_invalid`, `no_valid_fields`. Una `description` de más de 255 caracteres responde `webhook_description_too_long`. Todo error de campo trae `source.pointer`. */
             422: {
                 headers: {
                     [name: string]: unknown;
