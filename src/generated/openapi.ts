@@ -2541,6 +2541,8 @@ export interface components {
             attributes: {
                 /** @description Nombre del banco de la contraparte. Prioriza `receptor_name` o `emisor_name` guardado; si falta, intenta resolver el código de receptor o emisor. Si tampoco puede resolverlo, devuelve ese código o `Banco no identificado`. */
                 bank_name?: string;
+                /** @description Clave Banxico canónica (3-5 dígitos) del banco de la contraparte, resuelta por la autoridad del dominio. `null` cuando el banco no pudo resolverse. Es aditiva respecto de `bank_name`: sirve para resolver recursos/avatares por clave, nunca por el nombre visible. */
+                bank_code?: string | null;
                 /** @description Etiqueta del beneficiario receptor registrado (si existe). */
                 beneficiary_label?: string | null;
                 /** @description Importe de la transferencia (en pesos mexicanos — MXN). */
