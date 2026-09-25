@@ -7,6 +7,16 @@ versiones según [SemVer](https://semver.org/lang/es/).
 
 Sin cambios todavía.
 
+## [0.4.6] — 2026-09-24
+
+### Cambiado
+
+- Los tipos siguen la versión 1.60.0 del spec público. Las respuestas `429`
+  declaran `meta.retry_after`, con el mismo valor que la cabecera `Retry-After`.
+- Las descripciones de los tipos documentan los códigos de error de validación y
+  de filtros: `invalid_bank_code`, `intra_bank_no_cep`, `invalid_field_type`,
+  `invalid_filter` y `webhook_description_too_long`.
+
 ## [0.4.5] — 2026-09-22
 
 Sin cambios en la API. Actualiza documentación y metadatos.
