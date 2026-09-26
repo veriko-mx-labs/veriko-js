@@ -1,6 +1,6 @@
 {
   "name": "@veriko-mx/sdk",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "description": "SDK oficial de Veriko: valida transferencias SPEI contra el CEP de Banxico",
   "keywords": [
     "cep",

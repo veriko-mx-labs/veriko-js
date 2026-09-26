@@ -29,7 +29,7 @@ export const API_KEY_ENV_VAR = 'VERIKO_API_KEY';
 export const BASE_URL_ENV_VAR = 'VERIKO_BASE_URL';
 
 /** La versión que viaja en el `User-Agent`. `test/client.test.ts` la compara con `package.json`. */
-export const VERSION = '0.4.6';
+export const VERSION = '0.4.7';
 
 export interface VerikoOptions {
   /** La clave de API. Por omisión, `VERIKO_API_KEY`. */

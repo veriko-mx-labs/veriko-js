@@ -5,6 +5,10 @@ versiones según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+Sin cambios todavía.
+
+## [0.4.7] — 2026-09-26
+
 ### Añadido
 
 - El webhook de validación trae `data.attributes.banxico_confirmed` cuando
