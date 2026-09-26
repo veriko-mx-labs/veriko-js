@@ -94,6 +94,7 @@ export {
   type Bank,
   type BankList,
   type BanksOptions,
+  type BanxicoConfirmed,
   type BanxicoMetric,
   type BanxicoStatus,
   type BanxicoTimeseries,
@@ -193,6 +194,7 @@ export {
   type WebhookStatus,
   type WebhookSubscriptionEvent,
   type WebhookTestResult,
+  type WebhookValidation,
 } from './types.js';
 
 export {

@@ -206,6 +206,41 @@ export const WEBHOOK_EVENTS = [
 export type WebhookEventName = (typeof WEBHOOK_EVENTS)[number];
 
 /**
+ * Lo que Banxico confirmó del pago, incluido en la entrega del webhook sólo
+ * cuando la API ya lo tiene (`banxico_status` es `valid`, o `returned` con CEP
+ * descargado). Sirve para comparar el monto, y la cuenta si aplica, contra el
+ * pedido antes de dar por pagada una transferencia: una imagen de comprobante
+ * puede mostrar un monto distinto al que Banxico confirmó.
+ *
+ * No sale del generador: es propio de la entrega del webhook. El recurso
+ * `Validation` que devuelve la API expone el mismo dato sin enmascarar, con
+ * más campos, en `attributes.banxico_result`.
+ */
+export interface BanxicoConfirmed {
+  /** Monto de la operación que Banxico confirmó, en pesos. */
+  amount?: number;
+  /** Fecha de la operación tal como la reporta el CEP (`DD-MM-AAAA`). */
+  operationDate?: string;
+  /** Hora de la operación tal como la reporta el CEP (`HH:MM:SS`). */
+  processingTime?: string;
+  /** Clave de rastreo de la operación SPEI. */
+  trackingKey?: string;
+  /** Banco emisor de la operación. */
+  senderBank?: string;
+  /** Banco receptor de la operación. */
+  receiverBank?: string;
+  /** Cuenta del beneficiario, enmascarada a los últimos 4 dígitos. */
+  beneficiaryAccount?: string;
+}
+
+/** El recurso de una validación tal como llega en la entrega de un webhook. */
+export type WebhookValidation = Validation & {
+  attributes: Validation['attributes'] & {
+    banxico_confirmed?: BanxicoConfirmed;
+  };
+};
+
+/**
  * El cuerpo de una entrega de webhook.
  *
  * `event` se tipa como la unión conocida más `string`, de modo que un evento
@@ -214,7 +249,7 @@ export type WebhookEventName = (typeof WEBHOOK_EVENTS)[number];
 export interface WebhookEvent {
   event: WebhookEventName | (string & {});
   timestamp?: string;
-  data?: Validation;
+  data?: WebhookValidation;
   meta?: Record<string, unknown>;
 }
 

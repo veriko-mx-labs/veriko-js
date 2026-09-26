@@ -370,6 +370,14 @@ para decidir el código de respuesta aparte. La comparación es en tiempo consta
 
 El receptor completo está en [`examples/express-webhook.mjs`](examples/express-webhook.mjs).
 
+### Lo que Banxico confirmó
+
+Cuando `banxico_status` es `valid`, o `returned` con CEP descargado, `evento.data.attributes`
+trae además `banxico_confirmed`: el monto, la fecha, la clave de rastreo, ambos bancos y la cuenta
+del beneficiario (enmascarada a los últimos 4 dígitos), tal como los confirmó Banxico. Compáralo
+contra el pedido antes de liberar la mercancía: la imagen de un comprobante puede mostrar un monto
+distinto al que Banxico confirmó.
+
 ### Las cuatro cabeceras de una entrega
 
 | cabecera               | contenido                                             |

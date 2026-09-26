@@ -18,7 +18,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 import { SignatureVerificationError } from './errors.js';
-import type { Validation, WebhookEvent } from './types.js';
+import type { WebhookEvent, WebhookValidation } from './types.js';
 
 /** Cabecera de la firma. */
 export const SIGNATURE_HEADER = 'X-Webhook-Signature';
@@ -31,7 +31,7 @@ export const TIMESTAMP_HEADER = 'X-Veriko-Timestamp';
 const SIGNATURE_PREFIX = 'sha256=';
 
 /** `true` cuando `data` es el recurso JSON:API de una validación. */
-function isValidationResource(data: unknown): data is Validation {
+function isValidationResource(data: unknown): data is WebhookValidation {
   return typeof data === 'object' && data !== null && 'type' in data && data.type === 'validation';
 }
 

@@ -5,7 +5,11 @@ versiones según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
-Sin cambios todavía.
+### Añadido
+
+- El webhook de validación trae `data.attributes.banxico_confirmed` cuando
+  Banxico ya confirmó el pago: monto, fecha, clave de rastreo, ambos bancos y
+  la cuenta del beneficiario enmascarada.
 
 ## [0.4.6] — 2026-09-24
 

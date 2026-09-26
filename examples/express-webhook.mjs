@@ -28,6 +28,10 @@ const SECRET = process.env.VERIKO_WEBHOOK_SECRET;
 // esto vive en Redis o en una tabla, no en memoria.
 const entregasVistas = new Set();
 
+// El pedido asociado a cada validación, por id. En producción sale de tu base
+// de datos, no de un mapa en memoria.
+const pedidos = new Map(); // validationId -> { monto, cuentaBeneficiaria }
+
 app.post('/hooks/veriko', express.raw({ type: 'application/json' }), (request, response) => {
   const deliveryId = request.get('X-Veriko-Delivery-Id');
 
@@ -52,12 +56,24 @@ app.post('/hooks/veriko', express.raw({ type: 'application/json' }), (request, r
   response.sendStatus(200);
 
   switch (evento.event) {
-    case 'validation.completed':
-      console.log(`[${evento.event}] ${evento.data.id} → ${evento.data.attributes.status}`);
+    case 'validation.completed': {
+      const { id, attributes } = evento.data;
+      console.log(`[${evento.event}] ${id} → ${attributes.status}`);
       if (evento.data.links?.cep_pdf) {
         console.log('  comprobante disponible en', evento.data.links.cep_pdf);
       }
+
+      // `banxico_confirmed` llega sólo cuando Banxico ya confirmó el pago. El
+      // monto (y la cuenta, si aplica) se comparan contra el pedido antes de
+      // liberar la mercancía: la imagen de un comprobante puede mostrar un
+      // monto distinto al que Banxico confirmó.
+      const confirmado = attributes.banxico_confirmed;
+      const pedido = pedidos.get(id);
+      if (confirmado && pedido && confirmado.amount !== pedido.monto) {
+        console.error('  monto confirmado no coincide con el pedido:', confirmado.amount);
+      }
       break;
+    }
     case 'validation.retry.resolved':
       console.log(
         `[${evento.event}] resuelto tras`,

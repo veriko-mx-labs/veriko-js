@@ -96,7 +96,11 @@ const OPERATION_RECORDINGS: Record<string, readonly string[]> = {
 };
 
 // Son cuerpos entrantes para probar la firma y el parser, no respuestas de una operación.
-const NON_RESPONSE_RECORDINGS = new Set(['webhook-retry-resolved', 'webhook-validation-completed']);
+const NON_RESPONSE_RECORDINGS = new Set([
+  'webhook-retry-resolved',
+  'webhook-validation-completed',
+  'webhook-validation-banxico-confirmed',
+]);
 
 function asObject(value: unknown, message = 'se esperaba un objeto'): JsonObject {
   assert.ok(value && typeof value === 'object' && !Array.isArray(value), message);

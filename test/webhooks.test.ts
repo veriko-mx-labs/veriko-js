@@ -147,4 +147,29 @@ describe('parseWebhook', () => {
       SignatureVerificationError,
     );
   });
+
+  it('lee lo que Banxico confirmó cuando la entrega lo trae', () => {
+    const payload = recordedBody('webhook-validation-banxico-confirmed');
+
+    const evento = parseWebhook(payload, firmar(payload), SECRET);
+
+    assert.equal(evento.data?.attributes.banxico_status, 'valid');
+    assert.deepEqual(evento.data.attributes.banxico_confirmed, {
+      amount: 15000.5,
+      operationDate: '15-03-2025',
+      processingTime: '14:22:10',
+      trackingKey: 'MBAN01002503151422ABCDEF',
+      senderBank: 'BBVA',
+      receiverBank: 'STP',
+      beneficiaryAccount: '••••5678',
+    });
+  });
+
+  it('no trae banxico_confirmed cuando la entrega no lo incluye', () => {
+    const payload = recordedBody('webhook-validation-completed');
+
+    const evento = parseWebhook(payload, firmar(payload), SECRET);
+
+    assert.equal(evento.data?.attributes.banxico_confirmed, undefined);
+  });
 });
