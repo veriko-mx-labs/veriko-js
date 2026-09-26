@@ -643,6 +643,7 @@ export interface paths {
         /**
          * Iniciar importación masiva de beneficiarios
          * @description Sube un archivo (CSV, XLS, XLSX, TXT o PDF) de hasta 20 MB y abre con él un trabajo de importación.
+         *     Las hojas XLSX/XLS admiten hasta 10 000 filas y 64 columnas. Las fórmulas XLSX se leen como texto, sin ejecutarlas. Los PDF admiten hasta 50 páginas y limitan a 8 MiB la descompresión de cada flujo.
          *
          *     El modo de lectura decide cuánto trabajo hace el archivo y cuánto el servidor:
          *
@@ -2362,13 +2363,76 @@ export interface components {
                 /** @description Indica si el número de tarjeta está enmascarado en el comprobante cargado (solo si `validation_type` es del tipo `ocr`). */
                 is_masked?: boolean | null;
                 /**
-                 * @description Datos devueltos por Banxico.
+                 * @description Datos devueltos por Banxico. Las propiedades tipadas abajo son las 20 que declara el esquema oficial del complemento SPEI.
                  *
                  *     `_ocr_correction` conserva los campos corregidos, su lectura original (`requested`), el valor consultado (`used`) y la confirmación (`confirmed_by`). `status_query` indica una hipótesis confirmada por la consulta de estado; `cep` indica que también se obtuvo el comprobante. La consulta de estado por sí sola no verifica una transferencia.
                  */
-                banxico_result?: {
+                banxico_result?: ({
+                    /**
+                     * @description Fecha de la operación tal como la reporta el CEP de Banxico (`DD-MM-AAAA`).
+                     * @example 15-03-2025
+                     */
+                    operationDate?: string;
+                    /**
+                     * @description Hora de la operación tal como la reporta el CEP de Banxico (`HH:MM:SS`).
+                     * @example 14:22:10
+                     */
+                    processingTime?: string;
+                    /** @description Clave de la operación dentro del sistema SPEI (`ClaveSPEI` del CEP). Distinta de la clave de rastreo. */
+                    speiKey?: string;
+                    /**
+                     * @description Clave de rastreo de la operación SPEI — la misma que se envía en la petición de validación.
+                     * @example MBAN01002503151422ABCDEF
+                     */
+                    trackingKey?: string;
+                    /** @description Sello digital del CEP (`sello`) — la firma que Banxico calcula sobre la operación. */
+                    digitalSignature?: string;
+                    /** @description Número del certificado digital que Banxico usó para sellar el CEP. */
+                    certificateNumber?: string;
+                    /** @description Cadena original de la operación (`cadenaCDA`): los 47 campos que la institución envió a Banxico, separados por `|`, incluidas ambas fechas (operación y captura) y el tipo de pago. Permite auditar el CEP sin volver a pedirlo. */
+                    cadenaCda?: string;
+                    /**
+                     * @description Banco emisor de la operación, tal como lo identifica el CEP.
+                     * @example BBVA
+                     */
+                    senderBank?: string;
+                    /** @description Nombre del ordenante de la operación, tal como lo reporta el CEP. */
+                    senderName?: string;
+                    /** @description Tipo de cuenta del ordenante (por ejemplo, CLABE o tarjeta), tal como lo reporta el CEP. */
+                    senderAccountType?: string;
+                    /** @description Cuenta del ordenante, tal como la reporta el CEP, sin enmascarar en este recurso (consulta privada, propia del dueño de la validación). */
+                    senderAccount?: string;
+                    /** @description RFC del ordenante, tal como lo reporta el CEP. */
+                    senderRfc?: string;
+                    /**
+                     * @description Banco receptor de la operación, tal como lo identifica el CEP.
+                     * @example STP
+                     */
+                    receiverBank?: string;
+                    /** @description Nombre del beneficiario de la operación, tal como lo reporta el CEP. */
+                    beneficiaryName?: string;
+                    /** @description Tipo de cuenta del beneficiario (por ejemplo, CLABE o tarjeta), tal como lo reporta el CEP. */
+                    beneficiaryAccountType?: string;
+                    /** @description Cuenta del beneficiario, tal como la reporta el CEP, sin enmascarar en este recurso (consulta privada, propia del dueño de la validación). Los webhooks salientes sí la enmascaran a los últimos 4 dígitos en `banxico_confirmed.beneficiaryAccount` (ver la guía de webhooks). */
+                    beneficiaryAccount?: string;
+                    /** @description RFC del beneficiario, tal como lo reporta el CEP. */
+                    beneficiaryRfc?: string;
+                    /**
+                     * Format: float
+                     * @description Monto de la operación que Banxico confirmó por el CEP, en pesos.
+                     * @example 1500
+                     */
+                    amount?: number;
+                    /**
+                     * Format: float
+                     * @description IVA de la operación reportado por el CEP, en pesos.
+                     */
+                    iva?: number;
+                    /** @description Concepto de pago de la operación, tal como lo reporta el CEP. */
+                    paymentConcept?: string;
+                } & {
                     [key: string]: unknown;
-                } | null;
+                }) | null;
                 /**
                  * @description Mensaje legible del error terminal (si aplica).
                  * @example Banxico no respondió tras tres intentos.
