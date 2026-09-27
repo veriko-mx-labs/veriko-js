@@ -136,12 +136,13 @@ const EXPORT_CONTENT_TYPES: Record<ExportFormat, string> = {
 };
 
 const IMAGE_ACCEPT =
-  'image/png, image/jpeg, image/webp, application/octet-stream, application/json';
+  'image/png, image/jpeg, image/webp, application/pdf, application/octet-stream, application/json';
 
 const IMAGE_EXTENSIONS: Record<string, string> = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
   'image/webp': '.webp',
+  'application/pdf': '.pdf',
 };
 
 // ── Ayudantes ───────────────────────────────────────────────────────────────
@@ -207,7 +208,7 @@ function directBody(params: ValidateTransferParams): ValidationRequest {
   return body;
 }
 
-/** Devuelve la imagen en base64, leyéndola del disco cuando es una ruta. */
+/** Devuelve el comprobante en base64, leyéndolo del disco cuando es una ruta. */
 async function encodeImage(image: Uint8Array | string): Promise<string> {
   if (typeof image !== 'string') return Buffer.from(image).toString('base64');
   let content: Buffer;
@@ -225,7 +226,7 @@ async function encodeImage(image: Uint8Array | string): Promise<string> {
   return content.toString('base64');
 }
 
-/** El cuerpo de una validación por imagen, con su comprobación previa. */
+/** El cuerpo de una validación por OCR, con su comprobación previa. */
 async function ocrBody(params: ValidateOcrParams): Promise<OcrValidationRequest> {
   if (params.image === undefined && !params.imageUrl) {
     throw new InvalidRequestError(
@@ -326,12 +327,13 @@ export class Validations {
   }
 
   /**
-   * Valida una transferencia a partir de la imagen del comprobante.
+   * Valida una transferencia a partir del comprobante, en imagen o en PDF.
    *
-   * `POST /v1/validate-ocr`. La imagen se lee del disco cuando `image` es una
-   * ruta, y se codifica en base64 aquí. Formatos: JPEG, PNG o WebP.
+   * `POST /v1/validate-ocr`. El archivo se lee del disco cuando `image` es una
+   * ruta, y se codifica en base64 aquí. Formatos: JPEG, PNG, WebP o PDF de 1 a 3
+   * páginas.
    *
-   * `imageUrl` sirve para una imagen ya publicada en HTTPS. Si se envían las
+   * `imageUrl` sirve para un comprobante ya publicado en HTTPS. Si se envían las
    * dos, la API sólo considera `image`.
    */
   async validateOcr(params: ValidateOcrParams): Promise<Validation> {
@@ -359,7 +361,7 @@ export class Validations {
   }
 
   /**
-   * Encola una validación por imagen y devuelve el acuse.
+   * Encola una validación por OCR y devuelve el acuse.
    *
    * `POST /v1/validate-ocr?async=1`. Acepta los mismos argumentos que
    * `validateOcr()`.
@@ -564,7 +566,7 @@ export class Validations {
   }
 
   /**
-   * Descarga la imagen del comprobante de una validación por OCR.
+   * Descarga el comprobante de una validación por OCR: una imagen o un PDF.
    *
    * `GET /v1/validations/{id}/image`.
    */

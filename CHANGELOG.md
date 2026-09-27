@@ -5,7 +5,11 @@ versiones según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
-Sin cambios todavía.
+### Cambiado
+
+- `validations.validateOcr()` y `validations.enqueueOcr()` documentan el comprobante en PDF, de 1 a
+  3 páginas.
+- `validations.image()` acepta un comprobante en PDF y lo nombra con la extensión `.pdf`.
 
 ## [0.4.7] — 2026-09-26
 

@@ -128,7 +128,7 @@ conserva el suyo (`banxico_status`, `processing_time_ms`), porque es el tipo gen
 
 Cada llamada consume cuota del plan, y se descuenta al aceptar la petición.
 
-### Desde la imagen del comprobante
+### Desde el comprobante
 
 ```ts
 const validation = await client.validations.validateOcr({
@@ -137,11 +137,11 @@ const validation = await client.validations.validateOcr({
 });
 ```
 
-El SDK lee el archivo y lo codifica en base64. `imageUrl` recibe una imagen ya publicada en HTTPS, y
-si se envían `image` e `imageUrl`, la API sólo considera `image`. Formatos: JPEG, PNG o WebP, de
-hasta 12 MB.
+El SDK lee el archivo y lo codifica en base64. `imageUrl` recibe un comprobante ya publicado en
+HTTPS, y si se envían `image` e `imageUrl`, la API sólo considera `image`. Formatos: JPEG, PNG, WebP
+o PDF de 1 a 3 páginas, de hasta 12 MB.
 
-La imagen de una validación por OCR se descarga con `client.validations.image(id)`.
+El comprobante de una validación por OCR se descarga con `client.validations.image(id)`.
 
 ### Sin esperar al veredicto
 

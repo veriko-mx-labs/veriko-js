@@ -86,9 +86,9 @@ export const VALIDATION_REQUEST_FIELDS = [
  * los del spec, y `test/spec.test.ts` falla si cambian.
  */
 export interface OcrValidationRequest {
-  /** La imagen del comprobante en base64. JPEG, PNG o WebP, de hasta 12 MB. */
+  /** El comprobante en base64. JPEG, PNG, WebP o PDF de 1 a 3 páginas, de hasta 12 MB. */
   image?: string;
-  /** URL pública (HTTPS) de la imagen. Si también viaja `image`, sólo se considera ésta. */
+  /** URL pública (HTTPS) del comprobante. Si también viaja `image`, sólo se considera ésta. */
   image_url?: string;
   /** CLABE (18 dígitos), tarjeta (16) o celular DiMo (10). Obligatoria para DiMo. */
   cuenta_beneficiaria?: string;
@@ -456,8 +456,9 @@ export type DeliveryEventType = NonNullable<DeliveriesQuery['event_type']>;
 /** Los argumentos de `validations.validateOcr()` y `validations.enqueueOcr()`. */
 export interface ValidateOcrParams {
   /**
-   * La imagen del comprobante: sus bytes (`Buffer` o `Uint8Array`) o la ruta de
-   * un archivo. El SDK la codifica en base64. JPEG, PNG o WebP, de hasta 12 MB.
+   * El comprobante: sus bytes (`Buffer` o `Uint8Array`) o la ruta de un
+   * archivo. El SDK lo codifica en base64. JPEG, PNG, WebP o PDF de 1 a 3
+   * páginas, de hasta 12 MB.
    */
   image?: Uint8Array | string;
   /** URL pública (HTTPS) de una imagen ya publicada. Si se envía también `image`, sólo cuenta ésta. */
@@ -493,7 +494,7 @@ export interface WaitForOptions {
 export interface ValidationFilters {
   /** Un estado, o varios: `valid`, `not_found`, `cep_unavailable`, `returned`... */
   status?: string | readonly string[];
-  /** `direct` para captura manual, `ocr` para validación por imagen. */
+  /** `direct` para captura manual, `ocr` para validación con comprobante (imagen o PDF). */
   type?: ValidationType;
   /** Fecha inicial inclusiva, `YYYY-MM-DD`, sobre la creación de la validación. */
   from?: string;

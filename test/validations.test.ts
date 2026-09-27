@@ -589,6 +589,17 @@ describe('client.validations', () => {
       assert.match(server.header(0, 'accept') ?? '', /image\/png/);
     });
 
+    it('descarga el comprobante en PDF con su extensión', async () => {
+      server.enqueue('validation-image-pdf');
+
+      const file = await client.validations.image(VALIDATION_ID);
+
+      assert.equal(Buffer.from(file.content).subarray(0, 5).toString('latin1'), '%PDF-');
+      assert.equal(file.contentType, 'application/pdf');
+      assert.equal(file.filename, `comprobante-${VALIDATION_ID}.pdf`);
+      assert.match(server.header(0, 'accept') ?? '', /application\/pdf/);
+    });
+
     it('exporta el historial en CSV', async () => {
       server.enqueue('validations-export-csv');
 

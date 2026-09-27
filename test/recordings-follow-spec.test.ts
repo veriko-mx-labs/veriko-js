@@ -83,7 +83,7 @@ const OPERATION_RECORDINGS: Record<string, readonly string[]> = {
     'validate-valid',
   ],
   validateOcr: ['validate-ocr'],
-  getValidationImage: ['validation-image'],
+  getValidationImage: ['validation-image', 'validation-image-pdf'],
   listValidations: ['validations-empty', 'validations-page1', 'validations-page2'],
   exportValidations: ['validations-export-csv', 'validations-export-xlsx'],
   validationStats: ['validations-stats'],
