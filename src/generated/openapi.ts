@@ -118,9 +118,19 @@ export interface paths {
         put?: never;
         /**
          * Validar una transferencia SPEI (OCR)
-         * @description Valida una transferencia SPEI a partir de la imagen de su comprobante. Extrae mediante reconocimiento óptico (OCR) los datos de la imagen y los valida en **Banxico** para obtener el CEP de la transacción.
+         * @description Valida una transferencia SPEI a partir de su comprobante, en imagen o en PDF. Extrae mediante reconocimiento óptico (OCR) los datos del comprobante y los valida en **Banxico** para obtener el CEP de la transacción.
          *
-         *     La imagen se envía como `image` o `image_url`. Si es enviada mediante una URL, el host destino deberá contar con protocolo seguro (SSL/HTTPS).
+         *     El comprobante se envía como `image` o `image_url`. Si es enviado mediante una URL, el host destino deberá contar con protocolo seguro (SSL/HTTPS).
+         *
+         *     {% callout type="info" %}
+         *     **Comprobante en PDF:**\
+         *     Se acepta un PDF de 1 a 3 páginas, con el mismo máximo de `12 MB` que una imagen.
+         *     Se rechaza si está cifrado, si se modificó después de emitirse o si trae contenido activo u oculto.\
+         *     Si el PDF es el CEP de Banxico, sus datos se leen de su texto sin OCR y `banxico_result._cep_upload` indica
+         *     si su sello y su cadena original coinciden con los del CEP oficial. El veredicto no cambia por esa comparación.\
+         *     Un PDF con más de un comprobante se rechaza con `pdf_multiple_receipts`.
+         *
+         *     {% /callout %}
          *
          *     {% callout type="info" %}
          *     El campo `cuenta_beneficiaria` permite enviar explícitamente la cuenta receptora de la transferencia, enviarlo es especialmente útil cuando la imagen no lleva este dato o lo lleva incompleto.\
@@ -138,7 +148,7 @@ export interface paths {
          *
          *     {% callout type="info" %}
          *     **Modo asíncrono:**\
-         *     Enviando `?async=1` en la URL, la imagen se comprueba antes de aceptar el trabajo y la respuesta es un estado HTTP `202` inmediato con el ID de la validación en el cuerpo.\
+         *     Enviando `?async=1` en la URL, el comprobante se comprueba antes de aceptar el trabajo y la respuesta es un estado HTTP `202` inmediato con el ID de la validación en el cuerpo.\
          *     \
          *     El veredicto se recoge sondeando `GET /v1/validations/{id}` hasta un estado terminal, como describe {% concept slug="async-validations" %}las operaciones asíncronas{% /concept %}.
          *
@@ -154,10 +164,12 @@ export interface paths {
          *
          *     {% callout type="warning" %}
          *     **Políticas de cobro (cuota):**\
-         *     — Modo síncrono: Se descuenta la validación de la cuota al aceptar la petición, antes de comprobar la imagen. Es decir, una imagen inválida consume una validación.\
-         *     — Modo asíncrono: La imagen se comprueba primero, así que una imagen inválida no consume nada.\
+         *     — Modo síncrono: Se descuenta la validación de la cuota al aceptar la petición, antes de comprobar el archivo. Es decir, un archivo inválido consume una validación.\
+         *     — Modo asíncrono: El archivo se comprueba primero, así que un archivo inválido no consume nada.\
          *     \
-         *     La cuota no se devuelve en ningún caso. Los reintentos automáticos posteriores no consumen una validación adicional, y el cómputo está en {% concept slug="quotas-and-plans" %}cuotas y planes{% /concept %}.
+         *     Un CEP en PDF que se lee sin OCR cuenta como una validación, igual que uno leído por OCR.\
+         *     \
+         *     La cuota sólo se devuelve cuando la validación termina en `error` por un fallo de la plataforma. Los reintentos automáticos posteriores no consumen una validación adicional, y el cómputo está en {% concept slug="quotas-and-plans" %}cuotas y planes{% /concept %}.
          *
          *     {% /callout %}
          */
@@ -344,7 +356,11 @@ export interface paths {
         };
         /**
          * Obtener la imagen del comprobante
-         * @description Devuelve la imagen conservada de una validación por OCR, con disposición `inline` y caché privada.
+         * @description Devuelve el comprobante conservado de una validación por OCR, con caché privada:
+         *
+         *     - Imagen: se entrega con disposición `inline`.
+         *     - PDF: se entrega siempre como adjunto (`attachment`) y con `Content-Security-Policy: sandbox`,
+         *       para que un navegador no lo abra dentro del propio origen.
          *
          *     Si la validación no tiene imagen disponible, responde con un estado HTTP `404` (con `image_not_available` en el cuerpo).
          */
@@ -2340,11 +2356,16 @@ export interface components {
                  */
                 etag_version?: number | null;
                 /**
-                 * @description Referencia relativa de la imagen del comprobante (solo si `validation_type` es del tipo `ocr`).
+                 * @description Referencia relativa del comprobante, imagen o PDF (solo si `validation_type` es del tipo `ocr`).
                  * @example ocr/2026/04/a1b2c3d4.jpg
                  */
                 image_path?: string | null;
-                /** @description Campos extraídos mediante OCR (solo si `validation_type` es del tipo `ocr`). */
+                /**
+                 * @description Campos extraídos del comprobante (solo si `validation_type` es del tipo `ocr`).
+                 *
+                 *     `extraction_source` vale `cep_pdf` cuando el comprobante era el CEP de Banxico en PDF y sus datos se leyeron
+                 *     de su texto, sin OCR. `comprobantes_detectados` es el número de comprobantes que se encontraron en un PDF.
+                 */
                 ocr_result?: {
                     [key: string]: unknown;
                 } | null;
@@ -2366,11 +2387,16 @@ export interface components {
                  * @description Datos devueltos por Banxico. Las propiedades tipadas abajo son las 20 que declara el esquema oficial del complemento SPEI.
                  *
                  *     `_ocr_correction` conserva los campos corregidos, su lectura original (`requested`), el valor consultado (`used`) y la confirmación (`confirmed_by`). `status_query` indica una hipótesis confirmada por la consulta de estado; `cep` indica que también se obtuvo el comprobante. La consulta de estado por sí sola no verifica una transferencia.
+                 *
+                 *     `_cep_upload` aparece cuando el comprobante subido era el CEP en PDF y Banxico confirmó el pago.
+                 *     `authenticated` es `true` cuando su sello y su cadena original coinciden con los del CEP oficial;
+                 *     con `false`, `differing_fields` lista los campos que difieren y `normalization_warnings` lo avisa.
+                 *     El veredicto sigue siendo el de Banxico.
                  */
                 banxico_result?: ({
                     /**
-                     * @description Fecha de la operación tal como la reporta el CEP de Banxico (`DD-MM-AAAA`).
-                     * @example 15-03-2025
+                     * @description Fecha de la operación tal como la reporta el CEP de Banxico (`AAAA-MM-DD`).
+                     * @example 2025-03-15
                      */
                     operationDate?: string;
                     /**
@@ -2531,17 +2557,17 @@ export interface components {
                 playground?: boolean;
             };
         };
-        /** @description Cuerpo de `POST /v1/validate-ocr` con la imagen en `image` o `image_url`; exige al menos uno de ambos campos. */
+        /** @description Cuerpo de `POST /v1/validate-ocr` con el comprobante en `image` o `image_url`; exige al menos uno de ambos campos. */
         OcrValidationRequest: {
             /**
              * Format: byte
-             * @description Imagen del comprobante codificada en base64. Si también se proporciona `image_url`, solo se considera `image`. Formatos aceptados: JPEG, PNG o WebP. Tamaño máximo: `12 MB`. Dimensiones máximas: `12000px` por lado.
+             * @description Comprobante codificado en base64, en imagen o en PDF. Si también se proporciona `image_url`, solo se considera `image`. Formatos aceptados: JPEG, PNG, WebP o PDF de 1 a 3 páginas. Tamaño máximo: `12 MB`. Dimensiones máximas de una imagen: `12000px` por lado. Admite el prefijo `data:image/...;base64,` o `data:application/pdf;base64,`.
              * @example iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==
              */
             image?: string;
             /**
              * Format: uri
-             * @description URL pública (HTTPS) de la imagen del comprobante. La imagen sigue los mismos límites de formato y tamaño que `image` (JPEG, PNG o WebP. Con un máximo de 12 MB).
+             * @description URL pública (HTTPS) del comprobante. Sigue los mismos límites de formato y tamaño que `image`: JPEG, PNG, WebP o PDF de 1 a 3 páginas, con un máximo de `12 MB`.
              * @example https://storage.example.com/receipts/comprobante-2025-03.jpg
              */
             image_url?: string;
@@ -5372,7 +5398,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             409: components["responses"]["IdempotencyKeyInProgress"];
             413: components["responses"]["PayloadTooLarge"];
-            /** @description La imagen o los datos de la petición no son válidos. Códigos posibles: `image_or_image_url_required`, `invalid_image`, `invalid_image_format`, `image_too_large`, `invalid_url`, `invalid_url_scheme`, `url_ssrf_blocked`, `invalid_clabe_checksum`. También puede devolver: `image_too_small`, `image_mime_mismatch`, `image_dimensions_too_large`, `image_decompression_bomb`, `image_polyglot_detected`, `image_url_unreachable`, `image_url_too_large`, `image_url_too_many_redirects`. En modo asíncrono, un fallo genérico de la imagen se reporta como `image_invalid`. Reutilizar `Idempotency-Key` con un cuerpo distinto produce `idempotency_key_reused`. */
+            /** @description La imagen o los datos de la petición no son válidos. Códigos posibles: `image_or_image_url_required`, `invalid_image`, `invalid_image_format`, `image_too_large`, `invalid_url`, `invalid_url_scheme`, `url_ssrf_blocked`, `invalid_clabe_checksum`. También puede devolver: `image_too_small`, `image_mime_mismatch`, `image_dimensions_too_large`, `image_decompression_bomb`, `image_polyglot_detected`, `image_url_unreachable`, `image_url_too_large`, `image_url_too_many_redirects`. Con un PDF: `pdf_invalid_structure`, `pdf_encrypted`, `pdf_active_content`, `pdf_hidden_content`, `pdf_modified_after_issue`, `pdf_too_many_pages`, `pdf_unsupported_image`, `pdf_text_layer_too_large` y `pdf_multiple_receipts`. En modo asíncrono, un fallo genérico de la imagen se reporta como `image_invalid`. Reutilizar `Idempotency-Key` con un cuerpo distinto produce `idempotency_key_reused`. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -5947,15 +5973,17 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Imagen del comprobante. `Content-Type` indica `image/png`, `image/jpeg` o `image/webp` según el formato; cualquier otro contenido se entrega como `application/octet-stream`. */
+            /** @description Comprobante. `Content-Type` indica `image/png`, `image/jpeg`, `image/webp` o `application/pdf` según el formato; cualquier otro contenido se entrega como `application/octet-stream`. */
             200: {
                 headers: {
-                    /** @description Presentación en línea con un nombre derivado del identificador de la validación y la extensión del formato. */
+                    /** @description `inline` para una imagen y `attachment` para un PDF, con un nombre derivado del identificador de la validación y la extensión del formato. */
                     "Content-Disposition"?: string;
                     /** @description Permite un caché privado durante 1 hora. */
                     "Cache-Control"?: string;
                     /** @description Restringe el uso del recurso al mismo origen. */
                     "Cross-Origin-Resource-Policy"?: string;
+                    /** @description Sólo con un PDF. `sandbox` impide ejecutar scripts y trata el documento como de otro origen si un visor lo abre. */
+                    "Content-Security-Policy"?: string;
                     /** @description Impide que el navegador deduzca un tipo de contenido distinto. */
                     "X-Content-Type-Options"?: string;
                     [name: string]: unknown;
@@ -5964,6 +5992,7 @@ export interface operations {
                     "image/png": string;
                     "image/jpeg": string;
                     "image/webp": string;
+                    "application/pdf": string;
                     "application/octet-stream": string;
                 };
             };
