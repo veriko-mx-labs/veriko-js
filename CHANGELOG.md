@@ -5,6 +5,10 @@ versiones según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+Sin cambios todavía.
+
+## [0.4.8] — 2026-09-27
+
 ### Cambiado
 
 - `validations.validateOcr()` y `validations.enqueueOcr()` documentan el comprobante en PDF, de 1 a
