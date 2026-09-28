@@ -2069,6 +2069,11 @@ export interface components {
                  */
                 plan_slug?: string;
                 /**
+                 * @description Nombre visible del plan activo, tal como lo muestra el catálogo de planes. Es `null` cuando no se pudo leer el catálogo.
+                 * @example Pro
+                 */
+                plan_name?: string | null;
+                /**
                  * @description Estado actual de la suscripción según el ciclo de facturación. `active`: Al corriente; `trialing`: En periodo de prueba; `past_due`: Con cobros pendientes; `canceled`: Cancelada; `paused`: En pausa.
                  * @example active
                  * @enum {string}
@@ -4216,6 +4221,17 @@ export interface components {
             tone: "ok" | "warn" | "danger";
             resets_at: components["schemas"]["TimestampUTC"];
             next_reset_at: components["schemas"]["TimestampUTC"];
+            /**
+             * @description Origen de esta cuota: `cycle` (ciclo de suscripción de siempre) o `trial` (asignación de prueba inicial de una cuenta sin reclamar el plan). Aditivo.
+             * @example cycle
+             * @enum {string}
+             */
+            quota_kind?: "cycle" | "trial";
+            /**
+             * @description `true` cuando esta cuota se repone al iniciar el siguiente ciclo. `false` para `quota_kind=trial`.
+             * @example true
+             */
+            renews?: boolean;
         };
         /** @description Historial mensual de consumo para el número de meses solicitado. */
         GetUsageHistoryAttributes: {
@@ -4991,6 +5007,17 @@ export interface components {
              */
             remaining?: number;
             resets_at?: components["schemas"]["TimestampUTC"];
+            /**
+             * @description Origen de esta cuota: `cycle` (ciclo de suscripción de siempre) o `trial` (asignación de prueba inicial de una cuenta sin reclamar el plan). Aditivo — un cliente que no lo lea sigue funcionando igual.
+             * @example cycle
+             * @enum {string}
+             */
+            quota_kind?: "cycle" | "trial";
+            /**
+             * @description `true` cuando esta cuota se repone al iniciar el siguiente ciclo. `false` para `quota_kind=trial`: `resets_at` es el fin del periodo técnico, no una promesa de más unidades.
+             * @example true
+             */
+            renews?: boolean;
         };
         /** @description Suscripción activa y resumen de cuota devueltos por `GET /v1/billing/subscription`. */
         BillingSubscriptionResponse: components["schemas"]["SuccessEnvelope"] & {
