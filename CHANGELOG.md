@@ -7,6 +7,14 @@ versiones según [SemVer](https://semver.org/lang/es/).
 
 Sin cambios todavía.
 
+## [0.4.9] — 2026-09-28
+
+### Añadido
+
+- Los tipos de `usage.summary()` y `billing.getSubscription()` añaden `quota_kind` (`cycle` o
+  `trial`) y `renews`: una cuenta que aún no activa el plan gratuito consume validaciones de
+  prueba, que no se reponen. `account.myProfile()` añade `plan_name` a la suscripción.
+
 ## [0.4.8] — 2026-09-27
 
 ### Cambiado
