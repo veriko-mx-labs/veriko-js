@@ -7,6 +7,16 @@ versiones según [SemVer](https://semver.org/lang/es/).
 
 Sin cambios todavía.
 
+## [0.4.10] — 2026-09-29
+
+### Cambiado
+
+- Las descripciones de los tipos documentan los códigos por campo con que el `422` de la
+  validación rechaza una petición cuyos datos se contradicen, antes de consultar a Banxico:
+  `clabe_receptor_mismatch`, `tarjeta_receptor_mismatch` y `clave_longitud_invalida`. Llegan en
+  `errors[].code` de `InvalidRequestError`. Ningún rechazo `preflight_failed` de esa ruta consume
+  cuota, sea por datos que se contradicen o por un campo mal formado.
+
 ## [0.4.9] — 2026-09-28
 
 ### Añadido
