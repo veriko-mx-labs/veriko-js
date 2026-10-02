@@ -99,6 +99,15 @@ app.post('/hooks/veriko', express.raw({ type: 'application/json' }), (request, r
       }
       break;
     }
+    case 'validation.returned': {
+      // La validación había salido `valid` y Banxico reportó la devolución después.
+      // Suscribe el endpoint a este evento además de a `validation.completed`.
+      const { id, attributes } = evento.data;
+      const codigo = attributes.payment_status?.code ?? 'desconocido';
+      console.log(`[${evento.event}] ${id} → ${attributes.status} (${codigo})`);
+      if (attributes.client_ref) console.log('  pedido a revisar:', attributes.client_ref);
+      break;
+    }
     case 'validation.retry.resolved':
       console.log(
         `[${evento.event}] resuelto tras`,
