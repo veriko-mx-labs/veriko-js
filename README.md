@@ -529,7 +529,7 @@ if (evento.event === 'validation.returned') {
 
 `checked_at` es el instante de la consulta. En el resto de los eventos `payment_status` está
 ausente. El evento no se emite al crear la validación: una operación que llega ya devuelta se
-entrega con `validation.completed` y `status` `returned`.
+entrega con `validation.completed` y `status=returned`.
 
 ### Lo que Banxico confirmó
 
