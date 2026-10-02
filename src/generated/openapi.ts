@@ -66,9 +66,11 @@ export interface paths {
          *     - Clave de rastreo / Referencia numérica.
          *     - Banco emisor.
          *     - Banco receptor.
-         *     - Cuenta beneficiaria.
+         *     - Cuenta beneficiaria, o una lista de cuentas candidatas.
          *
-         *     La cuenta beneficiaria (`cuenta_beneficiaria`) es obligatoria en esta operación. Si falta, la petición se rechaza con `422 preflight_failed` y el error de campo `cuenta_required`: el servicio no la busca entre los beneficiarios guardados.
+         *     La cuenta beneficiaria (`cuenta_beneficiaria`) es obligatoria en esta operación, salvo que se envíe `cuentas_candidatas`. Si faltan las dos, la petición se rechaza con `422 preflight_failed` y el error de campo `cuenta_required`: el servicio no la busca entre los beneficiarios guardados.
+         *
+         *     Cuando no se sabe a cuál de varias cuentas se hizo el pago, `cuentas_candidatas` sustituye a `cuenta_beneficiaria`: de 2 a 3 cuentas en una sola validación y con una sola unidad de cuota. La consulta recorre las candidatas en el orden enviado y adopta la primera que coincide con la transferencia; esa cuenta vuelve completa en `normalized_data.cuenta_beneficiaria` y su posición en `candidate_match`. Si ninguna coincide, la respuesta es un estado HTTP `422` con el motivo en `code`. Las dos formas no pueden enviarse juntas (`422 cuenta_y_candidatas_excluyentes`) y una lista que no cumple se rechaza con `422 cuentas_candidatas_invalidas`, las dos antes de consumir cuota.
          *
          *     El veredicto final (estado terminal) de una validación puede ser alguno de estos:
          *
@@ -136,7 +138,17 @@ export interface paths {
          *
          *     {% callout type="info" %}
          *     El campo `cuenta_beneficiaria` permite enviar explícitamente la cuenta receptora de la transferencia, enviarlo es especialmente útil cuando la imagen no lleva este dato o lo lleva incompleto.\
-         *     Un beneficiario guardado (con `POST /v1/beneficiaries`) no sustituye a este campo: solo sirve para completar los dígitos de la cuenta que la imagen sí muestra. Si la imagen no trae dígitos suficientes, la validación se rechaza con `cuenta_unresolvable`, porque las cuentas guardadas no se prueban una por una.
+         *     Un beneficiario guardado (con `POST /v1/beneficiaries`) no sustituye a este campo: solo sirve para completar los dígitos de la cuenta que la imagen sí muestra. Si la imagen no trae dígitos suficientes, la validación se rechaza con `cuenta_unresolvable`, porque las cuentas guardadas no se prueban una por una.\
+         *     \
+         *     Cuando no se sabe cuál de varias cuentas recibió el pago, `cuentas_candidatas` las prueba en una sola validación (de 2 a 3 cuentas, una sola unidad de cuota, también con `?async=1`) y sustituye a `cuenta_beneficiaria`: enviar las dos se rechaza con `422 cuenta_y_candidatas_excluyentes`, y una lista que no cumple, con `422 cuentas_candidatas_invalidas`, las dos antes de consumir cuota. La lista tiene prioridad sobre la cuenta que se lea en la imagen; la ganadora vuelve completa en `normalized_data.cuenta_beneficiaria` y su posición en `candidate_match`. Si ninguna coincide, la respuesta es un estado HTTP `422` con el motivo en `code`.
+         *
+         *     {% /callout %}
+         *
+         *     {% callout type="info" %}
+         *     **Retención del comprobante:**\
+         *     De forma predeterminada el archivo del comprobante se conserva y se sirve con `GET /v1/validations/{id}/image`. Con `retain_image=false`, se borra cuando la validación llega a un estado terminal del que ya no se necesita, y el veredicto y los datos extraídos se conservan. La validación publica `image_retained=false` y la imagen responde un estado HTTP `410` (con `image_not_retained` en el cuerpo).\
+         *     \
+         *     Un valor que no es booleano responde un estado HTTP `422` (con `invalid_retain_image` en el cuerpo), antes de consumir cuota. Para borrar después una validación y todo lo que dejó, está `POST /v1/validations/{id}/purge/prepare`, descrito en {% concept slug="data-retention" %}la retención de comprobantes y datos{% /concept %}.
          *
          *     {% /callout %}
          *
@@ -282,6 +294,12 @@ export interface paths {
          *     Si el `ETag` enviado en `If-None-Match` sigue vigente, responde con un estado HTTP `304` sin cuerpo, como describe {% concept slug="conditional-caching" %}la caché condicional{% /concept %}.
          *
          *     {% /callout %}
+         *
+         *     {% callout type="info" %}
+         *     **Validaciones purgadas:**\
+         *     Una validación purgada con `POST /v1/validations/{id}/purge/execute` responde con un estado HTTP `200` y queda como una lápida: conserva el veredicto, las fechas y el monto, y trae `purged_at`. Ya no tiene `request_data`, `ocr_result`, `banxico_result` ni archivos.
+         *
+         *     {% /callout %}
          */
         get: operations["getValidation"];
         put?: never;
@@ -291,6 +309,8 @@ export interface paths {
          * @description Retira una validación del historial de validaciones del usuario autenticado.
          *
          *     La eliminación es lógica, no física. Lo que quiere decir que puede seguir apareciendo en las listas como `GET /v1/validations` si se usa el filtro `with_deleted` u otros.
+         *
+         *     El registro, el CEP, los datos extraídos y el archivo del comprobante se conservan. Para borrarlos de forma definitiva está `POST /v1/validations/{id}/purge/prepare`, seguido de `POST /v1/validations/{id}/purge/execute`.
          */
         delete: operations["deleteValidation"];
         options?: never;
@@ -365,6 +385,8 @@ export interface paths {
          *       para que un navegador no lo abra dentro del propio origen.
          *
          *     Si la validación no tiene imagen disponible, responde con un estado HTTP `404` (con `image_not_available` en el cuerpo).
+         *
+         *     Si la validación se creó con `retain_image=false`, responde con un estado HTTP `410` (con `image_not_retained` en el cuerpo); si se purgó, con un estado HTTP `410` (con `validation_purged` en el cuerpo). Un `410` no se resuelve reintentando: el archivo no existe.
          */
         get: operations["getValidationImage"];
         put?: never;
@@ -453,6 +475,146 @@ export interface paths {
          *     La cabecera opcional `Idempotency-Key` permite repetir la misma petición sin duplicar la cancelación.
          */
         post: operations["cancelValidationRetries"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/validations/{id}/recheck": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Volver a consultar el estado de pago de una validación
+         * @description Vuelve a consultar a Banxico el estado del pago de una validación `valid` y, si lo reporta devuelto, la pasa a `returned`.
+         *
+         *     Un veredicto `valid` es la foto del momento de la consulta: el CEP acredita que la transferencia se liquidó, no que el dinero siguiera en la cuenta del beneficiario, y la institución receptora puede devolverlo horas o días después. Esta operación hace sólo esa consulta, con los datos que la validación ya guardó:
+         *
+         *     - No usa IA ni descarga otro CEP.
+         *     - **No consume cuota** ni cuenta como una validación nueva.
+         *     - Guarda la respuesta de Banxico en `banxico_result._payment_status`.
+         *     - Con el estado `devuelto` o `en_proceso_devolucion`, cambia `status` y `banxico_status` a `returned`, conserva el CEP y emite el webhook `validation.returned`.
+         *
+         *     Qué admite:
+         *
+         *     - `valid` creada hace 72 horas como máximo: se consulta. Pasado ese plazo responde con un estado HTTP `422` (con `recheck_window_expired` en el cuerpo).
+         *     - `returned`: responde su estado actual sin consultar a Banxico, con `meta.recheck.checked_at` en `null`.
+         *     - Cualquier otro estado: responde con un estado HTTP `422` (con `recheck_not_eligible` en el cuerpo).
+         *
+         *     Cada validación admite una consulta cada 10 minutos. Si se repite antes, responde con un estado HTTP `429` (con `recheck_rate_limited` en el cuerpo) y la cabecera `Retry-After` indica los segundos que faltan. Ese tope se suma a los de la clave de API.
+         *
+         *     La respuesta es la misma validación que devuelve `GET /v1/validations/{id}`, con el resultado de la revisión en `meta.recheck`:
+         *
+         *     - `checked_at`: Fecha y hora de la consulta a Banxico, en ISO 8601 UTC. `null` cuando no se consultó nada porque la validación ya estaba `returned`.
+         *     - `changed`: `true` cuando esta consulta pasó la validación de `valid` a `returned`.
+         *     - `previous_status`: Veredicto de Banxico antes de la consulta, `valid` o `returned`.
+         *
+         *     {% callout type="info" %}
+         *     **Si Banxico no responde:**\
+         *     Cuando Banxico no entrega un estado legible, responde con un estado HTTP `503` (con `recheck_unavailable` en el cuerpo) y la validación conserva su intervalo: se puede reintentar de inmediato. Un `503` no dice nada sobre la transferencia.
+         *
+         *     {% /callout %}
+         *
+         *     El significado de `valid` y de `returned` está en {% concept slug="cep-concept" %}el CEP y sus veredictos{% /concept %}, y la entrega del evento en {% concept slug="webhooks-architecture" %}la arquitectura de webhooks{% /concept %}.
+         */
+        post: operations["recheckValidation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/validations/{id}/purge/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preparar el borrado definitivo de una validación
+         * @description Describe lo que borraría el borrado definitivo de una validación propia y emite el token con el que `POST /v1/validations/{id}/purge/execute` lo confirma. No cambia nada: la validación y sus archivos quedan como estaban.
+         *
+         *     `DELETE /v1/validations/{id}` solo retira la validación del historial; el registro, el CEP, los datos extraídos y el archivo del comprobante siguen existiendo. El borrado definitivo, en dos pasos, los elimina.
+         *
+         *     La respuesta incluye:
+         *
+         *     - `confirmation_token`: Token de un solo uso, atado a la cuenta y a esta validación, que caduca en `expires_in` segundos.
+         *     - `will_delete`: Lo que se borrará: el archivo, el CEP, los campos con contenido y la cantidad de registros derivados.
+         *     - `will_keep`: Los campos que conserva la lápida en que queda la validación.
+         *     - `cancels_pending_retries`: `true` cuando hay un ciclo de reintentos abierto, que el borrado cancela.
+         *     - `same_image_validation_ids`: Otras validaciones de la cuenta con el mismo comprobante, que no se tocan.
+         *     - `irreversible`: `true` siempre.
+         *
+         *     Solo se admite una validación propia en un estado terminal. Una validación en curso responde un estado HTTP `409` (con `purge_validation_in_progress` en el cuerpo), y una ya purgada, un estado HTTP `410` (con `validation_purged` en el cuerpo).
+         *
+         *     {% callout type="warning" %}
+         *     **El borrado es irreversible:**\
+         *     Lo borrado no se recupera, ni siquiera desde la plataforma. La validación queda como una lápida y **no devuelve cuota**.\
+         *     Los respaldos de infraestructura no se alteran: conservan una copia hasta que el ciclo de respaldos la retira.
+         *
+         *     {% /callout %}
+         *
+         *     La lápida, lo que se borra y las limitaciones están en {% concept slug="data-retention" %}la retención de comprobantes y datos{% /concept %}.
+         */
+        post: operations["prepareValidationPurge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/validations/{id}/purge/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ejecutar el borrado definitivo de una validación
+         * @description Borra de forma definitiva el contenido de una validación propia, con el token que emitió `POST /v1/validations/{id}/purge/prepare`. Es el segundo paso de un flujo de dos pasos: sin ese token no se borra nada.
+         *
+         *     Se borra:
+         *
+         *     - El archivo del comprobante, imagen o PDF.
+         *     - El CEP, en XML y en PDF.
+         *     - `request_data`, `ocr_result`, `banxico_result` y las advertencias de normalización. De `normalized_data` solo se conserva el monto.
+         *     - Los registros derivados con datos personales: intentos de reintento, sondeos de cuenta, respuestas guardadas de `Idempotency-Key` y notificaciones de la bandeja.
+         *     - El cuerpo enviado y la respuesta del receptor en las entregas de webhook de esa validación, y el contenido de sus notificaciones. El registro de cada entrega se conserva.
+         *     - Los cuerpos de las filas de auditoría que nombran la validación, y el contexto libre de sus eventos de seguridad.
+         *
+         *     La validación queda como una lápida: conserva `id`, `validation_type`, `status`, `banxico_status`, las fechas, `processing_time_ms`, `error_code`, el monto y `purged_at`. Con eso la cuota, las estadísticas, finanzas y el historial siguen cuadrando. **El borrado no devuelve cuota.**
+         *
+         *     Después del borrado, `GET /v1/validations/{id}` responde la lápida con un estado HTTP `200` y `purged_at`. La imagen, el CEP, los reintentos y la revisión posterior responden un estado HTTP `410` (con `validation_purged` en el cuerpo), y los webhooks, los reintentos y los barridos la ignoran. Un ciclo de reintentos abierto se cancela.
+         *
+         *     El token se verifica antes de borrar:
+         *
+         *     - Falta, está mal formado, su firma no es válida o venció: responde un estado HTTP `422` con su código (`confirmation_token_missing`, `confirmation_token_malformed`, `confirmation_token_signature_invalid` o `confirmation_token_expired`).
+         *     - Es de otra validación, de otra cuenta o de otra operación: responde un estado HTTP `422` (con `purge_token_mismatch` o `confirmation_token_operation_mismatch` en el cuerpo).
+         *     - Ya se usó: responde un estado HTTP `409` (con `confirmation_token_already_used` en el cuerpo).
+         *
+         *     Si la respuesta no llega, `GET /v1/validations/{id}` dice si el borrado se completó: una validación purgada trae `purged_at`. Repetir este paso sobre una validación purgada responde un estado HTTP `410`.
+         *
+         *     {% callout type="warning" %}
+         *     **El borrado es irreversible:**\
+         *     Lo borrado no se recupera, ni siquiera desde la plataforma. Los respaldos de infraestructura no se alteran y el catálogo global de cuentas, que no guarda vínculo con la validación, no se toca.
+         *
+         *     {% /callout %}
+         *
+         *     Lo que se borra, la lápida y las limitaciones están en {% concept slug="data-retention" %}la retención de comprobantes y datos{% /concept %}.
+         */
+        post: operations["executeValidationPurge"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1069,6 +1231,7 @@ export interface paths {
          *     Cada endpoint puede suscribirse a diferentes eventos, entre ellos:
          *
          *     - Eventos `validation.*`: Esperan cualquier estado terminal de una validación para notificar ese estado mediante el webhook (p. ej: `validation.completed`, `validation.error`, etc).
+         *     - Evento `validation.returned`: avisa cuando una validación que ya había salido `valid` pasa después a `returned` porque Banxico reportó la devolución; no se emite al crear la validación, donde el evento es `validation.completed`. Para recibirlo hay que suscribirse a él además de a `validation.completed`.
          *     - Eventos `billing.*`: No producen entregas hasta que haya algún movimiento en la suscripción del usuario (p. ej: `billing.subscription_canceled`, `billing.payment_succeeded`, cuotas de uso, etc).
          *
          *     Si se alcanza el tope de endpoints registrados, la creación responde con un estado HTTP `422` (con `webhook_limit_reached` en el cuerpo) y con el valor del límite en el campo `meta.limit`.
@@ -1444,13 +1607,20 @@ export interface paths {
          * Consultar los límites de tasa (rate-limits)
          * @description Devuelve los límites de tasa aplicables al usuario autenticado, por contexto.
          *
-         *     Los dos contextos no llevan los mismos límites: `api` limita por IP y por
-         *     minuto; `login` limita por IP y por correo electrónico, cada uno por minuto y
-         *     por hora.
+         *     Los contextos no llevan los mismos límites. `api` limita las peticiones
+         *     autenticadas por clave y por minuto, con el valor del plan de la cuenta
+         *     (`key_per_minute`), y suma un techo por IP (`ip_ceiling_per_minute`); las
+         *     peticiones sin clave se limitan por IP (`ip_per_minute`). `webhooks` fija las
+         *     entregas por minuto que la cuenta puede enviar hacia un mismo host destino,
+         *     según su plan (`host_per_minute`), y el tope de todos los clientes juntos
+         *     sobre ese host (`host_global_per_minute`). `login` limita por IP y por correo
+         *     electrónico, cada uno por minuto y por hora.
          *
          *     No devuelve contadores en vivo, sólo la configuración vigente. Estos límites
          *     son ajenos a la cuota mensual de validaciones, que devuelve
-         *     [`GET /v1/usage/summary`](/es/v1/usage/get-usage-summary).
+         *     [`GET /v1/usage/summary`](/es/v1/usage/get-usage-summary). El consumo de la
+         *     ventana en curso lo informan, en cada respuesta autenticada de la API, las
+         *     cabeceras `X-RateLimit-*`.
          *
          *     {% callout type="note" %}
          *     Al superarse uno de estos límites, la operación afectada responde con estado
@@ -2181,8 +2351,8 @@ export interface components {
              */
             outcomes?: ("not_found" | "cep_unavailable" | "error")[];
         };
-        /** @description Cuerpo de `POST /v1/validate` para una validación manual SPEI; exige `cuenta_beneficiaria` y `clave_rastreo` o `referencia_numerica`. */
-        ValidationRequest: {
+        /** @description Cuerpo de `POST /v1/validate` para una validación manual SPEI; exige `clave_rastreo` o `referencia_numerica`, y una sola de las dos formas de indicar la cuenta: `cuenta_beneficiaria` o `cuentas_candidatas`. */
+        ValidationRequest: ({
             /**
              * Format: date
              * @description Fecha de la transferencia en formato ISO 8601 (YYYY-MM-DD).
@@ -2216,10 +2386,22 @@ export interface components {
              */
             receptor?: string;
             /**
-             * @description Cuenta bancaria receptora de la transferencia. Es obligatoria: si falta, la respuesta es un estado HTTP `422` (con `preflight_failed` y el error de campo `cuenta_required`). Puede ser CLABE (18 dígitos), tarjeta (16 dígitos) o celular DiMo (10 dígitos), y el tipo se identifica por la longitud de sus dígitos. Los espacios y guiones que separan grupos ("0121 8000 4412 345678") se ignoran automáticamente antes de contar la longitud. Para celular DiMo, si el banco receptor no puede resolverse por el campo `receptor`, por los beneficiarios registrados ni por el directorio de cuentas, la respuesta es un estado HTTP `422` (con `bank_code_unresolvable_for_phone` en el cuerpo).
+             * @description Cuenta bancaria receptora de la transferencia. Es obligatoria cuando no se envía `cuentas_candidatas`: si faltan las dos, la respuesta es un estado HTTP `422` (con `preflight_failed` y el error de campo `cuenta_required`); si vienen las dos, un `422` con `cuenta_y_candidatas_excluyentes`. Puede ser CLABE (18 dígitos), tarjeta (16 dígitos) o celular DiMo (10 dígitos), y el tipo se identifica por la longitud de sus dígitos. Los espacios y guiones que separan grupos ("0121 8000 4412 345678") se ignoran automáticamente antes de contar la longitud. Para celular DiMo, si el banco receptor no puede resolverse por el campo `receptor`, por los beneficiarios registrados ni por el directorio de cuentas, la respuesta es un estado HTTP `422` (con `bank_code_unresolvable_for_phone` en el cuerpo).
              * @example 012180004412345678
              */
-            cuenta_beneficiaria: string;
+            cuenta_beneficiaria?: string;
+            /**
+             * @description Cuentas entre las que está la receptora de la transferencia, para cuando no se sabe cuál fue. Va en lugar de `cuenta_beneficiaria`: enviar las dos responde un estado HTTP `422` (con `cuenta_y_candidatas_excluyentes` en el cuerpo).
+             *
+             *     Admite de 2 al máximo vigente de la plataforma, 3 por defecto y nunca más de 10; el `422` por exceso informa el máximo en `meta.max`. Cada cuenta es una CLABE (18 dígitos), una tarjeta (16) o un celular DiMo (10), con su dígito verificador válido y sin repetirse. Una lista que no cumple responde un `422` con `cuentas_candidatas_invalidas`, y señala en `field_errors` la posición que falló. Los dos errores ocurren antes de consumir cuota.
+             *
+             *     Consume una sola unidad de cuota, lleve las cuentas que lleve. La consulta recorre las candidatas en el orden enviado y adopta la primera que coincide con la transferencia. La ganadora se publica completa en `normalized_data.cuenta_beneficiaria`, y `candidate_match` indica su posición. Si ninguna coincide, la respuesta es un estado HTTP `422` con el motivo en `code` (`cuenta_unresolvable_after_probes` cuando no hay un diagnóstico más preciso).
+             * @example [
+             *       "012180004412345678",
+             *       "002010077777777771"
+             *     ]
+             */
+            cuentas_candidatas?: string[];
             /**
              * @description Indica si el beneficiario de la transferencia es directamente la institución receptora del pago («Pago a Banco» en el CEP de Banxico) y no uno de sus cuentahabientes. `0` para una transferencia a un cuentahabiente (valor por defecto); `1` para pagos cuyo beneficiario es el banco —pago de tarjeta de crédito, de crédito o de servicios a la propia institución. Opcional: si se omite se asume `0`.
              * @default 0
@@ -2234,7 +2416,7 @@ export interface components {
              * @example orden-4812
              */
             client_ref?: string;
-        } | unknown | unknown;
+        } & (unknown | unknown)) | unknown | unknown;
         /**
          * @description Código estable del fallo de una validación.
          * @enum {string}
@@ -2320,7 +2502,7 @@ export interface components {
                  */
                 status?: "queued" | "processing" | "valid" | "not_found" | "cep_unavailable" | "invalid" | "returned" | "failed" | "error";
                 /**
-                 * @description Veredicto reportado por Banxico. Puede ser: `valid`, `not_found`, `cep_unavailable`, `invalid`, `returned` o `error`. Permanece `pending` mientras no exista un veredicto de Banxico. `returned` significa que la operación se liquidó y la institución beneficiaria la devolvió después — el CEP, si existe, se sigue entregando. Solo toma `error` cuando la petición llegó a Banxico y el servicio falló; `error_code` identifica la causa.
+                 * @description Veredicto reportado por Banxico. Puede ser: `valid`, `not_found`, `cep_unavailable`, `invalid`, `returned` o `error`. Permanece `pending` mientras no exista un veredicto de Banxico. `returned` significa que la operación se liquidó y la institución beneficiaria la devolvió después — el CEP, si existe, se sigue entregando. Un `valid` no es definitivo: es el veredicto del momento de la consulta, y pasa a `returned` cuando Banxico reporta la devolución en una revisión posterior, que se pide con `POST /v1/validations/{id}/recheck` o que el servicio hace solo durante las primeras 72 horas (se emite el webhook `validation.returned`). Solo toma `error` cuando la petición llegó a Banxico y el servicio falló; `error_code` identifica la causa.
                  * @example valid
                  */
                 banxico_status?: string | null;
@@ -2374,10 +2556,25 @@ export interface components {
                  */
                 etag_version?: number | null;
                 /**
-                 * @description Referencia relativa del comprobante, imagen o PDF (solo si `validation_type` es del tipo `ocr`).
+                 * @description Referencia relativa del comprobante, imagen o PDF (solo si `validation_type` es del tipo `ocr`). No se publica cuando el archivo no se conserva: ver `image_retained`.
                  * @example ocr/2026/04/a1b2c3d4.jpg
                  */
                 image_path?: string | null;
+                /**
+                 * @description `true` cuando la plataforma conserva el archivo del comprobante; `false` cuando no, porque la petición envió `retain_image=false` o porque la validación se purgó. Solo aparece en las validaciones de tipo `ocr`.
+                 *
+                 *     Con `false`, `GET /v1/validations/{id}/image` responde un estado HTTP `410` (con `image_not_retained` o `validation_purged` en el cuerpo).
+                 * @example true
+                 */
+                image_retained?: boolean;
+                /**
+                 * Format: date-time
+                 * @description Fecha y hora, en ISO 8601 UTC, en que la validación se purgó con `POST /v1/validations/{id}/purge/execute`. Solo aparece en una validación purgada, que queda como una lápida.
+                 *
+                 *     Una lápida conserva `id`, `validation_type`, `status`, `banxico_status`, las fechas, `processing_time_ms`, `error_code` y el monto en `normalized_data.monto`. No conserva el archivo, el CEP, `request_data`, `ocr_result` ni `banxico_result`, y sus recursos derivados responden un estado HTTP `410` (con `validation_purged` en el cuerpo).
+                 * @example 2026-10-02T09:30:00Z
+                 */
+                purged_at?: string;
                 /**
                  * @description Campos extraídos del comprobante (solo si `validation_type` es del tipo `ocr`).
                  *
@@ -2435,6 +2632,23 @@ export interface components {
                      */
                     read_last4: string;
                 };
+                /**
+                 * @description Cuál de las `cuentas_candidatas` enviadas ganó. Solo aparece cuando la petición llevó esa lista y una de las cuentas coincidió con la transferencia.
+                 *
+                 *     La cuenta completa va en `normalized_data.cuenta_beneficiaria`; este objeto indica qué posición de la lista es, para correlacionarla con la entidad propia del integrador sin comparar cuentas. No cambia el veredicto.
+                 */
+                candidate_match?: {
+                    /**
+                     * @description Posición (desde 0) de la cuenta ganadora en el arreglo `cuentas_candidatas`, tal como se envió.
+                     * @example 1
+                     */
+                    index: number;
+                    /**
+                     * @description Últimos 4 dígitos de la cuenta ganadora.
+                     * @example 7771
+                     */
+                    account_last4: string;
+                };
                 /** @description Indica si la cuenta beneficiaria viene enmascarada en el comprobante cargado, sea una CLABE, una tarjeta o un celular. Solo se incluye cuando vale `true` y solo si `validation_type` es del tipo `ocr`. */
                 is_masked?: boolean | null;
                 /**
@@ -2446,6 +2660,12 @@ export interface components {
                  *     `authenticated` es `true` cuando su sello y su cadena original coinciden con los del CEP oficial;
                  *     con `false`, `differing_fields` lista los campos que difieren y `normalization_warnings` lo avisa.
                  *     El veredicto sigue siendo el de Banxico.
+                 *
+                 *     `_payment_status` es el estado oficial del pago, tal como lo dio Banxico la última vez que se le preguntó:
+                 *     `code` (`liquidado`, `en_proceso`, `cancelado`, `rechazado`, `en_proceso_devolucion`, `devuelto` o `desconocido`),
+                 *     `label`, `settled`, `reversed` y `checked_at` (ISO 8601 UTC).
+                 *     Su ausencia significa que no se pudo saber, nunca que el pago esté liquidado.
+                 *     Se actualiza en cada revisión posterior, y con `devuelto` o `en_proceso_devolucion` la validación pasa a `returned`.
                  */
                 banxico_result?: ({
                     /**
@@ -2616,7 +2836,7 @@ export interface components {
                 playground?: boolean;
             };
         };
-        /** @description Cuerpo de `POST /v1/validate-ocr` con el comprobante en `image` o `image_url`; exige al menos uno de ambos campos. */
+        /** @description Cuerpo de `POST /v1/validate-ocr` con el comprobante en `image` o `image_url`; exige al menos uno de ambos campos. `cuenta_beneficiaria` y `cuentas_candidatas` no pueden ir juntas. */
         OcrValidationRequest: {
             /**
              * Format: byte
@@ -2631,10 +2851,22 @@ export interface components {
              */
             image_url?: string;
             /**
-             * @description Cuenta receptora de la transferencia (útil cuando falta o está incompleta en la imagen). Requerida para celular DiMo; opcional si la imagen muestra la cuenta completa o sus últimos dígitos, que se completan con los beneficiarios guardados (estos no sustituyen a este campo). Acepta CLABE (18 dígitos), tarjeta (16 dígitos) o celular DiMo (10 dígitos).
+             * @description Cuenta receptora de la transferencia (útil cuando falta o está incompleta en la imagen). Requerida para celular DiMo; opcional si la imagen muestra la cuenta completa o sus últimos dígitos, que se completan con los beneficiarios guardados (estos no sustituyen a este campo). Acepta CLABE (18 dígitos), tarjeta (16 dígitos) o celular DiMo (10 dígitos). No puede enviarse junto con `cuentas_candidatas`: enviar las dos responde un estado HTTP `422` (con `cuenta_y_candidatas_excluyentes` en el cuerpo).
              * @example 012180004412345678
              */
             cuenta_beneficiaria?: string;
+            /**
+             * @description Cuentas entre las que está la receptora de la transferencia, para cuando la imagen no la muestra y no se sabe cuál fue. Va en lugar de `cuenta_beneficiaria`: enviar las dos responde un estado HTTP `422` (con `cuenta_y_candidatas_excluyentes` en el cuerpo). Tiene prioridad sobre la cuenta que se lea en la imagen.
+             *
+             *     Admite de 2 al máximo vigente de la plataforma, 3 por defecto y nunca más de 10; el `422` por exceso informa el máximo en `meta.max`. Cada cuenta es una CLABE (18 dígitos), una tarjeta (16) o un celular DiMo (10), con su dígito verificador válido y sin repetirse. Una lista que no cumple responde un `422` con `cuentas_candidatas_invalidas`, y señala en `field_errors` la posición que falló. Los dos errores ocurren antes de consumir cuota.
+             *
+             *     Consume una sola unidad de cuota, lleve las cuentas que lleve, también con `?async=1`. La consulta recorre las candidatas en el orden enviado y adopta la primera que coincide con la transferencia. La ganadora se publica completa en `normalized_data.cuenta_beneficiaria`, y `candidate_match` indica su posición. Si ninguna coincide, la respuesta es un estado HTTP `422` con el motivo en `code` (`cuenta_unresolvable_after_probes` cuando no hay un diagnóstico más preciso).
+             * @example [
+             *       "012180004412345678",
+             *       "002010077777777771"
+             *     ]
+             */
+            cuentas_candidatas?: string[];
             /** @description Política de reintentos automáticos para esta validación. Si se omite, se aplica la política general del usuario, configurada en `PUT /v1/users/me/retry-policy`. **Los reintentos no consumen cuota de validaciones**. */
             retry_policy?: components["schemas"]["RetryPolicy"];
             /**
@@ -2642,6 +2874,16 @@ export interface components {
              * @example orden-4812
              */
             client_ref?: string;
+            /**
+             * @description `true` cuando la plataforma conserva el archivo del comprobante después de validarlo, que es lo habitual. Con `false`, el archivo se borra en cuanto la validación llega a un estado terminal del que ya no se necesita; el veredicto y los datos extraídos se conservan.
+             *
+             *     Con `false`, la validación publica `image_retained=false` y `GET /v1/validations/{id}/image` responde un estado HTTP `410` (con `image_not_retained` en el cuerpo). Vale igual con `?async=1`.
+             *
+             *     El archivo existe mientras la validación se procesa. Si entró como un CEP en PDF y tiene reintentos automáticos activos, el borrado espera a que ese ciclo cierre, porque cada reintento vuelve a comparar el sello del PDF. Un valor que no es booleano responde un estado HTTP `422` (con `invalid_retain_image` en el cuerpo), antes de consumir cuota.
+             * @default true
+             * @example false
+             */
+            retain_image: boolean;
         } | unknown | unknown;
         /** @description Estado resumido del ciclo de reintentos, con la configuración representada como `null`. */
         RetryStateCompact: {
@@ -2727,6 +2969,8 @@ export interface components {
                 created_at?: components["schemas"]["TimestampUTC"];
                 /** @description Fecha de retiro del historial, en ISO 8601 UTC. */
                 deleted_at?: components["schemas"]["TimestampUTC"] | null;
+                /** @description Fecha y hora, en ISO 8601 UTC, en que la validación se purgó. Solo aparece en una validación purgada, que queda como una lápida con su veredicto, sus fechas y su monto. */
+                purged_at?: components["schemas"]["TimestampUTC"];
                 retry_state?: components["schemas"]["RetryStateCompact"];
                 /**
                  * @description Referencia propia enviada al validar (`client_ref`), devuelta tal cual. Solo aparece cuando la petición la incluyó.
@@ -2915,6 +3159,211 @@ export interface components {
         /** @description Estado completo del ciclo después de cancelar los reintentos pendientes de una validación. */
         CancelValidationRetriesAttributes: {
             retry_state?: components["schemas"]["RetryStateFull"];
+        };
+        /** @description Resultado de la revisión que acompaña, dentro de `meta`, la respuesta de `POST /v1/validations/{id}/recheck`. */
+        ValidationRecheckMeta: {
+            /**
+             * Format: date-time
+             * @description Fecha y hora, en ISO 8601 UTC, en que se consultó el estado del pago a Banxico. `null` cuando no se consultó nada porque la validación ya estaba en `returned`.
+             * @example 2026-10-01T18:42:07Z
+             */
+            checked_at: string | null;
+            /**
+             * @description `true` cuando esta consulta pasó la validación de `valid` a `returned`. En ese caso también se emitió el webhook `validation.returned`.
+             * @example false
+             */
+            changed: boolean;
+            /**
+             * @description Veredicto de Banxico antes de esta consulta — `valid`: La validación seguía confirmada; `returned`: La validación ya estaba devuelta y no se consultó nada.
+             * @example valid
+             * @enum {string}
+             */
+            previous_status: "valid" | "returned";
+        };
+        /** @description Respuesta de `POST /v1/validations/{id}/purge/prepare`: lo que borraría el borrado definitivo, lo que conservaría y el token que lo confirma. Todavía no ha cambiado nada. */
+        ValidationPurgePrepareResponse: {
+            /** @description Recurso JSON:API de la preparación. Su `id` es el de la validación. */
+            data: components["schemas"]["JsonApiResourceBase"] & {
+                /**
+                 * @description Tipo del recurso, fijo para esta operación. Forma parte de su identidad en la envoltura JSON:API. Siempre `validation_purge`.
+                 * @example validation_purge
+                 * @enum {string}
+                 */
+                type: "validation_purge";
+                /**
+                 * Format: uuid
+                 * @description Identificador de la validación que se borraría.
+                 * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+                 */
+                id: string;
+                /** @description Resumen del borrado y token de confirmación. */
+                attributes: {
+                    /**
+                     * @description Token de un solo uso, atado a la cuenta y a esta validación, que `POST /v1/validations/{id}/purge/execute` exige para borrar. Caduca en `expires_in` segundos.
+                     * @example eyJhZG1pbl9pZCI6Ii4uLiJ9.q1w2e3r4t5y6u7i8o9p0
+                     */
+                    confirmation_token: string;
+                    /**
+                     * @description Segundos de vigencia del token.
+                     * @example 120
+                     */
+                    expires_in: number;
+                    /**
+                     * @description `true` siempre: el borrado no se puede deshacer. Un respaldo de infraestructura no lo revierte para el cliente.
+                     * @example true
+                     */
+                    irreversible: boolean;
+                    /** @description Lo que borraría el borrado definitivo. */
+                    will_delete: {
+                        /**
+                         * @description `true` cuando hay un archivo del comprobante (imagen o PDF) que se borraría.
+                         * @example true
+                         */
+                        image: boolean;
+                        /**
+                         * @description `true` cuando hay un CEP (el XML o el PDF) que se borraría.
+                         * @example true
+                         */
+                        cep: boolean;
+                        /**
+                         * @description Campos de la validación con contenido que se vaciarían. De `normalized_data` se conserva únicamente el monto.
+                         * @example [
+                         *       "request_data",
+                         *       "ocr_result",
+                         *       "normalized_data",
+                         *       "banxico_result"
+                         *     ]
+                         */
+                        stored_data: ("request_data" | "ocr_result" | "normalized_data" | "normalization_warnings" | "banxico_result")[];
+                        /**
+                         * @description Cantidad de intentos de reintento que se borrarían.
+                         * @example 2
+                         */
+                        retry_attempts: number;
+                        /**
+                         * @description Cantidad de sondeos de cuenta candidata que se borrarían.
+                         * @example 0
+                         */
+                        probe_attempts: number;
+                        /**
+                         * @description Cantidad de entregas de webhook de esta validación a las que se les quitaría el cuerpo enviado y la respuesta del receptor. El registro de cada entrega se conserva.
+                         * @example 1
+                         */
+                        webhook_deliveries: number;
+                        /**
+                         * @description Cantidad de entregas de notificación de esta validación cuyo contenido se vaciaría. Las notificaciones de la bandeja de la cuenta se borrarían.
+                         * @example 1
+                         */
+                        notifications: number;
+                        /**
+                         * @description Cantidad de respuestas guardadas de `Idempotency-Key` que se borrarían.
+                         * @example 1
+                         */
+                        idempotency_responses: number;
+                        /**
+                         * @description `true` siempre: los cuerpos de las filas de auditoría que nombran la validación se quitarían, y el contexto libre de sus eventos de seguridad se reduciría a ids y códigos.
+                         * @example true
+                         */
+                        audit_traces: boolean;
+                    };
+                    /**
+                     * @description Campos que conserva la lápida en que queda la validación: bastan para que la cuota, las estadísticas, finanzas y el historial sigan cuadrando.
+                     * @example [
+                     *       "id",
+                     *       "validation_type",
+                     *       "status",
+                     *       "banxico_status",
+                     *       "amount",
+                     *       "created_at",
+                     *       "purged_at"
+                     *     ]
+                     */
+                    will_keep: string[];
+                    /**
+                     * @description `true` cuando la validación tiene un ciclo de reintentos abierto, que el borrado cancela.
+                     * @example false
+                     */
+                    cancels_pending_retries: boolean;
+                    /**
+                     * @description `false` siempre: el borrado no devuelve cuota ni cambia lo cobrado.
+                     * @example false
+                     */
+                    refunds_quota: boolean;
+                    /**
+                     * @description Identificadores de otras validaciones de la misma cuenta con el mismo comprobante (hasta 20). No se tocan: cada una guarda su propia copia de lo extraído y se borra por separado.
+                     * @example []
+                     */
+                    same_image_validation_ids: string[];
+                };
+            };
+        };
+        /** @description Cuerpo de `POST /v1/validations/{id}/purge/execute`: el token del paso de preparación. */
+        ValidationPurgeExecuteRequest: {
+            /**
+             * @description Token que devolvió `POST /v1/validations/{id}/purge/prepare` para esta misma validación y esta misma cuenta. Es de un solo uso y caduca en el plazo que indicó `expires_in`.
+             * @example eyJhZG1pbl9pZCI6Ii4uLiJ9.q1w2e3r4t5y6u7i8o9p0
+             */
+            confirmation_token: string;
+        };
+        /** @description Respuesta de `POST /v1/validations/{id}/purge/execute`: la validación quedó purgada y esto es lo que se borró. */
+        ValidationPurgeExecuteResponse: {
+            /** @description Recurso JSON:API del borrado. Su `id` es el de la validación. */
+            data: components["schemas"]["JsonApiResourceBase"] & {
+                /**
+                 * @description Tipo del recurso, fijo para esta operación. Forma parte de su identidad en la envoltura JSON:API. Siempre `validation_purge`.
+                 * @example validation_purge
+                 * @enum {string}
+                 */
+                type: "validation_purge";
+                /**
+                 * Format: uuid
+                 * @description Identificador de la validación purgada.
+                 * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+                 */
+                id: string;
+                /** @description Resultado del borrado. */
+                attributes: {
+                    /**
+                     * Format: date-time
+                     * @description Fecha y hora, en ISO 8601 UTC, en que la validación quedó purgada.
+                     * @example 2026-10-02T09:30:00Z
+                     */
+                    purged_at: string;
+                    /**
+                     * @description Estado del borrado de los archivos — `complete`: Los archivos ya no existen; `pending`: Algún archivo no se pudo borrar en este momento y el barrido diario lo termina. El contenido de la base de datos ya está borrado en los dos casos y el archivo no se sirve.
+                     * @example complete
+                     * @enum {string}
+                     */
+                    file_removal: "complete" | "pending";
+                    /** @description Lo que se borró. Los contadores cuentan filas tocadas; los booleanos dicen si había algo que borrar. */
+                    deleted: {
+                        /** @description `true` cuando había un archivo del comprobante. */
+                        image?: boolean;
+                        /** @description `true` cuando había un PDF del CEP. */
+                        cep_pdf?: boolean;
+                        /** @description `true` cuando el borrado cerró un ciclo de reintentos que seguía abierto. */
+                        retry_cycle_cancelled?: boolean;
+                        /** @description Intentos de reintento borrados. */
+                        retry_attempts?: number;
+                        /** @description Sondeos de cuenta candidata borrados. */
+                        probe_attempts?: number;
+                        /** @description Entregas de webhook a las que se les quitó el cuerpo enviado y la respuesta del receptor. */
+                        webhook_deliveries?: number;
+                        /** @description Entregas de notificación cuyo contenido se vació. */
+                        notification_deliveries?: number;
+                        /** @description Notificaciones de la bandeja que se borraron. */
+                        notifications?: number;
+                        /** @description Respuestas guardadas de `Idempotency-Key` que se borraron. */
+                        idempotency_responses?: number;
+                        /** @description Filas de importación masiva cuyo contenido se vació. */
+                        import_rows?: number;
+                        /** @description Filas de auditoría a las que se les quitaron los cuerpos. Falta cuando ese barrido no se pudo completar. */
+                        audit_log_rows?: number;
+                        /** @description Eventos de seguridad cuyo contexto se redactó. Falta cuando ese barrido no se pudo completar. */
+                        security_events_rows?: number;
+                    };
+                };
+            };
         };
         /** @description Banco participante del catálogo SPEI, en formato JSON:API. `id` y `attributes.code` son siempre iguales (`id` se conserva como identificador estable del recurso aunque `code` lo duplique). */
         BankResource: components["schemas"]["JsonApiResourceBase"] & {
@@ -3883,7 +4332,7 @@ export interface components {
                  */
                 url: string;
                 /** @description Eventos a los que se suscribe el endpoint webhook. Entre 1 y 10. */
-                events: ("validation.completed" | "validation.failed" | "validation.error" | "validation.retry.scheduled" | "validation.retry.resolved" | "validation.retry.exhausted" | "billing.payment_succeeded" | "billing.payment_failed" | "billing.trial_will_end" | "billing.subscription_canceled" | "billing.invoice_upcoming")[];
+                events: ("validation.completed" | "validation.failed" | "validation.error" | "validation.retry.scheduled" | "validation.retry.resolved" | "validation.retry.exhausted" | "validation.returned" | "billing.payment_succeeded" | "billing.payment_failed" | "billing.trial_will_end" | "billing.subscription_canceled" | "billing.invoice_upcoming")[];
                 /**
                  * @description Etiqueta libre para distinguir el endpoint webhook de los demás.
                  * @example Alta de pagos en el ERP
@@ -3925,7 +4374,7 @@ export interface components {
              */
             url: string;
             /** @description Eventos a los que se suscribe el endpoint webhook. Entre 1 y 10. */
-            events: ("validation.completed" | "validation.failed" | "validation.error" | "validation.retry.scheduled" | "validation.retry.resolved" | "validation.retry.exhausted" | "billing.payment_succeeded" | "billing.payment_failed" | "billing.trial_will_end" | "billing.subscription_canceled" | "billing.invoice_upcoming")[];
+            events: ("validation.completed" | "validation.failed" | "validation.error" | "validation.retry.scheduled" | "validation.retry.resolved" | "validation.retry.exhausted" | "validation.returned" | "billing.payment_succeeded" | "billing.payment_failed" | "billing.trial_will_end" | "billing.subscription_canceled" | "billing.invoice_upcoming")[];
             /**
              * @description Etiqueta libre para distinguir el endpoint webhook de los demás. `null` la omite; más de 255 caracteres responde `422 webhook_description_too_long`.
              * @example Alta de pagos en el ERP
@@ -3941,7 +4390,7 @@ export interface components {
              */
             url?: string;
             /** @description Nuevos eventos a los que se suscribe el endpoint webhook. Sustituyen a la lista anterior. Entre 1 y 10. */
-            events?: ("validation.completed" | "validation.failed" | "validation.error" | "validation.retry.scheduled" | "validation.retry.resolved" | "validation.retry.exhausted" | "billing.payment_succeeded" | "billing.payment_failed" | "billing.trial_will_end" | "billing.subscription_canceled" | "billing.invoice_upcoming")[];
+            events?: ("validation.completed" | "validation.failed" | "validation.error" | "validation.retry.scheduled" | "validation.retry.resolved" | "validation.retry.exhausted" | "validation.returned" | "billing.payment_succeeded" | "billing.payment_failed" | "billing.trial_will_end" | "billing.subscription_canceled" | "billing.invoice_upcoming")[];
             /**
              * @description Nueva etiqueta libre para distinguir el endpoint webhook de los demás. `null` la elimina; más de 255 caracteres responde `422 webhook_description_too_long`.
              * @example Alta de pagos en el ERP
@@ -4008,7 +4457,7 @@ export interface components {
                  * @example validation.completed
                  * @enum {string}
                  */
-                event_type: "validation.completed" | "validation.failed" | "validation.error" | "validation.retry.scheduled" | "validation.retry.resolved" | "validation.retry.exhausted" | "billing.payment_succeeded" | "billing.payment_failed" | "billing.trial_will_end" | "billing.subscription_canceled" | "billing.invoice_upcoming" | "test";
+                event_type: "validation.completed" | "validation.failed" | "validation.error" | "validation.retry.scheduled" | "validation.retry.resolved" | "validation.retry.exhausted" | "validation.returned" | "billing.payment_succeeded" | "billing.payment_failed" | "billing.trial_will_end" | "billing.subscription_canceled" | "billing.invoice_upcoming" | "test";
                 /**
                  * Format: uuid
                  * @description Identificador único de la validación (UUID v4) asociada cuando el evento es `validation.*`. `null` cuando el evento es otro.
@@ -4392,10 +4841,30 @@ export interface components {
                 type?: "usage_limits";
                 /** @description Datos de los límites: los límites por contexto y sus notas. */
                 attributes?: {
-                    /** @description Límites de tasa por contexto. Cada entrada trae sólo los que ese contexto aplica: `api` lleva `ip_per_minute`; `login`, los cuatro. */
+                    /** @description Límites de tasa por contexto. Cada entrada trae sólo los que ese contexto aplica: `api` lleva `key_per_minute`, `ip_ceiling_per_minute` e `ip_per_minute`; `webhooks`, `host_per_minute` y `host_global_per_minute`; `login`, los cuatro de IP y correo electrónico. `key_per_minute` y `host_per_minute` los fija el plan de la cuenta. */
                     rate_limits?: {
                         [key: string]: {
-                            /** @description Cantidad máxima de peticiones por dirección IP por minuto. */
+                            /**
+                             * @description Peticiones por minuto de una clave de la cuenta en la API, según su plan. Rige a las peticiones autenticadas.
+                             * @example 240
+                             */
+                            key_per_minute?: number;
+                            /**
+                             * @description Techo de peticiones por minuto por dirección IP para las peticiones autenticadas, todas las claves de un mismo origen juntas.
+                             * @example 1200
+                             */
+                            ip_ceiling_per_minute?: number;
+                            /**
+                             * @description Entregas de webhook por minuto que la cuenta puede enviar hacia un mismo host destino, según su plan.
+                             * @example 60
+                             */
+                            host_per_minute?: number;
+                            /**
+                             * @description Tope de entregas de webhook por minuto hacia un mismo host destino, todos los clientes juntos.
+                             * @example 600
+                             */
+                            host_global_per_minute?: number;
+                            /** @description Cantidad máxima de peticiones por dirección IP por minuto. En `api` sólo rige a las peticiones anónimas, sin clave. */
                             ip_per_minute?: number;
                             /** @description Cantidad máxima de peticiones por dirección IP por hora. */
                             ip_per_hour?: number;
@@ -5127,6 +5596,30 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
+        /** @description El cuerpo de la petición llegó vacío cuando la operación necesita datos (`body_empty`). */
+        BodyEmpty: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "errors": [
+                 *         {
+                 *           "status": "400",
+                 *           "code": "body_empty",
+                 *           "detail": "El cuerpo de la petición está vacío."
+                 *         }
+                 *       ],
+                 *       "meta": {
+                 *         "version": "1.51.0",
+                 *         "request_id": "2b3c4d5e6f7a"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
         /** @description Se requiere autenticación o las credenciales son inválidas */
         Unauthorized: {
             headers: {
@@ -5156,11 +5649,11 @@ export interface components {
             headers: {
                 /** @description Segundos a esperar antes de reintentar. Coincide con la ventana de rate-limit del endpoint (típicamente 60s para listas, 1-5s para operaciones idempotentes en vuelo). */
                 "Retry-After"?: number;
-                /** @description Límite de solicitudes configurado para este bucket (emitido sólo en 429). */
+                /** @description Límite de solicitudes configurado para este bucket. Se emite en cada 429 y, en la API autenticada, también en las respuestas correctas, donde es el tope por clave del plan de la cuenta. */
                 "X-RateLimit-Limit"?: number;
-                /** @description Solicitudes restantes en la ventana actual — siempre 0 en el momento del 429 (emitido sólo en 429). */
+                /** @description Solicitudes restantes en la ventana actual. Siempre 0 en el momento del 429; en una respuesta correcta de la API autenticada es lo que queda del tope por clave. */
                 "X-RateLimit-Remaining"?: number;
-                /** @description Unix epoch absoluto (segundos) en que se reinicia la ventana. Emitido sólo en 429, junto con Retry-After. Puede existir sobreescritura por endpoint (p. ej. `rate_limited_login`). */
+                /** @description Unix epoch absoluto (segundos) en que se reinicia la ventana. Se emite en cada 429, junto con Retry-After, y en las respuestas correctas de la API autenticada. Puede existir sobreescritura por endpoint (p. ej. `rate_limited_login`). */
                 "X-RateLimit-Reset"?: number;
                 [name: string]: unknown;
             };
@@ -5282,6 +5775,30 @@ export interface components {
                  *       "meta": {
                  *         "version": "1.51.0",
                  *         "request_id": "d5e6f7a8b9c0"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description La validación se purgó y este recurso ya no existe (`validation_purged`). */
+        ValidationPurged: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "errors": [
+                 *         {
+                 *           "status": "410",
+                 *           "code": "validation_purged",
+                 *           "detail": "La validación se purgó y este recurso ya no existe."
+                 *         }
+                 *       ],
+                 *       "meta": {
+                 *         "version": "1.61.0",
+                 *         "request_id": "1a2b3c4d5e6f"
                  *       }
                  *     }
                  */
@@ -5431,7 +5948,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             409: components["responses"]["IdempotencyKeyInProgress"];
             413: components["responses"]["PayloadTooLarge"];
-            /** @description Falló la validación de la petición. Códigos típicos: `clave_or_ref_required`, `required` (fecha/monto), `invalid_date`, `invalid_amount`, `invalid_account_format`, `invalid_account_length`, `invalid_clabe_checksum`, `invalid_card_luhn`, `invalid_bank_code` (`emisor`/`receptor` no reconocidos), `intra_bank_no_cep` (emisor y receptor son el mismo banco), `invalid_field_type` (un campo que debe ser texto llegó como arreglo u objeto — p. ej. `emisor`, `receptor` o `referencia_numerica`), `invalid_receptor_participante`, `retry_policy_invalid`, `retry_pending_cap_exceeded`. También se emite cuando se reutiliza `Idempotency-Key` con un cuerpo distinto (`idempotency_key_reused`). Cuando los datos se contradicen entre sí, la petición se rechaza antes de consultar a Banxico con `preflight_failed` y el detalle por campo en `errors` (`clabe_receptor_mismatch` y `tarjeta_receptor_mismatch`: la cuenta pertenece a otro banco que el `receptor`; `cuenta_invalid_luhn`; `clave_fecha_incoherente`; `clave_longitud_invalida`). También se rechaza con `preflight_failed` cuando falta `cuenta_beneficiaria` (`cuenta_required`). Ningún rechazo `preflight_failed` de esta ruta consume cuota, sea por datos que se contradicen, por un campo mal formado o por una cuenta ausente. */
+            /** @description Falló la validación de la petición. Códigos típicos: `clave_or_ref_required`, `required` (fecha/monto), `invalid_date`, `invalid_amount`, `invalid_account_format`, `invalid_account_length`, `invalid_clabe_checksum`, `invalid_card_luhn`, `invalid_bank_code` (`emisor`/`receptor` no reconocidos), `intra_bank_no_cep` (emisor y receptor son el mismo banco), `invalid_field_type` (un campo que debe ser texto llegó como arreglo u objeto — p. ej. `emisor`, `receptor` o `referencia_numerica`), `invalid_receptor_participante`, `retry_policy_invalid`, `retry_pending_cap_exceeded`, `cuenta_y_candidatas_excluyentes` (`cuenta_beneficiaria` y `cuentas_candidatas` juntas), `cuentas_candidatas_invalidas` (la lista no tiene de 2 al máximo vigente de cuentas válidas y distintas) y `cuenta_unresolvable_after_probes` (ninguna candidata coincidió con la transferencia). También se emite cuando se reutiliza `Idempotency-Key` con un cuerpo distinto (`idempotency_key_reused`). Cuando los datos se contradicen entre sí, la petición se rechaza antes de consultar a Banxico con `preflight_failed` y el detalle por campo en `errors` (`clabe_receptor_mismatch` y `tarjeta_receptor_mismatch`: la cuenta pertenece a otro banco que el `receptor`; `cuenta_invalid_luhn`; `clave_fecha_incoherente`; `clave_longitud_invalida`). También se rechaza con `preflight_failed` cuando falta `cuenta_beneficiaria` (`cuenta_required`). Ningún rechazo `preflight_failed` de esta ruta consume cuota, sea por datos que se contradicen, por un campo mal formado o por una cuenta ausente. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -5489,7 +6006,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             409: components["responses"]["IdempotencyKeyInProgress"];
             413: components["responses"]["PayloadTooLarge"];
-            /** @description La imagen o los datos de la petición no son válidos. Códigos posibles: `image_or_image_url_required`, `invalid_image`, `invalid_image_format`, `image_too_large`, `invalid_url`, `invalid_url_scheme`, `url_ssrf_blocked`, `invalid_clabe_checksum`. También puede devolver: `image_too_small`, `image_mime_mismatch`, `image_dimensions_too_large`, `image_decompression_bomb`, `image_polyglot_detected`, `image_url_unreachable`, `image_url_too_large`, `image_url_too_many_redirects`. Con un PDF: `pdf_invalid_structure`, `pdf_encrypted`, `pdf_active_content`, `pdf_hidden_content`, `pdf_modified_after_issue`, `pdf_too_many_pages`, `pdf_unsupported_image`, `pdf_text_layer_too_large` y `pdf_multiple_receipts`. En modo asíncrono, un fallo genérico de la imagen se reporta como `image_invalid`. Reutilizar `Idempotency-Key` con un cuerpo distinto produce `idempotency_key_reused`. */
+            /** @description La imagen o los datos de la petición no son válidos. Códigos posibles: `image_or_image_url_required`, `invalid_image`, `invalid_image_format`, `image_too_large`, `invalid_url`, `invalid_url_scheme`, `url_ssrf_blocked`, `invalid_clabe_checksum`. También puede devolver: `image_too_small`, `image_mime_mismatch`, `image_dimensions_too_large`, `image_decompression_bomb`, `image_polyglot_detected`, `image_url_unreachable`, `image_url_too_large`, `image_url_too_many_redirects`. Con un PDF: `pdf_invalid_structure`, `pdf_encrypted`, `pdf_active_content`, `pdf_hidden_content`, `pdf_modified_after_issue`, `pdf_too_many_pages`, `pdf_unsupported_image`, `pdf_text_layer_too_large` y `pdf_multiple_receipts`. Con `retain_image` que no es booleano: `invalid_retain_image`. Con `cuentas_candidatas`: `cuenta_y_candidatas_excluyentes`, `cuentas_candidatas_invalidas` y, si ninguna candidata coincide, `cuenta_unresolvable_after_probes`. En modo asíncrono, un fallo genérico de la imagen se reporta como `image_invalid`. Reutilizar `Idempotency-Key` con un cuerpo distinto produce `idempotency_key_reused`. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -5981,6 +6498,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            410: components["responses"]["ValidationPurged"];
             /** @description UUID inválido en la ruta (`invalid_uuid`). */
             422: {
                 headers: {
@@ -6047,6 +6565,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            410: components["responses"]["ValidationPurged"];
             /** @description UUID inválido en la ruta (`invalid_uuid`). */
             422: {
                 headers: {
@@ -6113,6 +6632,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description La imagen no existe por decisión del cliente: la validación se creó con `retain_image=false` (`image_not_retained`) o se purgó (`validation_purged`). */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description UUID inválido en la ruta (`invalid_uuid`). */
             422: {
                 headers: {
@@ -6158,6 +6686,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            410: components["responses"]["ValidationPurged"];
             /** @description UUID inválido en la ruta (`invalid_uuid`). */
             422: {
                 headers: {
@@ -6228,6 +6757,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            410: components["responses"]["ValidationPurged"];
             413: components["responses"]["PayloadTooLarge"];
             /** @description Política inválida o precondición no cumplida. `retry_policy_invalid`, la forma, el rango o el resultado no se admiten; `retry_not_supported_for_bulk`, la validación nació de una importación; `retry_not_applicable`, su estado queda fuera de los tres que admiten reintento (`not_found`, `cep_unavailable`, `error`) o cambió mientras tanto; `retry_already_resolved`, el ciclo ya cerró; `retry_age_exceeded`, la validación es más vieja que `max_age_seconds`; `retry_pending_cap_exceeded`, se alcanzó el tope de pendientes de la cuenta de usuario o el de despachados en 24 horas; `reactivation_cap_exceeded`, se alcanzó el tope de reactivaciones de esa validación. */
             422: {
@@ -6286,6 +6816,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            410: components["responses"]["ValidationPurged"];
             /** @description No hay ciclo de reintentos activo que cancelar (código `retry_not_active`). UUID inválido (`invalid_uuid`). */
             422: {
                 headers: {
@@ -6295,6 +6826,198 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+        };
+    };
+    recheckValidation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identificador (UUID) de la validación */
+                id: components["parameters"]["ValidationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Estado de pago consultado. Devuelve la validación y, en `meta.recheck`, cuándo se consultó, si cambió a `returned` y qué veredicto tenía antes. */
+            200: {
+                headers: {
+                    /** @description ETag débil de la validación después de la consulta. Sigue el formato `W/"{etag_version}-{status}"` y sube en cada consulta, aunque el veredicto no cambie. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessEnvelope"] & {
+                        data?: components["schemas"]["Validation"];
+                        meta?: {
+                            recheck?: components["schemas"]["ValidationRecheckMeta"];
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Validación no encontrada, retirada o ajena a la cuenta de usuario (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            410: components["responses"]["ValidationPurged"];
+            /** @description La validación no se puede consultar: su estado no es `valid` ni `returned` (código `recheck_not_eligible`, con el estado en `meta.status`) o tiene más horas que la ventana (código `recheck_window_expired`, con la ventana en `meta.window_hours`). UUID inválido (`invalid_uuid`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description La validación se consultó hace menos de 10 minutos (código `recheck_rate_limited`). `Retry-After` y `meta.retry_after` dan los segundos que faltan. También responde así el límite de peticiones de la clave de API (`rate_limit_exceeded`). */
+            429: {
+                headers: {
+                    /** @description Segundos que faltan para poder consultar esta validación de nuevo. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Banxico no entregó un estado legible, o la consulta de estado está apagada (código `recheck_unavailable`). La validación no cambia y conserva su intervalo. `Retry-After` y `meta.retry_after` sugieren esperar 60 segundos. */
+            503: {
+                headers: {
+                    /** @description Segundos que se sugiere esperar antes de reintentar. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    prepareValidationPurge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identificador (UUID) de la validación */
+                id: components["parameters"]["ValidationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resumen de lo que se borraría y token de confirmación. La validación no cambió. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessEnvelope"] & components["schemas"]["ValidationPurgePrepareResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Validación no encontrada, o ajena a la cuenta de usuario (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description La validación sigue en curso (`queued` o `processing`) y todavía no se puede purgar (`purge_validation_in_progress`, con el estado en `meta.status`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            410: components["responses"]["ValidationPurged"];
+            /** @description UUID inválido en la ruta (`invalid_uuid`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    executeValidationPurge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identificador (UUID) de la validación */
+                id: components["parameters"]["ValidationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "confirmation_token": "eyJhZG1pbl9pZCI6Ii4uLiJ9.q1w2e3r4t5y6u7i8o9p0"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ValidationPurgeExecuteRequest"];
+            };
+        };
+        responses: {
+            /** @description Validación purgada. Devuelve cuándo se purgó, el estado del borrado de los archivos y lo que se borró. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessEnvelope"] & components["schemas"]["ValidationPurgeExecuteResponse"];
+                };
+            };
+            400: components["responses"]["BodyEmpty"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Validación no encontrada, o ajena a la cuenta de usuario (`not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description El token ya se usó (`confirmation_token_already_used`), o la validación sigue en curso y todavía no se puede purgar (`purge_validation_in_progress`, con el estado en `meta.status`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            410: components["responses"]["ValidationPurged"];
+            413: components["responses"]["PayloadTooLarge"];
+            /** @description El token no sirve. Códigos posibles: `confirmation_token_missing`, `confirmation_token_malformed`, `confirmation_token_signature_invalid`, `confirmation_token_expired`, `confirmation_token_operation_mismatch` y `purge_token_mismatch` (el token es de otra validación o de otra cuenta). UUID inválido en la ruta (`invalid_uuid`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
         };
     };
     listBanks: {
@@ -7761,11 +8484,11 @@ export interface operations {
                  */
                 status?: "success" | "failed" | "retrying" | "pending";
                 /**
-                 * @description Filtro — Tipo de evento que originó la entrega. **De validaciones**: `validation.completed` cuando termina bien, `validation.failed` cuando termina mal y `validation.error` cuando hay un error del servicio. **De los reintentos automáticos:** `validation.retry.scheduled` al programar un reintento automático, `validation.retry.resolved` cuando un reintento automático encuentra el CEP, y `validation.retry.exhausted` cuando los reintentos se agotan sin encontrar el CEP.\
+                 * @description Filtro — Tipo de evento que originó la entrega. **De validaciones**: `validation.completed` cuando termina bien, `validation.failed` cuando termina mal y `validation.error` cuando hay un error del servicio. **De los reintentos automáticos:** `validation.retry.scheduled` al programar un reintento automático, `validation.retry.resolved` cuando un reintento automático encuentra el CEP, y `validation.retry.exhausted` cuando los reintentos se agotan sin encontrar el CEP. **De la revisión posterior de un `valid`:** `validation.returned` cuando una validación que había salido `valid` pasa a `returned` porque Banxico reportó la devolución.\
                  *     **De la suscripción:** `billing.payment_succeeded` y `billing.payment_failed` por cada cobro, `billing.invoice_upcoming` antes de la siguiente factura, `billing.trial_will_end` antes de que acabe la prueba gratuita, y `billing.subscription_canceled` al cancelar la suscripción. Las entregas sintéticas (envío de prueba) se marcan como `test`.
                  * @example validation.completed
                  */
-                event_type?: "validation.completed" | "validation.failed" | "validation.error" | "validation.retry.scheduled" | "validation.retry.resolved" | "validation.retry.exhausted" | "billing.payment_succeeded" | "billing.payment_failed" | "billing.trial_will_end" | "billing.subscription_canceled" | "billing.invoice_upcoming" | "test";
+                event_type?: "validation.completed" | "validation.failed" | "validation.error" | "validation.retry.scheduled" | "validation.retry.resolved" | "validation.retry.exhausted" | "validation.returned" | "billing.payment_succeeded" | "billing.payment_failed" | "billing.trial_will_end" | "billing.subscription_canceled" | "billing.invoice_upcoming" | "test";
             };
             header?: never;
             path?: never;
@@ -7816,11 +8539,11 @@ export interface operations {
                  */
                 status?: "success" | "failed" | "retrying" | "pending";
                 /**
-                 * @description Filtro — Tipo de evento que originó la entrega. **De validaciones**: `validation.completed` cuando termina bien, `validation.failed` cuando termina mal y `validation.error` cuando hay un error del servicio. **De los reintentos automáticos:** `validation.retry.scheduled` al programar un reintento automático, `validation.retry.resolved` cuando un reintento automático encuentra el CEP, y `validation.retry.exhausted` cuando los reintentos se agotan sin encontrar el CEP.\
+                 * @description Filtro — Tipo de evento que originó la entrega. **De validaciones**: `validation.completed` cuando termina bien, `validation.failed` cuando termina mal y `validation.error` cuando hay un error del servicio. **De los reintentos automáticos:** `validation.retry.scheduled` al programar un reintento automático, `validation.retry.resolved` cuando un reintento automático encuentra el CEP, y `validation.retry.exhausted` cuando los reintentos se agotan sin encontrar el CEP. **De la revisión posterior de un `valid`:** `validation.returned` cuando una validación que había salido `valid` pasa a `returned` porque Banxico reportó la devolución.\
                  *     **De la suscripción:** `billing.payment_succeeded` y `billing.payment_failed` por cada cobro, `billing.invoice_upcoming` antes de la siguiente factura, `billing.trial_will_end` antes de que acabe la prueba gratuita, y `billing.subscription_canceled` al cancelar la suscripción. Las entregas sintéticas (envío de prueba) se marcan como `test`.
                  * @example validation.completed
                  */
-                event_type?: "validation.completed" | "validation.failed" | "validation.error" | "validation.retry.scheduled" | "validation.retry.resolved" | "validation.retry.exhausted" | "billing.payment_succeeded" | "billing.payment_failed" | "billing.trial_will_end" | "billing.subscription_canceled" | "billing.invoice_upcoming" | "test";
+                event_type?: "validation.completed" | "validation.failed" | "validation.error" | "validation.retry.scheduled" | "validation.retry.resolved" | "validation.retry.exhausted" | "validation.returned" | "billing.payment_succeeded" | "billing.payment_failed" | "billing.trial_will_end" | "billing.subscription_canceled" | "billing.invoice_upcoming" | "test";
                 /**
                  * @description Formato del archivo a descargar. Valores aceptados: `csv` y `xlsx`. Cualquier otro valor se sirve como `csv`.
                  * @example csv
