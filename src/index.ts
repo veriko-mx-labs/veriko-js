@@ -198,14 +198,19 @@ export {
 } from './types.js';
 
 export {
+  DEFAULT_TOLERANCE_SECONDS,
   DELIVERY_ID_HEADER,
   EVENT_HEADER,
   SIGNATURE_HEADER,
+  TIMESTAMPED_SIGNATURE_HEADER,
   TIMESTAMP_HEADER,
   computeSignature,
   parseWebhook,
   signatureFromHeaders,
+  timestampedSignatureFromHeaders,
   verifyWebhook,
+  verifyWebhookTimestamped,
+  type VerifyTimestampedOptions,
 } from './webhooks.js';
 
 export type { components, operations, paths } from './generated/openapi.js';

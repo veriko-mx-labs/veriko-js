@@ -101,6 +101,7 @@ const NON_RESPONSE_RECORDINGS = new Set([
   'webhook-retry-resolved',
   'webhook-validation-completed',
   'webhook-validation-banxico-confirmed',
+  'webhook-validation-client-ref',
 ]);
 
 function asObject(value: unknown, message = 'se esperaba un objeto'): JsonObject {

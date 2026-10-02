@@ -165,6 +165,22 @@ describe('parseWebhook', () => {
     });
   });
 
+  it('lee client_ref cuando la entrega lo trae', () => {
+    const payload = recordedBody('webhook-validation-client-ref');
+
+    const evento = parseWebhook(payload, firmar(payload), SECRET);
+
+    assert.equal(evento.data?.attributes.client_ref, 'orden-4812');
+  });
+
+  it('no trae client_ref cuando la entrega no lo incluye', () => {
+    const payload = recordedBody('webhook-validation-completed');
+
+    const evento = parseWebhook(payload, firmar(payload), SECRET);
+
+    assert.equal(evento.data?.attributes.client_ref, undefined);
+  });
+
   it('no trae banxico_confirmed cuando la entrega no lo incluye', () => {
     const payload = recordedBody('webhook-validation-completed');
 

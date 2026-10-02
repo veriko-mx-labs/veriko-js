@@ -13,6 +13,13 @@ versiones según [SemVer](https://semver.org/lang/es/).
 - El filtro `clientRef`, de coincidencia exacta, en `validations.list()`, `validations.iter()`,
   `validations.stats()` y `validations.export()`.
 - Los tipos de `Validation` añaden `client_ref`, `duplicate_of` y `account_conflict`.
+- `verifyWebhookTimestamped()` comprueba la cabecera `X-Webhook-Signature-Timestamped`
+  (`t=<segundos>,v1=<hex>`): compara en tiempo constante el HMAC-SHA256 de `<t>.<cuerpo>` con cada
+  `v1` y rechaza la entrega cuando `t` se aleja del reloj más de `toleranceSeconds`, 300 por
+  omisión. `timestampedSignatureFromHeaders()` encuentra la cabecera en cualquiera de sus grafías.
+  `verifyWebhook()` no cambia.
+- `parseWebhook()` entrega el `client_ref` en `evento.data.attributes` cuando el webhook de
+  validación lo trae.
 
 ### Cambiado
 

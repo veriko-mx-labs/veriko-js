@@ -191,8 +191,9 @@ const page = await client.validations.list({ clientRef: 'orden-4812' });
 
 `validateOcr()`, `enqueue()` y `enqueueOcr()` también la aceptan. Vuelve en
 `attributes.client_ref`, en los listados y en los webhooks de validación, y `list()`, `stats()` y
-`export()` la usan como filtro de coincidencia exacta. La API rechaza con `422`
-(`invalid_client_ref`) una referencia que no cumple las reglas.
+`export()` la usan como filtro de coincidencia exacta. En un webhook, `parseWebhook()` la entrega en
+`evento.data.attributes.client_ref`. La API rechaza con `422` (`invalid_client_ref`) una referencia
+que no cumple las reglas.
 
 ### Duplicado y conflicto de cuenta
 
@@ -410,16 +411,48 @@ del beneficiario (enmascarada a los últimos 4 dígitos), tal como los confirmó
 contra el pedido antes de liberar la mercancía: la imagen de un comprobante puede mostrar un monto
 distinto al que Banxico confirmó.
 
-### Las cuatro cabeceras de una entrega
+### Las cinco cabeceras de una entrega
 
-| cabecera               | contenido                                             |
-| ---------------------- | ----------------------------------------------------- |
-| `X-Webhook-Signature`  | `sha256=` seguido del HMAC en hexadecimal             |
-| `X-Veriko-Event`       | Tipo de evento, por ejemplo `validation.completed`    |
-| `X-Veriko-Delivery-Id` | Identificador de la entrega, estable entre reintentos |
-| `X-Veriko-Timestamp`   | Momento del envío, ISO 8601 con sufijo `Z`            |
+| cabecera                          | contenido                                                                |
+| --------------------------------- | ------------------------------------------------------------------------ |
+| `X-Webhook-Signature`             | `sha256=` seguido del HMAC en hexadecimal                                |
+| `X-Webhook-Signature-Timestamped` | `t=<segundos>,v1=<hex>`: firma de `<t>.<cuerpo>` con la hora del intento |
+| `X-Veriko-Event`                  | Tipo de evento, por ejemplo `validation.completed`                       |
+| `X-Veriko-Delivery-Id`            | Identificador de la entrega, estable entre reintentos                    |
+| `X-Veriko-Timestamp`              | Momento del envío, ISO 8601 con sufijo `Z`                               |
 
 El `Delivery-Id` es el valor que permite descartar entregas repetidas.
+
+### Firma con marca de tiempo
+
+`X-Webhook-Signature-Timestamped` firma la hora del intento junto con el cuerpo, de modo que el
+receptor puede descartar una entrega vieja que alguien vuelva a enviar. `X-Webhook-Signature` no
+cambia.
+
+```ts
+import { verifyWebhookTimestamped } from '@veriko-mx/sdk';
+
+if (
+  !verifyWebhookTimestamped(
+    request.body, // el cuerpo crudo
+    request.get('X-Webhook-Signature-Timestamped'),
+    SECRET,
+  )
+) {
+  return response.sendStatus(400);
+}
+```
+
+`verifyWebhookTimestamped(payload, header, secret, { toleranceSeconds, now })` devuelve `true` o
+`false`. Calcula el HMAC-SHA256 de `<t>.<cuerpo>`, lo compara en tiempo constante con cada `v1` de
+la cabecera y rechaza la entrega si `t` se aleja del reloj del receptor más de `toleranceSeconds`,
+300 por omisión. `now` fija la hora actual con un `Date`, para las pruebas.
+`timestampedSignatureFromHeaders(headers)` encuentra la cabecera en cualquiera de sus grafías.
+
+La ventana se aplica a `t`, la hora del intento, y no al campo `timestamp` del cuerpo, que es la hora
+del evento. Un reintento llega hasta unas 8,6 horas después del evento, pero lleva una `t` recién
+generada. Medir la ventana contra el `timestamp` del cuerpo rechazaría reintentos legítimos. La
+ventana no sustituye a la deduplicación: guarda el `Delivery-Id` al menos 24 horas.
 
 ## Reintentos
 

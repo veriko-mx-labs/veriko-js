@@ -15,11 +15,20 @@
  *    los bytes y rompe la firma.
  * 2. La entrega dispone de 10 segundos. Responder `2xx` primero y procesar
  *    después evita reintentos innecesarios.
+ * 3. `X-Webhook-Signature-Timestamped` firma también la hora del intento. Con
+ *    ella el receptor descarta una entrega vieja que alguien vuelva a enviar: la
+ *    ventana por omisión es de 5 minutos contra `t`, no contra el `timestamp` del
+ *    cuerpo.
  */
 
 import express from 'express';
 
-import { SignatureVerificationError, parseWebhook } from '@veriko-mx/sdk';
+import {
+  SignatureVerificationError,
+  parseWebhook,
+  timestampedSignatureFromHeaders,
+  verifyWebhookTimestamped,
+} from '@veriko-mx/sdk';
 
 const app = express();
 const SECRET = process.env.VERIKO_WEBHOOK_SECRET;
@@ -32,8 +41,23 @@ const entregasVistas = new Set();
 // de datos, no de un mapa en memoria.
 const pedidos = new Map(); // validationId -> { monto, cuentaBeneficiaria }
 
+// `true` cuando la firma con la hora del intento cuadra y `t` cae dentro de la ventana.
+function firmaVigente(request) {
+  return verifyWebhookTimestamped(
+    request.body, // el cuerpo crudo, sin interpretar
+    timestampedSignatureFromHeaders(request.headers),
+    SECRET,
+  );
+}
+
 app.post('/hooks/veriko', express.raw({ type: 'application/json' }), (request, response) => {
   const deliveryId = request.get('X-Veriko-Delivery-Id');
+
+  if (!firmaVigente(request)) {
+    // Firma que no cuadra, o entrega fuera de la ventana: no se procesa.
+    response.sendStatus(400);
+    return;
+  }
 
   let evento;
   try {
@@ -59,6 +83,7 @@ app.post('/hooks/veriko', express.raw({ type: 'application/json' }), (request, r
     case 'validation.completed': {
       const { id, attributes } = evento.data;
       console.log(`[${evento.event}] ${id} → ${attributes.status}`);
+      if (attributes.client_ref) console.log('  pedido:', attributes.client_ref);
       if (evento.data.links?.cep_pdf) {
         console.log('  comprobante disponible en', evento.data.links.cep_pdf);
       }
