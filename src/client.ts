@@ -154,8 +154,10 @@ export class Veriko {
    * Devuelve el veredicto en `attributes.status`: `valid`, `not_found`,
    * `cep_unavailable`, `returned` o `error`.
    *
-   * La operación exige `claveRastreo` o `referenciaNumerica`. Enviar las dos
-   * precisa la búsqueda. La fecha es la de envío, en `YYYY-MM-DD`.
+   * La operación exige `cuentaBeneficiaria`, y `claveRastreo` o
+   * `referenciaNumerica`. Enviar las dos últimas precisa la búsqueda. La fecha
+   * es la de envío, en `YYYY-MM-DD`. `clientRef` es una referencia propia que
+   * vuelve en la validación y en los webhooks.
    *
    * Un `not_found` inmediato no equivale a una transferencia inexistente: un
    * CEP tarda en publicarse. `retryPolicy` deja a la API consultando de nuevo y

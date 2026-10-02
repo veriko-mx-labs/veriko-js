@@ -99,9 +99,10 @@ const client = new Veriko({ apiKey: 'veriko_tu_clave_aqui' });
 
 ## Validar una transferencia
 
-La operación exige la fecha de envío, el importe y **la clave de rastreo o la referencia
-numérica**. Enviar las dos precisa la búsqueda. El banco emisor, el receptor y la cuenta
-beneficiaria son opcionales y mejoran la identificación.
+La operación exige la fecha de envío, el importe, la cuenta beneficiaria y **la clave de rastreo
+o la referencia numérica**. Enviar las dos precisa la búsqueda. El banco emisor y el receptor son
+opcionales y mejoran la identificación. La API rechaza con `422` (`preflight_failed`) una petición
+sin `cuenta_beneficiaria`: no la busca entre los beneficiarios guardados.
 
 ```ts
 import { Veriko } from '@veriko-mx/sdk';
@@ -170,6 +171,37 @@ El tiempo de espera se fija con `timeoutMs` (cinco minutos por omisión) y la pa
 
 La alternativa a sondear es suscribirse al webhook `validation.completed`.
 
+### Referencia propia
+
+`clientRef` es una referencia propia de 1 a 64 caracteres, sin saltos de línea ni emoji. Sirve para
+relacionar la validación con un pedido propio. No debe contener datos personales.
+
+```ts
+const validation = await client.validateTransfer({
+  fecha: '2025-03-15',
+  monto: 15000.5,
+  claveRastreo: 'MXBA20250315001234',
+  cuentaBeneficiaria: '012180004412345678',
+  clientRef: 'orden-4812',
+});
+console.log(validation.attributes.client_ref); // orden-4812
+
+const page = await client.validations.list({ clientRef: 'orden-4812' });
+```
+
+`validateOcr()`, `enqueue()` y `enqueueOcr()` también la aceptan. Vuelve en
+`attributes.client_ref`, en los listados y en los webhooks de validación, y `list()`, `stats()` y
+`export()` la usan como filtro de coincidencia exacta. La API rechaza con `422`
+(`invalid_client_ref`) una referencia que no cumple las reglas.
+
+### Duplicado y conflicto de cuenta
+
+`attributes.duplicate_of` trae el `id` y el `created_at` de una validación previa `valid`, de la
+misma cuenta y con la misma clave de rastreo. `attributes.account_conflict` trae los últimos 4
+dígitos de la cuenta enviada (`sent_last4`) y de la que muestra la imagen (`read_last4`) en una
+validación por OCR. Ninguno cambia el veredicto, y los dos están ausentes cuando la API no los
+informa.
+
 ### Listar y recorrer el historial
 
 ```ts
@@ -186,7 +218,7 @@ for await (const item of client.validations.iter({ from: '2025-03-01', to: '2025
 `totalPages` y `hasNext`.
 
 Los filtros (`status`, `type`, `from`, `to`, `search`, `playground`, `withDeleted`, `batchId`,
-`bank`, `amountMin`, `amountMax` y `retryState`) van en `camelCase`. `status` acepta un estado o una
+`bank`, `amountMin`, `amountMax`, `clientRef` y `retryState`) van en `camelCase`. `status` acepta un estado o una
 lista, y `withDeleted: true` devuelve sólo las validaciones retiradas, mientras que `false` devuelve
 sólo las activas.
 

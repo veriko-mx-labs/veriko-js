@@ -70,8 +70,8 @@ describe('el cuerpo de POST /v1/validate sigue al spec', () => {
     assert.deepEqual(Object.keys(schema.properties), [...VALIDATION_REQUEST_FIELDS]);
   });
 
-  it('exige fecha y monto', () => {
-    assert.deepEqual(schema?.required, ['fecha', 'monto']);
+  it('exige fecha, monto y cuenta beneficiaria', () => {
+    assert.deepEqual(schema?.required, ['fecha', 'monto', 'cuenta_beneficiaria']);
   });
 });
 

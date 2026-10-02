@@ -20,6 +20,7 @@ const TRANSFER = {
   fecha: '2025-03-15',
   monto: 15000.5,
   claveRastreo: 'MXBA20250315001234',
+  cuentaBeneficiaria: '012180004412345678',
 };
 
 describe('errores de la API', () => {

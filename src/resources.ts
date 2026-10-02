@@ -171,6 +171,7 @@ export function filtersToQuery(filters: ValidationFilters): Query {
     bank: filters.bank,
     amount_min: filters.amountMin,
     amount_max: filters.amountMax,
+    client_ref: filters.clientRef,
     retry_state: filters.retryState,
   };
 }
@@ -187,17 +188,21 @@ function directBody(params: ValidateTransferParams): ValidationRequest {
       { status: 422, code: 'clave_or_ref_required' },
     );
   }
+  if (!params.cuentaBeneficiaria) {
+    throw new InvalidRequestError(
+      'Hace falta cuentaBeneficiaria: la API no la busca entre los beneficiarios guardados',
+      { status: 422, code: 'cuenta_required' },
+    );
+  }
 
   const body: ValidationRequest = {
     fecha: params.fecha,
     monto: typeof params.monto === 'string' ? Number(params.monto) : params.monto,
+    cuenta_beneficiaria: params.cuentaBeneficiaria,
   };
   if (params.claveRastreo !== undefined) body.clave_rastreo = params.claveRastreo;
   if (params.referenciaNumerica !== undefined) {
     body.referencia_numerica = params.referenciaNumerica;
-  }
-  if (params.cuentaBeneficiaria !== undefined) {
-    body.cuenta_beneficiaria = params.cuentaBeneficiaria;
   }
   if (params.emisor !== undefined) body.emisor = params.emisor;
   if (params.receptor !== undefined) body.receptor = params.receptor;
@@ -205,6 +210,7 @@ function directBody(params: ValidateTransferParams): ValidationRequest {
     body.receptor_participante = params.receptorParticipante;
   }
   if (params.retryPolicy !== undefined) body.retry_policy = params.retryPolicy;
+  if (params.clientRef !== undefined) body.client_ref = params.clientRef;
   return body;
 }
 
@@ -240,6 +246,7 @@ async function ocrBody(params: ValidateOcrParams): Promise<OcrValidationRequest>
   if (params.imageUrl) body.image_url = params.imageUrl;
   if (params.cuentaBeneficiaria) body.cuenta_beneficiaria = params.cuentaBeneficiaria;
   if (params.retryPolicy !== undefined) body.retry_policy = params.retryPolicy;
+  if (params.clientRef !== undefined) body.client_ref = params.clientRef;
   return body;
 }
 
@@ -320,6 +327,11 @@ export class Validations {
    * `POST /v1/validate`. Devuelve el veredicto en `attributes.status`. Para
    * volumen está `enqueue()`, que acepta la petición y deja el veredicto para
    * después.
+   *
+   * `cuentaBeneficiaria` es obligatoria: la API no la busca entre los
+   * beneficiarios guardados. `clientRef` es una referencia propia, de 1 a 64
+   * caracteres, que vuelve en `attributes.client_ref` y en los webhooks, y que
+   * `list()` acepta como filtro exacto.
    */
   async validate(params: ValidateTransferParams): Promise<Validation> {
     const response = await this.post('/validate', directBody(params), params.idempotencyKey, false);
@@ -335,6 +347,9 @@ export class Validations {
    *
    * `imageUrl` sirve para un comprobante ya publicado en HTTPS. Si se envían las
    * dos, la API sólo considera `image`.
+   *
+   * `clientRef` es una referencia propia, de 1 a 64 caracteres, que vuelve en
+   * `attributes.client_ref` y en los webhooks.
    */
   async validateOcr(params: ValidateOcrParams): Promise<Validation> {
     const response = await this.post(
@@ -429,7 +444,8 @@ export class Validations {
   /**
    * Lista las validaciones de la cuenta, con filtros y paginación.
    *
-   * `GET /v1/validations`. Un listado trae menos campos que `get()`.
+   * `GET /v1/validations`. Un listado trae menos campos que `get()`. `clientRef`
+   * filtra por coincidencia exacta con la referencia enviada al validar.
    */
   async list(params: ListValidationsParams = {}): Promise<Page<ValidationSummary>> {
     const response = await this.transport.request({

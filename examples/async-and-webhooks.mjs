@@ -32,18 +32,23 @@ if (!prueba.attributes?.delivered) {
 console.log('Prueba entregada en', prueba.attributes.response_time_ms, 'ms');
 
 // 3. Las transferencias por validar. La clave de idempotencia sale del número de
-//    pedido, no de un aleatorio: así un reenvío no duplica el cargo.
+//    pedido, no de un aleatorio: así un reenvío no duplica el cargo. `clientRef`
+//    relaciona la validación con un pedido propio.
 const transferencias = [
   {
     fecha: '2025-03-15',
     monto: 15000.5,
     claveRastreo: 'MXBA20250315001234',
+    cuentaBeneficiaria: '012180004412345678',
+    clientRef: 'pedido-4f3a2b1c',
     idempotencyKey: 'pedido-4f3a2b1c',
   },
   {
     fecha: '2025-03-15',
     monto: 2300,
     claveRastreo: 'MXBA20250315005678',
+    cuentaBeneficiaria: '012180004412345678',
+    clientRef: 'pedido-7c2d9e0a',
     idempotencyKey: 'pedido-7c2d9e0a',
   },
 ];

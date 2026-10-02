@@ -91,6 +91,37 @@ describe('client.validations', () => {
       }
     });
 
+    it('clientRef viaja como client_ref', async () => {
+      server.enqueue('validate-ocr-conflict');
+
+      const validation = await client.validations.validateOcr({
+        image: Buffer.from('png'),
+        clientRef: 'orden-4812',
+      });
+
+      assert.equal(server.json(0)['client_ref'], 'orden-4812');
+      assert.equal(validation.attributes.client_ref, 'orden-4812');
+    });
+
+    it('la validación expone el duplicado y el conflicto de cuenta', async () => {
+      server.enqueue('validate-ocr-conflict');
+
+      const validation = await client.validations.validateOcr({
+        image: Buffer.from('png'),
+        cuentaBeneficiaria: '012180004412345678',
+      });
+
+      assert.deepEqual(validation.attributes.duplicate_of, {
+        id: '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+        created_at: '2025-04-09T09:15:00Z',
+      });
+      assert.deepEqual(validation.attributes.account_conflict, {
+        sent_last4: '5678',
+        read_last4: '9012',
+      });
+      assert.equal(validation.attributes.status, 'not_found');
+    });
+
     it('imageUrl viaja sola, sin image', async () => {
       server.enqueue('validate-ocr');
 
@@ -147,6 +178,7 @@ describe('client.validations', () => {
         fecha: '2025-03-15',
         monto: 15000.5,
         claveRastreo: 'MXBA20250315001234',
+        cuentaBeneficiaria: '012180004412345678',
       });
 
       assert.equal(server.request(0).url, '/v1/validate?async=1');
@@ -156,6 +188,24 @@ describe('client.validations', () => {
       assert.equal(queued.location, `/v1/validations/${VALIDATION_ID}`);
       assert.equal(queued.nextPollAfterSeconds, 3);
       assert.equal(queued.data.attributes?.expires_at, '2025-03-15T15:22:10Z');
+    });
+
+    it('encolar lleva clientRef en los dos caminos', async () => {
+      server.enqueue('validate-queued', 2);
+
+      await client.validations.enqueue({
+        fecha: '2025-03-15',
+        monto: 15000.5,
+        claveRastreo: 'MXBA20250315001234',
+        cuentaBeneficiaria: '012180004412345678',
+        clientRef: 'orden-4812',
+      });
+      await client.validations.enqueueOcr({ image: Buffer.from('png'), clientRef: 'orden-4812' });
+
+      assert.equal(server.request(0).url, '/v1/validate?async=1');
+      assert.equal(server.json(0)['client_ref'], 'orden-4812');
+      assert.equal(server.request(1).url, '/v1/validate-ocr?async=1');
+      assert.equal(server.json(1)['client_ref'], 'orden-4812');
     });
 
     it('encolar una imagen', async () => {
@@ -169,7 +219,12 @@ describe('client.validations', () => {
 
     it('encolar sin identificador de transferencia no llama a la API', async () => {
       await assert.rejects(
-        () => client.validations.enqueue({ fecha: '2025-03-15', monto: 100 }),
+        () =>
+          client.validations.enqueue({
+            fecha: '2025-03-15',
+            monto: 100,
+            cuentaBeneficiaria: '012180004412345678',
+          }),
         InvalidRequestError,
       );
 
@@ -212,7 +267,12 @@ describe('client.validations', () => {
 
     it('el atajo de la raíz y la familia hacen lo mismo', async () => {
       server.enqueue('validate-valid', 2);
-      const params = { fecha: '2025-03-15', monto: 15000.5, claveRastreo: 'MXBA20250315001234' };
+      const params = {
+        fecha: '2025-03-15',
+        monto: 15000.5,
+        claveRastreo: 'MXBA20250315001234',
+        cuentaBeneficiaria: '012180004412345678',
+      };
 
       const fromRoot = await client.validateTransfer(params);
       const fromFamily = await client.validations.validate(params);
@@ -434,6 +494,20 @@ describe('client.validations', () => {
       assert.equal(sent.get('retry_state'), 'pending');
       assert.equal(sent.get('page'), '3');
       assert.equal(sent.get('per_page'), '50');
+    });
+
+    it('clientRef filtra el listado, la exportación y las estadísticas', async () => {
+      server.enqueue('validations-page1');
+      server.enqueue('validations-export-csv');
+      server.enqueue('validations-stats');
+
+      await client.validations.list({ clientRef: 'orden 4812' });
+      await client.validations.export({ clientRef: 'orden 4812' });
+      await client.validations.stats({ clientRef: 'orden 4812' });
+
+      for (const index of [0, 1, 2]) {
+        assert.equal(query(index).get('client_ref'), 'orden 4812');
+      }
     });
 
     it('withDeleted false pide sólo las activas, y playground false no viaja', async () => {

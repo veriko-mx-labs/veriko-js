@@ -53,6 +53,7 @@ describe('validateTransfer', () => {
       fecha: '2025-03-16',
       monto: 15000.5,
       claveRastreo: 'MXBA20250316000001',
+      cuentaBeneficiaria: '012180004412345678',
     });
 
     assert.equal(validation.attributes.status, 'not_found');
@@ -66,6 +67,7 @@ describe('validateTransfer', () => {
       fecha: '2025-03-15',
       monto: 15000.5,
       claveRastreo: 'MXBA20250315001234',
+      cuentaBeneficiaria: '012180004412345678',
     });
 
     assert.equal(validation.attributes.status, 'returned');
@@ -103,6 +105,7 @@ describe('validateTransfer', () => {
       fecha: '2025-03-15',
       monto: 15000.5,
       claveRastreo: 'MXBA20250315001234',
+      cuentaBeneficiaria: '012180004412345678',
     });
 
     const body = server.json(0);
@@ -118,6 +121,7 @@ describe('validateTransfer', () => {
       fecha: '2025-03-16',
       monto: 15000.5,
       claveRastreo: 'MXBA20250316000001',
+      cuentaBeneficiaria: '012180004412345678',
       retryPolicy: {
         enabled: true,
         max_retries: 3,
@@ -136,7 +140,12 @@ describe('validateTransfer', () => {
 
   it('sin identificador de transferencia no se llama a la API', async () => {
     await assert.rejects(
-      () => client.validateTransfer({ fecha: '2025-03-15', monto: 100 }),
+      () =>
+        client.validateTransfer({
+          fecha: '2025-03-15',
+          monto: 100,
+          cuentaBeneficiaria: '012180004412345678',
+        }),
       (error: unknown) => {
         assert.ok(error instanceof InvalidRequestError);
         assert.equal(error.code, 'clave_or_ref_required');
@@ -145,6 +154,70 @@ describe('validateTransfer', () => {
     );
 
     assert.equal(server.requests.length, 0);
+  });
+
+  it('sin cuenta beneficiaria no se llama a la API', async () => {
+    await assert.rejects(
+      () =>
+        client.validateTransfer({
+          fecha: '2025-03-15',
+          monto: 100,
+          claveRastreo: 'MXBA20250315001234',
+          cuentaBeneficiaria: '',
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof InvalidRequestError);
+        assert.equal(error.code, 'cuenta_required');
+        return true;
+      },
+    );
+
+    assert.equal(server.requests.length, 0);
+  });
+
+  it('clientRef viaja como client_ref y vuelve en la validación', async () => {
+    server.enqueue('validate-valid-client-ref');
+
+    const validation = await client.validateTransfer({
+      fecha: '2025-03-15',
+      monto: 15000.5,
+      claveRastreo: 'MXBA20250315001234',
+      cuentaBeneficiaria: '012180004412345678',
+      clientRef: 'orden-4812',
+    });
+
+    assert.equal(server.json(0)['client_ref'], 'orden-4812');
+    assert.equal(validation.attributes.client_ref, 'orden-4812');
+  });
+
+  it('sin clientRef no viaja y la validación no lo trae', async () => {
+    server.enqueue('validate-valid');
+
+    const validation = await client.validateTransfer({
+      fecha: '2025-03-15',
+      monto: 15000.5,
+      claveRastreo: 'MXBA20250315001234',
+      cuentaBeneficiaria: '012180004412345678',
+    });
+
+    assert.equal('client_ref' in server.json(0), false);
+    assert.equal(validation.attributes.client_ref, undefined);
+    assert.equal(validation.attributes.duplicate_of, undefined);
+    assert.equal(validation.attributes.account_conflict, undefined);
+  });
+
+  it('un clientRef vacío llega a la API para que lo rechace', async () => {
+    server.enqueue('validate-valid');
+
+    await client.validateTransfer({
+      fecha: '2025-03-15',
+      monto: 15000.5,
+      claveRastreo: 'MXBA20250315001234',
+      cuentaBeneficiaria: '012180004412345678',
+      clientRef: '',
+    });
+
+    assert.equal(server.json(0)['client_ref'], '');
   });
 
   it('leer una validación por su identificador', async () => {

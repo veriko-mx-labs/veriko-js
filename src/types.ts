@@ -55,11 +55,13 @@ export interface ValidationRequest {
   /** Nombre o código SPEI del banco receptor. */
   receptor?: string;
   /** CLABE (18 dígitos), tarjeta (16) o celular DiMo (10) del beneficiario. */
-  cuenta_beneficiaria?: string;
+  cuenta_beneficiaria: string;
   /** `1` cuando el beneficiario es la propia institución receptora. */
   receptor_participante?: 0 | 1;
   /** Política de reintentos automáticos de la API. */
   retry_policy?: RetryPolicy;
+  /** Referencia propia, de 1 a 64 caracteres, que vuelve en la validación y en los webhooks. */
+  client_ref?: string;
 }
 
 /**
@@ -76,6 +78,7 @@ export const VALIDATION_REQUEST_FIELDS = [
   'cuenta_beneficiaria',
   'receptor_participante',
   'retry_policy',
+  'client_ref',
 ] as const;
 
 /**
@@ -94,6 +97,8 @@ export interface OcrValidationRequest {
   cuenta_beneficiaria?: string;
   /** Política de reintentos automáticos de la API. */
   retry_policy?: RetryPolicy;
+  /** Referencia propia, de 1 a 64 caracteres, que vuelve en la validación y en los webhooks. */
+  client_ref?: string;
 }
 
 /** Los campos de `OcrValidationRequest`, para la prueba que los compara con el spec. */
@@ -102,6 +107,7 @@ export const OCR_VALIDATION_REQUEST_FIELDS = [
   'image_url',
   'cuenta_beneficiaria',
   'retry_policy',
+  'client_ref',
 ] as const;
 
 /** Estado resumido del ciclo de reintentos, tal como viaja en la respuesta. */
@@ -264,7 +270,7 @@ export interface ValidateTransferParams {
   /** Referencia numérica, de 1 a 7 dígitos. */
   referenciaNumerica?: string;
   /** CLABE, tarjeta o celular DiMo del beneficiario. */
-  cuentaBeneficiaria?: string;
+  cuentaBeneficiaria: string;
   /** Nombre o código SPEI del banco emisor. */
   emisor?: string;
   /** Nombre o código SPEI del banco receptor. */
@@ -276,6 +282,8 @@ export interface ValidateTransferParams {
   receptorParticipante?: 0 | 1;
   /** Política de reintentos automáticos de la API. */
   retryPolicy?: RetryPolicy;
+  /** Referencia propia, de 1 a 64 caracteres, que vuelve en la validación y en los webhooks. */
+  clientRef?: string;
   /**
    * Identificador del intento de negocio: el número de pedido, de lote o de
    * transacción. Con él, repetir la petición no duplica la validación durante
@@ -467,6 +475,8 @@ export interface ValidateOcrParams {
   cuentaBeneficiaria?: string;
   /** Política de reintentos automáticos de la API. */
   retryPolicy?: RetryPolicy;
+  /** Referencia propia, de 1 a 64 caracteres, que vuelve en la validación y en los webhooks. */
+  clientRef?: string;
   /** Identificador del intento de negocio. Con él, repetir la petición no duplica la validación. */
   idempotencyKey?: string;
 }
@@ -512,6 +522,8 @@ export interface ValidationFilters {
   bank?: string;
   amountMin?: number;
   amountMax?: number;
+  /** Coincidencia exacta con la `client_ref` enviada al validar. */
+  clientRef?: string;
   retryState?: RetryStateFilter;
 }
 
