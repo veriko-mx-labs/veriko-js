@@ -5,6 +5,10 @@ versiones según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+Sin cambios todavía.
+
+## [0.4.11] — 2026-10-01
+
 ### Añadido
 
 - `clientRef` en `validateTransfer()`, `validations.validate()`, `validations.validateOcr()`,
