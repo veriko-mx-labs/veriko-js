@@ -1,5 +1,5 @@
 /**
- * Las 66 operaciones M2M que cubre el SDK, contra el spec público.
+ * Las 69 operaciones M2M que cubre el SDK, contra el spec público.
  *
  * Cada caso llama a un método con todos sus argumentos opcionales y comprueba que
  * lo que llegó al servidor existe en el spec: el método y la ruta, los parámetros
@@ -142,7 +142,12 @@ interface Case {
   allQuery?: true;
   /** El caso pasa todos los campos del cuerpo que declara el schema. */
   allBody?: true;
+  /** Campos del cuerpo que el caso omite porque excluyen a otro que sí pasa. */
+  without?: readonly string[];
 }
+
+const CANDIDATES = ['012180004412345678', '002010077777777771'];
+const PURGE_TOKEN = 'eyJhZG1pbl9pZCI6Ii4uLiJ9.q1w2e3r4t5y6u7i8o9p0';
 
 const CASES: Case[] = [
   {
@@ -163,6 +168,27 @@ const CASES: Case[] = [
         clientRef: 'orden-4812',
         idempotencyKey: 'pedido-1',
       }),
+    without: ['cuentas_candidatas'],
+  },
+  {
+    operationId: 'validateDirect',
+    recording: 'validate-candidates',
+    allBody: true,
+    call: (client) =>
+      client.validations.validate({
+        fecha: '2025-03-15',
+        monto: 15000.5,
+        claveRastreo: 'MXBA20250315001234',
+        referenciaNumerica: '1234567',
+        emisor: 'BANCO NACIONAL DE MEXICO',
+        receptor: 'BBVA MEXICO',
+        cuentasCandidatas: CANDIDATES,
+        receptorParticipante: 1,
+        retryPolicy: POLICY,
+        clientRef: 'orden-4812',
+        idempotencyKey: 'pedido-1',
+      }),
+    without: ['cuenta_beneficiaria'],
   },
   {
     operationId: 'validateDirect',
@@ -183,6 +209,7 @@ const CASES: Case[] = [
         clientRef: 'orden-4812',
         idempotencyKey: 'pedido-1',
       }),
+    without: ['cuentas_candidatas'],
   },
   {
     operationId: 'validateOcr',
@@ -195,8 +222,26 @@ const CASES: Case[] = [
         cuentaBeneficiaria: '012180004412345678',
         retryPolicy: POLICY,
         clientRef: 'orden-4812',
+        retainImage: false,
         idempotencyKey: 'pedido-2',
       }),
+    without: ['cuentas_candidatas'],
+  },
+  {
+    operationId: 'validateOcr',
+    recording: 'validate-ocr',
+    allBody: true,
+    call: (client) =>
+      client.validations.validateOcr({
+        image: Buffer.from('imagen'),
+        imageUrl: 'https://ejemplo.mx/comprobante.png',
+        cuentasCandidatas: CANDIDATES,
+        retryPolicy: POLICY,
+        clientRef: 'orden-4812',
+        retainImage: true,
+        idempotencyKey: 'pedido-2',
+      }),
+    without: ['cuenta_beneficiaria'],
   },
   {
     operationId: 'validateOcr',
@@ -210,8 +255,10 @@ const CASES: Case[] = [
         cuentaBeneficiaria: '012180004412345678',
         retryPolicy: POLICY,
         clientRef: 'orden-4812',
+        retainImage: false,
         idempotencyKey: 'pedido-2',
       }),
+    without: ['cuentas_candidatas'],
   },
   {
     operationId: 'listValidations',
@@ -272,6 +319,22 @@ const CASES: Case[] = [
     operationId: 'sendCepToTelegram',
     recording: 'telegram-accepted',
     call: (client) => client.validations.sendCepToTelegram(ID),
+  },
+  {
+    operationId: 'recheckValidation',
+    recording: 'validation-recheck-returned',
+    call: (client) => client.validations.recheck(ID),
+  },
+  {
+    operationId: 'prepareValidationPurge',
+    recording: 'validation-purge-prepare',
+    call: (client) => client.validations.preparePurge(ID),
+  },
+  {
+    operationId: 'executeValidationPurge',
+    recording: 'validation-purge-executed',
+    allBody: true,
+    call: (client) => client.validations.executePurge(ID, { confirmationToken: PURGE_TOKEN }),
   },
   {
     operationId: 'createWebhook',
@@ -654,6 +717,9 @@ const SDK_OPERATIONS = [
   'cancelValidationRetries',
   'deleteValidation',
   'sendCepToTelegram',
+  'recheckValidation',
+  'prepareValidationPurge',
+  'executeValidationPurge',
   'createWebhook',
   'listWebhooks',
   'updateWebhook',
@@ -806,7 +872,12 @@ describe('lo que el SDK envía existe en el spec', () => {
             assert.ok(key in schema.properties, `${template}: el spec no declara el campo ${key}`);
           }
           if (testCase.allBody) {
-            assert.deepEqual([...bodyKeys].sort(), Object.keys(schema.properties).sort());
+            assert.deepEqual(
+              [...bodyKeys].sort(),
+              Object.keys(schema.properties)
+                .filter((key) => !(testCase.without ?? []).includes(key))
+                .sort(),
+            );
           }
         }
       } finally {
@@ -820,8 +891,8 @@ describe('el conjunto de operaciones M2M cubierto', () => {
   const implemented = new Set(SDK_OPERATIONS);
   const covered = new Set(CASES.map((testCase) => testCase.operationId));
 
-  it('cubre exactamente las 66 operaciones del contrato, sin familias parciales', () => {
-    assert.equal(implemented.size, 66);
+  it('cubre exactamente las 69 operaciones del contrato, sin familias parciales', () => {
+    assert.equal(implemented.size, 69);
     assert.deepEqual(covered, implemented);
     assert.deepEqual(coverageErrors(m2mOperationIds(), implemented, KNOWN_GAPS), []);
   });

@@ -12,6 +12,7 @@ import {
   EXPORT_FORMATS,
   RETRYABLE_OUTCOMES,
   TERMINAL_STATUSES,
+  WEBHOOK_EVENTS,
 } from '../src/types.js';
 import { PROJECT_ROOT } from './harness.js';
 
@@ -94,6 +95,23 @@ describe('las constantes que espejan el spec', () => {
     assert.deepEqual(
       [...RETRYABLE_OUTCOMES].sort(),
       [...(policy['outcomes']?.items?.enum ?? [])].sort(),
+    );
+  });
+
+  it('conserva los eventos de validación a los que se suscribe un endpoint', () => {
+    const request = properties(spec.components.schemas['CreateWebhookRequest']!);
+    const subscribable = request['events']?.items?.enum ?? [];
+    const validationEvents = WEBHOOK_EVENTS.filter((event) => event.startsWith('validation.'));
+
+    assert.deepEqual(
+      validationEvents.filter((event) => !subscribable.includes(event)),
+      [],
+    );
+    assert.deepEqual(
+      subscribable.filter(
+        (event) => event.startsWith('validation.') && !validationEvents.includes(event as never),
+      ),
+      [],
     );
   });
 

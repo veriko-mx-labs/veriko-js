@@ -54,6 +54,8 @@ export interface RequestOptions {
   query?: Record<string, string | number | readonly string[] | undefined>;
   headers?: Record<string, string | undefined>;
   accept?: string;
+  /** `false` hace un solo intento, sin reintentos. Por omisión, los de la configuración. */
+  retry?: boolean;
 }
 
 export interface RawResponse {
@@ -154,7 +156,7 @@ export class Transport {
       headers['content-type'] = 'application/json; charset=utf-8';
     }
 
-    const attempts = this.retry.maxRetries + 1;
+    const attempts = options.retry === false ? 1 : this.retry.maxRetries + 1;
     let lastConnectionError: unknown;
 
     for (let attempt = 0; attempt < attempts; attempt += 1) {

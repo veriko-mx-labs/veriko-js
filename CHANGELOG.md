@@ -5,7 +5,30 @@ versiones según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
-Sin cambios todavía.
+### Añadido
+
+- `validations.recheck()` (`POST /v1/validations/{id}/recheck`): vuelve a consultar a Banxico el
+  estado de pago de una validación `valid` creada hace 72 horas como máximo, sin consumir cuota.
+  Devuelve `RecheckResult` con la validación y con `checkedAt`, `changed` y `previousStatus`. Si
+  Banxico reporta la devolución, la validación pasa a `returned`. No se reintenta sola.
+- `validations.preparePurge()` y `validations.executePurge()`: el borrado definitivo de una
+  validación, en dos pasos. Devuelven `PurgePreparation` y `PurgeResult`. `executePurge()` no se
+  reintenta sola. Los tipos de `Validation` añaden `purged_at`.
+- `cuentasCandidatas` en `validateTransfer()`, `validations.validate()`, `validations.validateOcr()`,
+  `validations.enqueue()` y `validations.enqueueOcr()`: de 2 a 3 cuentas en una sola validación y con
+  una sola unidad de cuota. Los tipos de `Validation` añaden `candidate_match`, con la posición y los
+  últimos 4 dígitos de la cuenta que coincidió.
+- `retainImage` en `validations.validateOcr()` y `validations.enqueueOcr()`, y `image_retained` en los
+  tipos de `Validation`: con `retainImage: false` la plataforma no conserva el archivo del
+  comprobante.
+- El evento `validation.returned` en `WEBHOOK_EVENTS`, que avisa cuando una validación `valid` pasa
+  después a `returned`, y `payment_status` (`PaymentStatus`) en `evento.data.attributes`.
+
+### Cambiado
+
+- `cuentaBeneficiaria` deja de ser obligatoria cuando se envía `cuentasCandidatas`. Sin ninguna de
+  las dos, el SDK lanza `InvalidRequestError` con `cuenta_required`, y con las dos, con
+  `cuenta_y_candidatas_excluyentes`. En los dos casos no llama a la API.
 
 ## [0.4.11] — 2026-10-01
 

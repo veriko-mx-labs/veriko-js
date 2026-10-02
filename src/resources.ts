@@ -96,13 +96,17 @@ import {
   type DeliveriesParams,
   type DownloadedFile,
   type ExportDeliveriesParams,
+  type ExecutePurgeParams,
   type ExportFormat,
   type ExportValidationsParams,
   type GetValidationOptions,
   type IdempotentOptions,
   type ListValidationsParams,
   type OcrValidationRequest,
+  type PurgePreparation,
+  type PurgeResult,
   type QueuedValidation,
+  type RecheckResult,
   type RetryAttempt,
   type RetryPolicy,
   type RetryStateResource,
@@ -114,6 +118,7 @@ import {
   type Validation,
   type ValidationFilters,
   type ValidationQueuedResource,
+  type ValidationRecheckMeta,
   type ValidationRequest,
   type ValidationStats,
   type ValidationSummary,
@@ -180,6 +185,34 @@ function idempotencyHeader(key: string | undefined): Record<string, string | und
   return { 'idempotency-key': key };
 }
 
+/**
+ * La cuenta de la petición: una sola, o una lista de candidatas, nunca las dos.
+ *
+ * Cuántas candidatas admite la plataforma lo decide la API, que responde `422`
+ * con `cuentas_candidatas_invalidas` cuando la lista no cumple.
+ */
+function accountFields(
+  cuentaBeneficiaria: string | undefined,
+  cuentasCandidatas: readonly string[] | undefined,
+): Pick<ValidationRequest, 'cuenta_beneficiaria' | 'cuentas_candidatas'> {
+  if (cuentasCandidatas === undefined) {
+    return cuentaBeneficiaria ? { cuenta_beneficiaria: cuentaBeneficiaria } : {};
+  }
+  if (cuentaBeneficiaria) {
+    throw new InvalidRequestError('Envía cuentaBeneficiaria o cuentasCandidatas, no las dos', {
+      status: 422,
+      code: 'cuenta_y_candidatas_excluyentes',
+    });
+  }
+  if (!Array.isArray(cuentasCandidatas)) {
+    throw new InvalidRequestError('cuentasCandidatas va como un arreglo de cuentas', {
+      status: 422,
+      code: 'cuentas_candidatas_invalidas',
+    });
+  }
+  return { cuentas_candidatas: (cuentasCandidatas as readonly string[]).slice() };
+}
+
 /** El cuerpo de una validación por campos, con su comprobación previa. */
 function directBody(params: ValidateTransferParams): ValidationRequest {
   if (!params.claveRastreo && !params.referenciaNumerica) {
@@ -188,9 +221,10 @@ function directBody(params: ValidateTransferParams): ValidationRequest {
       { status: 422, code: 'clave_or_ref_required' },
     );
   }
-  if (!params.cuentaBeneficiaria) {
+  if (params.cuentasCandidatas === undefined && !params.cuentaBeneficiaria) {
     throw new InvalidRequestError(
-      'Hace falta cuentaBeneficiaria: la API no la busca entre los beneficiarios guardados',
+      'Hace falta cuentaBeneficiaria, o cuentasCandidatas cuando no se sabe cuál fue la cuenta: ' +
+        'la API no la busca entre los beneficiarios guardados',
       { status: 422, code: 'cuenta_required' },
     );
   }
@@ -198,7 +232,7 @@ function directBody(params: ValidateTransferParams): ValidationRequest {
   const body: ValidationRequest = {
     fecha: params.fecha,
     monto: typeof params.monto === 'string' ? Number(params.monto) : params.monto,
-    cuenta_beneficiaria: params.cuentaBeneficiaria,
+    ...accountFields(params.cuentaBeneficiaria, params.cuentasCandidatas),
   };
   if (params.claveRastreo !== undefined) body.clave_rastreo = params.claveRastreo;
   if (params.referenciaNumerica !== undefined) {
@@ -244,9 +278,13 @@ async function ocrBody(params: ValidateOcrParams): Promise<OcrValidationRequest>
   const body: OcrValidationRequest = {};
   if (params.image !== undefined) body.image = await encodeImage(params.image);
   if (params.imageUrl) body.image_url = params.imageUrl;
-  if (params.cuentaBeneficiaria) body.cuenta_beneficiaria = params.cuentaBeneficiaria;
+  Object.assign(
+    body,
+    accountFields(params.cuentaBeneficiaria || undefined, params.cuentasCandidatas),
+  );
   if (params.retryPolicy !== undefined) body.retry_policy = params.retryPolicy;
   if (params.clientRef !== undefined) body.client_ref = params.clientRef;
+  if (params.retainImage !== undefined) body.retain_image = params.retainImage;
   return body;
 }
 
@@ -311,7 +349,13 @@ async function exportFile(
 
 // ── Validaciones ────────────────────────────────────────────────────────────
 
-/** Validaciones SPEI: crearlas, seguirlas y descargar lo que producen. */
+/**
+ * Validaciones SPEI: crearlas, seguirlas y descargar lo que producen.
+ *
+ * Una validación purgada con `executePurge()` responde `410` con
+ * `validation_purged` en el CEP, el comprobante, los reintentos y la revisión
+ * posterior.
+ */
 export class Validations {
   private readonly transport: Transport;
 
@@ -328,10 +372,15 @@ export class Validations {
    * volumen está `enqueue()`, que acepta la petición y deja el veredicto para
    * después.
    *
-   * `cuentaBeneficiaria` es obligatoria: la API no la busca entre los
-   * beneficiarios guardados. `clientRef` es una referencia propia, de 1 a 64
-   * caracteres, que vuelve en `attributes.client_ref` y en los webhooks, y que
-   * `list()` acepta como filtro exacto.
+   * La cuenta va en `cuentaBeneficiaria`, o en `cuentasCandidatas` cuando no se
+   * sabe cuál fue: de 2 a 3 cuentas en una sola validación y con una sola unidad
+   * de cuota. Se envía una de las dos, no las dos. La API no busca la cuenta
+   * entre los beneficiarios guardados. La cuenta que coincidió queda en
+   * `attributes.candidate_match`.
+   *
+   * `clientRef` es una referencia propia, de 1 a 64 caracteres, que vuelve en
+   * `attributes.client_ref` y en los webhooks, y que `list()` acepta como filtro
+   * exacto.
    */
   async validate(params: ValidateTransferParams): Promise<Validation> {
     const response = await this.post('/validate', directBody(params), params.idempotencyKey, false);
@@ -347,6 +396,15 @@ export class Validations {
    *
    * `imageUrl` sirve para un comprobante ya publicado en HTTPS. Si se envían las
    * dos, la API sólo considera `image`.
+   *
+   * `cuentasCandidatas` sustituye a `cuentaBeneficiaria` cuando la imagen no
+   * muestra la cuenta y no se sabe cuál fue: de 2 a 3 cuentas, con una sola
+   * unidad de cuota. Se envía una de las dos, no las dos.
+   *
+   * `retainImage` vale `true` por omisión: la plataforma conserva el archivo y
+   * `image()` lo sirve. Con `false` lo borra en cuanto la validación llega a un
+   * estado terminal del que ya no lo necesita, y `attributes.image_retained` es
+   * `false`.
    *
    * `clientRef` es una referencia propia, de 1 a 64 caracteres, que vuelve en
    * `attributes.client_ref` y en los webhooks.
@@ -584,7 +642,8 @@ export class Validations {
   /**
    * Descarga el comprobante de una validación por OCR: una imagen o un PDF.
    *
-   * `GET /v1/validations/{id}/image`.
+   * `GET /v1/validations/{id}/image`. Responde `410` con `image_not_retained`
+   * cuando la validación se creó con `retainImage: false`.
    */
   async image(validationId: string): Promise<DownloadedFile> {
     const response = await this.transport.request({
@@ -676,6 +735,106 @@ export class Validations {
       path: `/validations/${pathSegment(validationId)}/cep/send-telegram`,
     });
     return readData<TelegramDispatch>(response, 'del envío');
+  }
+
+  // Revisar el pago y borrar
+
+  /**
+   * Vuelve a consultar a Banxico el estado de pago de una validación `valid`.
+   *
+   * `POST /v1/validations/{id}/recheck`. No consume cuota. Un `valid` es el
+   * veredicto del momento de la consulta: Banxico puede reportar la devolución
+   * horas o días después. Si la reporta, la validación pasa a `returned`,
+   * conserva su CEP y la API emite el webhook `validation.returned`.
+   *
+   * Se consulta una `valid` creada hace 72 horas como máximo. Una `returned`
+   * responde su estado actual sin consultar a Banxico, con `checkedAt` en
+   * `null`. Cualquier otra, o una `valid` fuera de la ventana, responde `422` con
+   * `recheck_not_eligible` o `recheck_window_expired`.
+   *
+   * Cada validación admite una consulta cada 10 minutos: antes responde `429` con
+   * `recheck_rate_limited`, y `RateLimitError.retryAfter` trae los segundos que
+   * faltan. Si Banxico no entrega un estado legible responde `503` con
+   * `recheck_unavailable`, y la validación conserva su intervalo. Una validación
+   * purgada responde `410` con `validation_purged`. El SDK no reintenta esta
+   * llamada por su cuenta: cada una de esas respuestas ya trae su espera.
+   *
+   * @see https://docs.veriko.mx/es/concepts/cep-concept
+   */
+  async recheck(validationId: string): Promise<RecheckResult> {
+    const response = await this.transport.request({
+      method: 'POST',
+      path: `/validations/${pathSegment(validationId)}/recheck`,
+      retry: false,
+    });
+    const document = readDocument(response);
+    const validation = document['data'] as Validation | undefined;
+    if (!validation?.id) {
+      throw new ApiError('La respuesta no trae el recurso `data` de la validación', {
+        status: response.status,
+        headers: response.headers,
+      });
+    }
+    const recheck = readMeta(document)['recheck'] as Partial<ValidationRecheckMeta> | undefined;
+    return {
+      validation,
+      checkedAt: recheck?.checked_at ?? null,
+      changed: recheck?.changed === true,
+      previousStatus: recheck?.previous_status ?? 'valid',
+    };
+  }
+
+  /**
+   * Describe lo que borraría el borrado definitivo de una validación.
+   *
+   * `POST /v1/validations/{id}/purge/prepare`. No cambia nada: devuelve lo que se
+   * borraría, lo que conservaría la lápida y un `confirmation_token` de un solo
+   * uso, que caduca en `expires_in` segundos y que `executePurge()` exige.
+   *
+   * Sólo admite una validación propia en un estado terminal. Una validación en
+   * curso responde `409` con `purge_validation_in_progress`, y una ya purgada,
+   * `410` con `validation_purged`.
+   *
+   * @see https://docs.veriko.mx/es/how-to/purge-a-validation
+   */
+  async preparePurge(validationId: string): Promise<PurgePreparation> {
+    const response = await this.transport.request({
+      method: 'POST',
+      path: `/validations/${pathSegment(validationId)}/purge/prepare`,
+    });
+    return readData<PurgePreparation>(response, 'de la preparación del borrado');
+  }
+
+  /**
+   * Borra de forma definitiva el contenido de una validación.
+   *
+   * `POST /v1/validations/{id}/purge/execute`. Es el segundo paso: el
+   * `confirmationToken` es el que devolvió `preparePurge()` para esta misma
+   * validación. **El borrado es irreversible** y no devuelve cuota. La validación
+   * queda como una lápida: conserva el veredicto, las fechas y el monto, y trae
+   * `attributes.purged_at`.
+   *
+   * Un token ausente, mal formado, vencido o de otra validación responde `422`;
+   * uno ya usado, `409` con `confirmation_token_already_used`. Si la respuesta no
+   * llega, `get()` dice si el borrado se completó: una validación purgada trae
+   * `purged_at`. El SDK no reintenta esta llamada por su cuenta.
+   *
+   * @see https://docs.veriko.mx/es/how-to/purge-a-validation
+   */
+  async executePurge(validationId: string, params: ExecutePurgeParams): Promise<PurgeResult> {
+    if (!params.confirmationToken) {
+      throw new InvalidRequestError('Hace falta confirmationToken: lo devuelve preparePurge()', {
+        status: 422,
+        code: 'confirmation_token_missing',
+      });
+    }
+    const response = await this.transport.request({
+      method: 'POST',
+      path: `/validations/${pathSegment(validationId)}/purge/execute`,
+      body: { confirmation_token: params.confirmationToken },
+      retry: false,
+    });
+    return readData<PurgeResult>(response, 'del borrado');
   }
 }
 

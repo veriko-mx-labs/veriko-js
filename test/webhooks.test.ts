@@ -14,6 +14,7 @@ import {
   SIGNATURE_HEADER,
   SignatureVerificationError,
   computeSignature,
+  hasCep,
   parseWebhook,
   signatureFromHeaders,
   verifyWebhook,
@@ -179,6 +180,34 @@ describe('parseWebhook', () => {
     const evento = parseWebhook(payload, firmar(payload), SECRET);
 
     assert.equal(evento.data?.attributes.client_ref, undefined);
+  });
+
+  it('lee validation.returned con el estado del pago', () => {
+    const payload = recordedBody('webhook-validation-returned');
+
+    const evento = parseWebhook(payload, firmar(payload), SECRET);
+
+    assert.equal(evento.event, 'validation.returned');
+    assert.equal(evento.timestamp, '2026-10-02T09:15:44Z');
+    assert.equal(evento.data?.attributes.status, 'returned');
+    assert.equal(evento.data.attributes.banxico_status, 'returned');
+    assert.equal(evento.data.attributes.client_ref, 'orden-4812');
+    assert.equal(hasCep(evento.data), true);
+    assert.deepEqual(evento.data.attributes.payment_status, {
+      code: 'devuelto',
+      label: 'Devuelto',
+      settled: false,
+      reversed: true,
+      checked_at: '2026-10-02T09:15:44Z',
+    });
+  });
+
+  it('no trae payment_status cuando el evento no es validation.returned', () => {
+    const payload = recordedBody('webhook-validation-completed');
+
+    const evento = parseWebhook(payload, firmar(payload), SECRET);
+
+    assert.equal(evento.data?.attributes.payment_status, undefined);
   });
 
   it('no trae banxico_confirmed cuando la entrega no lo incluye', () => {

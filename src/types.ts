@@ -54,8 +54,13 @@ export interface ValidationRequest {
   emisor?: string;
   /** Nombre o código SPEI del banco receptor. */
   receptor?: string;
-  /** CLABE (18 dígitos), tarjeta (16) o celular DiMo (10) del beneficiario. */
-  cuenta_beneficiaria: string;
+  /** CLABE (18 dígitos), tarjeta (16) o celular DiMo (10) del beneficiario. Excluye a `cuentas_candidatas`. */
+  cuenta_beneficiaria?: string;
+  /**
+   * De 2 a 3 cuentas entre las que está la receptora, para cuando no se sabe cuál
+   * fue. Va en lugar de `cuenta_beneficiaria`.
+   */
+  cuentas_candidatas?: string[];
   /** `1` cuando el beneficiario es la propia institución receptora. */
   receptor_participante?: 0 | 1;
   /** Política de reintentos automáticos de la API. */
@@ -76,6 +81,7 @@ export const VALIDATION_REQUEST_FIELDS = [
   'emisor',
   'receptor',
   'cuenta_beneficiaria',
+  'cuentas_candidatas',
   'receptor_participante',
   'retry_policy',
   'client_ref',
@@ -93,12 +99,16 @@ export interface OcrValidationRequest {
   image?: string;
   /** URL pública (HTTPS) del comprobante. Si también viaja `image`, sólo se considera ésta. */
   image_url?: string;
-  /** CLABE (18 dígitos), tarjeta (16) o celular DiMo (10). Obligatoria para DiMo. */
+  /** CLABE (18 dígitos), tarjeta (16) o celular DiMo (10). Obligatoria para DiMo. Excluye a `cuentas_candidatas`. */
   cuenta_beneficiaria?: string;
+  /** De 2 a 3 cuentas entre las que está la receptora. Va en lugar de `cuenta_beneficiaria`. */
+  cuentas_candidatas?: string[];
   /** Política de reintentos automáticos de la API. */
   retry_policy?: RetryPolicy;
   /** Referencia propia, de 1 a 64 caracteres, que vuelve en la validación y en los webhooks. */
   client_ref?: string;
+  /** `false` borra el archivo del comprobante en cuanto la validación ya no lo necesita. */
+  retain_image?: boolean;
 }
 
 /** Los campos de `OcrValidationRequest`, para la prueba que los compara con el spec. */
@@ -106,8 +116,10 @@ export const OCR_VALIDATION_REQUEST_FIELDS = [
   'image',
   'image_url',
   'cuenta_beneficiaria',
+  'cuentas_candidatas',
   'retry_policy',
   'client_ref',
+  'retain_image',
 ] as const;
 
 /** Estado resumido del ciclo de reintentos, tal como viaja en la respuesta. */
@@ -207,6 +219,7 @@ export const WEBHOOK_EVENTS = [
   'validation.retry.scheduled',
   'validation.retry.resolved',
   'validation.retry.exhausted',
+  'validation.returned',
   'validation_import.completed',
 ] as const;
 export type WebhookEventName = (typeof WEBHOOK_EVENTS)[number];
@@ -239,10 +252,36 @@ export interface BanxicoConfirmed {
   beneficiaryAccount?: string;
 }
 
+/**
+ * El estado oficial del pago, tal como lo dio Banxico la última vez que se le
+ * preguntó. Viaja en `attributes.payment_status` del evento `validation.returned`
+ * y en `attributes.banxico_result._payment_status` de la validación.
+ *
+ * Con `devuelto` o `en_proceso_devolucion` la validación pasa a `returned`.
+ * `checked_at` es el instante de la consulta, en ISO 8601 UTC.
+ */
+export interface PaymentStatus {
+  code:
+    | 'liquidado'
+    | 'en_proceso'
+    | 'cancelado'
+    | 'rechazado'
+    | 'en_proceso_devolucion'
+    | 'devuelto'
+    | 'desconocido'
+    | (string & {});
+  label?: string;
+  settled?: boolean;
+  reversed?: boolean;
+  checked_at?: string;
+}
+
 /** El recurso de una validación tal como llega en la entrega de un webhook. */
 export type WebhookValidation = Validation & {
   attributes: Validation['attributes'] & {
     banxico_confirmed?: BanxicoConfirmed;
+    /** Sólo en `validation.returned`: el estado del pago que delató la devolución. */
+    payment_status?: PaymentStatus;
   };
 };
 
@@ -259,8 +298,29 @@ export interface WebhookEvent {
   meta?: Record<string, unknown>;
 }
 
-/** Los argumentos de `validateTransfer()`. */
-export interface ValidateTransferParams {
+/**
+ * La cuenta de una validación por campos: una sola, en `cuentaBeneficiaria`, o
+ * varias en `cuentasCandidatas` cuando no se sabe cuál fue. Se envía una de las
+ * dos, no las dos.
+ */
+export type TransferAccountParams =
+  | {
+      /** CLABE, tarjeta o celular DiMo del beneficiario. */
+      cuentaBeneficiaria: string;
+      cuentasCandidatas?: never;
+    }
+  | {
+      cuentaBeneficiaria?: never;
+      /**
+       * De 2 a 3 cuentas entre las que está la receptora, en una sola validación y
+       * con una sola unidad de cuota. `attributes.candidate_match` dice cuál
+       * coincidió.
+       */
+      cuentasCandidatas: readonly string[];
+    };
+
+/** Los argumentos de `validateTransfer()`, sin la cuenta. */
+interface ValidateTransferBase {
   /** Fecha de envío de la transferencia, `YYYY-MM-DD`. */
   fecha: string;
   /** Importe en pesos, mayor que cero y con hasta dos decimales. */
@@ -269,8 +329,6 @@ export interface ValidateTransferParams {
   claveRastreo?: string;
   /** Referencia numérica, de 1 a 7 dígitos. */
   referenciaNumerica?: string;
-  /** CLABE, tarjeta o celular DiMo del beneficiario. */
-  cuentaBeneficiaria: string;
   /** Nombre o código SPEI del banco emisor. */
   emisor?: string;
   /** Nombre o código SPEI del banco receptor. */
@@ -291,6 +349,9 @@ export interface ValidateTransferParams {
    */
   idempotencyKey?: string;
 }
+
+/** Los argumentos de `validateTransfer()`, `validations.validate()` y `validations.enqueue()`. */
+export type ValidateTransferParams = ValidateTransferBase & TransferAccountParams;
 
 // ── Familias `validations`, `webhooks` y `catalog` ──────────────────────────
 
@@ -314,6 +375,52 @@ export type RetryStateResource = ResourceOf<'updateValidationRetryPolicy', 200>;
 
 /** El acuse del envío del comprobante a Telegram. */
 export type TelegramDispatch = ResourceOf<'sendCepToTelegram', 202>;
+
+/** El resultado de la revisión que acompaña la respuesta de `recheck()`, tal como lo tipa el spec. */
+export type ValidationRecheckMeta = Schemas['ValidationRecheckMeta'];
+
+/**
+ * El resultado de volver a consultar el estado de pago de una validación.
+ *
+ * @see https://docs.veriko.mx/es/concepts/cep-concept
+ */
+export interface RecheckResult {
+  /** La validación con el estado vigente. */
+  validation: Validation;
+  /**
+   * El instante de la consulta a Banxico, en ISO 8601 UTC. `null` cuando no se
+   * consultó nada porque la validación ya estaba en `returned`.
+   */
+  checkedAt: string | null;
+  /** `true` cuando esta consulta pasó la validación de `valid` a `returned`. */
+  changed: boolean;
+  /** El veredicto de Banxico antes de la consulta: `valid` o `returned`. */
+  previousStatus: ValidationRecheckMeta['previous_status'];
+}
+
+/**
+ * Lo que borraría el borrado definitivo de una validación, y el token que lo
+ * confirma. Todavía no ha cambiado nada. `attributes.confirmation_token` es de un
+ * solo uso y caduca en `attributes.expires_in` segundos.
+ *
+ * @see https://docs.veriko.mx/es/how-to/purge-a-validation
+ */
+export type PurgePreparation = ResourceOf<'prepareValidationPurge', 200>;
+
+/**
+ * El resultado del borrado definitivo de una validación, que queda como una
+ * lápida. `attributes.file_removal` vale `pending` cuando algún archivo no se
+ * pudo borrar en ese momento y el barrido diario lo termina.
+ *
+ * @see https://docs.veriko.mx/es/how-to/purge-a-validation
+ */
+export type PurgeResult = ResourceOf<'executeValidationPurge', 200>;
+
+/** Los argumentos de `validations.executePurge()`. */
+export interface ExecutePurgeParams {
+  /** El token que devolvió `preparePurge()` para esta misma validación. */
+  confirmationToken: string;
+}
 
 /** El recurso de la respuesta `202` de una validación en cola. */
 export type ValidationQueuedResource = NonNullable<Schemas['ValidationQueued']['data']>;
@@ -461,8 +568,25 @@ export type DeliveryStatus = NonNullable<DeliveriesQuery['status']>;
 /** Tipo de evento de una entrega, para filtrar. */
 export type DeliveryEventType = NonNullable<DeliveriesQuery['event_type']>;
 
-/** Los argumentos de `validations.validateOcr()` y `validations.enqueueOcr()`. */
-export interface ValidateOcrParams {
+/**
+ * La cuenta de una validación por imagen: la de `cuentaBeneficiaria`, o varias en
+ * `cuentasCandidatas` cuando no se sabe cuál fue. Se envía una de las dos, no las
+ * dos.
+ */
+export type OcrAccountParams =
+  | {
+      /** CLABE, tarjeta o celular DiMo. Obligatoria para DiMo. */
+      cuentaBeneficiaria?: string;
+      cuentasCandidatas?: never;
+    }
+  | {
+      cuentaBeneficiaria?: never;
+      /** De 2 a 3 cuentas entre las que está la receptora, con una sola unidad de cuota. */
+      cuentasCandidatas: readonly string[];
+    };
+
+/** Los argumentos de `validations.validateOcr()` y `validations.enqueueOcr()`, sin la cuenta. */
+interface ValidateOcrBase {
   /**
    * El comprobante: sus bytes (`Buffer` o `Uint8Array`) o la ruta de un
    * archivo. El SDK lo codifica en base64. JPEG, PNG, WebP o PDF de 1 a 3
@@ -471,15 +595,23 @@ export interface ValidateOcrParams {
   image?: Uint8Array | string;
   /** URL pública (HTTPS) de una imagen ya publicada. Si se envía también `image`, sólo cuenta ésta. */
   imageUrl?: string;
-  /** CLABE, tarjeta o celular DiMo. Obligatoria para DiMo. */
-  cuentaBeneficiaria?: string;
   /** Política de reintentos automáticos de la API. */
   retryPolicy?: RetryPolicy;
   /** Referencia propia, de 1 a 64 caracteres, que vuelve en la validación y en los webhooks. */
   clientRef?: string;
+  /**
+   * `true` por omisión: la plataforma conserva el archivo del comprobante y
+   * `image()` lo sirve. Con `false` lo borra en cuanto la validación llega a un
+   * estado terminal del que ya no lo necesita, y `attributes.image_retained` es
+   * `false`.
+   */
+  retainImage?: boolean;
   /** Identificador del intento de negocio. Con él, repetir la petición no duplica la validación. */
   idempotencyKey?: string;
 }
+
+/** Los argumentos de `validations.validateOcr()` y `validations.enqueueOcr()`. */
+export type ValidateOcrParams = ValidateOcrBase & OcrAccountParams;
 
 /** Las opciones de `validations.get()`. */
 export interface GetValidationOptions {

@@ -230,4 +230,103 @@ describe('validateTransfer', () => {
     assert.equal(validation.attributes.retry_state.attempts_completed, 2);
     assert.equal(validation.attributes.retry_state.next_attempt_at, '2025-03-15T14:42:11Z');
   });
+
+  it('cuentasCandidatas viaja en lugar de la cuenta y la validación dice cuál ganó', async () => {
+    server.enqueue('validate-candidates');
+
+    const validation = await client.validateTransfer({
+      fecha: '2025-03-15',
+      monto: 15000.5,
+      claveRastreo: 'MXBA20250315001234',
+      cuentasCandidatas: ['012180004412345678', '002010077777777771'],
+    });
+
+    const body = server.json(0);
+    assert.deepEqual(body['cuentas_candidatas'], ['012180004412345678', '002010077777777771']);
+    assert.equal('cuenta_beneficiaria' in body, false);
+    assert.deepEqual(validation.attributes.candidate_match, { index: 1, account_last4: '7771' });
+  });
+
+  it('sin candidatas la validación no trae candidate_match', async () => {
+    server.enqueue('validate-valid');
+
+    const validation = await client.validateTransfer({
+      fecha: '2025-03-15',
+      monto: 15000.5,
+      claveRastreo: 'MXBA20250315001234',
+      cuentaBeneficiaria: '012180004412345678',
+    });
+
+    assert.equal('cuentas_candidatas' in server.json(0), false);
+    assert.equal(validation.attributes.candidate_match, undefined);
+  });
+
+  it('la cuenta y las candidatas juntas no llegan a la API', async () => {
+    const both = {
+      fecha: '2025-03-15',
+      monto: 100,
+      claveRastreo: 'MXBA20250315001234',
+      cuentaBeneficiaria: '012180004412345678',
+      cuentasCandidatas: ['012180004412345678', '002010077777777771'],
+    };
+
+    await assert.rejects(
+      // @ts-expect-error la cuenta y las candidatas son excluyentes
+      () => client.validateTransfer(both),
+      (error: unknown) => {
+        assert.ok(error instanceof InvalidRequestError);
+        assert.equal(error.code, 'cuenta_y_candidatas_excluyentes');
+        return true;
+      },
+    );
+    const ocr = {
+      image: Buffer.from('png'),
+      cuentaBeneficiaria: both.cuentaBeneficiaria,
+      cuentasCandidatas: both.cuentasCandidatas,
+    };
+    await assert.rejects(
+      // @ts-expect-error la cuenta y las candidatas son excluyentes
+      () => client.validations.validateOcr(ocr),
+      (error: unknown) => {
+        assert.ok(error instanceof InvalidRequestError);
+        assert.equal(error.code, 'cuenta_y_candidatas_excluyentes');
+        return true;
+      },
+    );
+
+    assert.equal(server.requests.length, 0);
+  });
+
+  it('una cadena no es un arreglo de candidatas', async () => {
+    await assert.rejects(
+      () =>
+        client.validateTransfer({
+          fecha: '2025-03-15',
+          monto: 100,
+          claveRastreo: 'MXBA20250315001234',
+          // @ts-expect-error una cadena no es un arreglo de cuentas
+          cuentasCandidatas: '012180004412345678',
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof InvalidRequestError);
+        assert.equal(error.code, 'cuentas_candidatas_invalidas');
+        return true;
+      },
+    );
+
+    assert.equal(server.requests.length, 0);
+  });
+
+  it('una lista que no cumple llega a la API para que la rechace', async () => {
+    server.enqueue('validate-candidates');
+
+    await client.validateTransfer({
+      fecha: '2025-03-15',
+      monto: 100,
+      claveRastreo: 'MXBA20250315001234',
+      cuentasCandidatas: ['012180004412345678'],
+    });
+
+    assert.deepEqual(server.json(0)['cuentas_candidatas'], ['012180004412345678']);
+  });
 });

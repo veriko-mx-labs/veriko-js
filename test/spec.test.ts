@@ -27,7 +27,13 @@ interface SpecDocument {
   components: {
     schemas: Record<
       string,
-      { properties?: Record<string, unknown>; required?: string[]; anyOf?: unknown }
+      {
+        properties?: Record<string, unknown>;
+        required?: string[];
+        anyOf?: unknown;
+        allOf?: unknown;
+        not?: unknown;
+      }
     >;
   };
 }
@@ -70,8 +76,11 @@ describe('el cuerpo de POST /v1/validate sigue al spec', () => {
     assert.deepEqual(Object.keys(schema.properties), [...VALIDATION_REQUEST_FIELDS]);
   });
 
-  it('exige fecha, monto y cuenta beneficiaria', () => {
-    assert.deepEqual(schema?.required, ['fecha', 'monto', 'cuenta_beneficiaria']);
+  it('exige fecha, monto y una de las dos formas de indicar la cuenta', () => {
+    assert.deepEqual(schema?.required, ['fecha', 'monto']);
+    assert.deepEqual(schema.allOf, [
+      { oneOf: [{ required: ['cuenta_beneficiaria'] }, { required: ['cuentas_candidatas'] }] },
+    ]);
   });
 });
 
@@ -85,5 +94,9 @@ describe('el cuerpo de POST /v1/validate-ocr sigue al spec', () => {
 
   it('exige la imagen o su URL', () => {
     assert.deepEqual(schema?.anyOf, [{ required: ['image'] }, { required: ['image_url'] }]);
+  });
+
+  it('no admite la cuenta y las candidatas juntas', () => {
+    assert.deepEqual(schema?.not, { required: ['cuenta_beneficiaria', 'cuentas_candidatas'] });
   });
 });

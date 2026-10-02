@@ -11,9 +11,13 @@ import {
   ConfigurationError,
   InvalidRequestError,
   NotFoundError,
+  RateLimitError,
+  ServerError,
   TimeoutError,
   Veriko,
+  hasCep,
   isSettled,
+  type PaymentStatus,
   type Validation,
 } from '../src/index.js';
 import { RecordingServer, makeClient } from './harness.js';
@@ -739,6 +743,241 @@ describe('client.validations', () => {
       assert.equal(dispatch.attributes?.queued, true);
       assert.equal(server.request(0).method, 'POST');
       assert.equal(server.request(0).url, `/v1/validations/${VALIDATION_ID}/cep/send-telegram`);
+    });
+  });
+
+  describe('varias cuentas candidatas', () => {
+    it('encolar las lleva en los dos caminos', async () => {
+      server.enqueue('validate-queued', 2);
+      const candidates = ['012180004412345678', '002010077777777771'];
+
+      await client.validations.enqueue({
+        fecha: '2025-03-15',
+        monto: 15000.5,
+        claveRastreo: 'MXBA20250315001234',
+        cuentasCandidatas: candidates,
+      });
+      await client.validations.enqueueOcr({
+        image: Buffer.from('png'),
+        cuentasCandidatas: candidates,
+      });
+
+      assert.equal(server.request(0).url, '/v1/validate?async=1');
+      assert.deepEqual(server.json(0)['cuentas_candidatas'], candidates);
+      assert.equal('cuenta_beneficiaria' in server.json(0), false);
+      assert.equal(server.request(1).url, '/v1/validate-ocr?async=1');
+      assert.deepEqual(server.json(1)['cuentas_candidatas'], candidates);
+    });
+
+    it('validar una imagen con candidatas no envía la cuenta', async () => {
+      server.enqueue('validate-ocr');
+
+      await client.validations.validateOcr({
+        imageUrl: 'https://ejemplo.mx/comprobante.png',
+        cuentasCandidatas: ['012180004412345678', '002010077777777771'],
+      });
+
+      assert.deepEqual(server.json(0), {
+        image_url: 'https://ejemplo.mx/comprobante.png',
+        cuentas_candidatas: ['012180004412345678', '002010077777777771'],
+      });
+    });
+  });
+
+  describe('retainImage', () => {
+    it('false viaja y la validación dice que no conserva el archivo', async () => {
+      server.enqueue('validate-ocr-not-retained');
+
+      const validation = await client.validations.validateOcr({
+        image: Buffer.from('png'),
+        retainImage: false,
+      });
+
+      assert.equal(server.json(0)['retain_image'], false);
+      assert.equal(validation.attributes.image_retained, false);
+      assert.equal(validation.attributes.image_path, undefined);
+    });
+
+    it('sin retainImage no viaja y la validación no informa nada', async () => {
+      server.enqueue('validate-ocr');
+
+      const validation = await client.validations.validateOcr({ image: Buffer.from('png') });
+
+      assert.equal('retain_image' in server.json(0), false);
+      assert.equal(validation.attributes.image_retained, undefined);
+      assert.equal(validation.attributes.purged_at, undefined);
+    });
+
+    it('true también viaja en el camino asíncrono', async () => {
+      server.enqueue('validate-queued');
+
+      await client.validations.enqueueOcr({ image: Buffer.from('png'), retainImage: true });
+
+      assert.equal(server.json(0)['retain_image'], true);
+    });
+  });
+
+  describe('recheck', () => {
+    it('una validación que pasa a returned', async () => {
+      server.enqueue('validation-recheck-returned');
+
+      const result = await client.validations.recheck(VALIDATION_ID);
+
+      const sent = server.request(0);
+      assert.equal(sent.method, 'POST');
+      assert.equal(sent.url, `/v1/validations/${VALIDATION_ID}/recheck`);
+      assert.equal(sent.body.length, 0);
+      assert.equal(result.changed, true);
+      assert.equal(result.previousStatus, 'valid');
+      assert.equal(result.checkedAt, '2026-10-02T09:15:44Z');
+      assert.equal(result.validation.id, VALIDATION_ID);
+      assert.equal(result.validation.attributes.status, 'returned');
+      assert.equal(hasCep(result.validation), true);
+    });
+
+    it('una validación que sigue valid', async () => {
+      server.enqueue('validation-recheck-unchanged');
+
+      const result = await client.validations.recheck(VALIDATION_ID);
+
+      assert.equal(result.changed, false);
+      assert.equal(result.previousStatus, 'valid');
+      assert.equal(result.validation.attributes.status, 'valid');
+    });
+
+    it('el estado del pago queda en banxico_result', async () => {
+      server.enqueue('validation-recheck-returned');
+
+      const { validation } = await client.validations.recheck(VALIDATION_ID);
+
+      const status = (validation.attributes.banxico_result as { _payment_status?: PaymentStatus })
+        ._payment_status;
+      assert.equal(status?.code, 'devuelto');
+      assert.equal(status.reversed, true);
+      assert.equal(status.settled, false);
+    });
+
+    it('una revisión antes de tiempo no se reintenta sola', async () => {
+      server.enqueue('validate-429');
+
+      await assert.rejects(
+        () => client.validations.recheck(VALIDATION_ID),
+        (error: unknown) => {
+          assert.ok(error instanceof RateLimitError);
+          assert.equal(error.retryAfter, 7);
+          return true;
+        },
+      );
+
+      assert.equal(server.requests.length, 1);
+      assert.deepEqual(sleeps, []);
+    });
+
+    it('una revisión con Banxico caído no se reintenta sola', async () => {
+      server.enqueue('validate-503');
+
+      await assert.rejects(
+        () => client.validations.recheck(VALIDATION_ID),
+        (error: unknown) => {
+          assert.ok(error instanceof ServerError);
+          assert.equal(error.status, 503);
+          return true;
+        },
+      );
+
+      assert.equal(server.requests.length, 1);
+    });
+
+    it('una validación purgada responde 410', async () => {
+      server.enqueue('validation-purged-410');
+
+      await assert.rejects(
+        () => client.validations.recheck(VALIDATION_ID),
+        (error: unknown) => {
+          assert.ok(error instanceof ApiError);
+          assert.equal(error.status, 410);
+          assert.equal(error.code, 'validation_purged');
+          return true;
+        },
+      );
+    });
+  });
+
+  describe('borrado definitivo', () => {
+    const TOKEN = 'eyJhZG1pbl9pZCI6Ii4uLiJ9.q1w2e3r4t5y6u7i8o9p0';
+
+    it('preparar devuelve el token y lo que se borraría', async () => {
+      server.enqueue('validation-purge-prepare');
+
+      const preparation = await client.validations.preparePurge(VALIDATION_ID);
+
+      const sent = server.request(0);
+      assert.equal(sent.method, 'POST');
+      assert.equal(sent.url, `/v1/validations/${VALIDATION_ID}/purge/prepare`);
+      assert.equal(sent.body.length, 0);
+      assert.equal(preparation.id, VALIDATION_ID);
+      assert.equal(preparation.attributes.confirmation_token, TOKEN);
+      assert.equal(preparation.attributes.expires_in, 120);
+      assert.equal(preparation.attributes.irreversible, true);
+      assert.equal(preparation.attributes.will_delete.image, true);
+      assert.equal(preparation.attributes.will_keep.includes('purged_at'), true);
+      assert.equal(preparation.attributes.refunds_quota, false);
+      assert.deepEqual(preparation.attributes.same_image_validation_ids, []);
+    });
+
+    it('ejecutar envía el token y devuelve lo borrado', async () => {
+      server.enqueue('validation-purge-executed');
+
+      const result = await client.validations.executePurge(VALIDATION_ID, {
+        confirmationToken: TOKEN,
+      });
+
+      const sent = server.request(0);
+      assert.equal(sent.method, 'POST');
+      assert.equal(sent.url, `/v1/validations/${VALIDATION_ID}/purge/execute`);
+      assert.deepEqual(server.json(0), { confirmation_token: TOKEN });
+      assert.equal(result.id, VALIDATION_ID);
+      assert.equal(result.attributes.purged_at, '2026-10-02T09:30:00Z');
+      assert.equal(result.attributes.file_removal, 'complete');
+      assert.equal(result.attributes.deleted.webhook_deliveries, 1);
+    });
+
+    it('ejecutar sin token no llama a la API', async () => {
+      await assert.rejects(
+        () => client.validations.executePurge(VALIDATION_ID, { confirmationToken: '' }),
+        (error: unknown) => {
+          assert.ok(error instanceof InvalidRequestError);
+          assert.equal(error.code, 'confirmation_token_missing');
+          return true;
+        },
+      );
+
+      assert.equal(server.requests.length, 0);
+    });
+
+    it('ejecutar no se reintenta solo', async () => {
+      server.enqueue('validate-503');
+      server.enqueue('validation-purge-executed');
+
+      await assert.rejects(
+        () => client.validations.executePurge(VALIDATION_ID, { confirmationToken: TOKEN }),
+        ServerError,
+      );
+
+      assert.equal(server.requests.length, 1);
+      assert.deepEqual(sleeps, []);
+    });
+
+    it('una validación purgada queda como una lápida', async () => {
+      server.enqueue('validation-purged-tombstone');
+
+      const validation = await client.validations.get(VALIDATION_ID);
+
+      assert.equal(validation.attributes.purged_at, '2026-10-02T09:30:00Z');
+      assert.equal(validation.attributes.status, 'valid');
+      assert.deepEqual(validation.attributes.normalized_data, { monto: 15000.5 });
+      assert.equal(validation.attributes.request_data, undefined);
+      assert.equal(hasCep(validation), false);
     });
   });
 });

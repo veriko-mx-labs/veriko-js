@@ -46,25 +46,27 @@ La API consulta el CEP y devuelve un veredicto en el campo `status`:
 | `invalid`         | Los datos enviados no forman una consulta válida                                       |
 | `error`           | Fallo durante el procesamiento; el motivo viaja en `error_code`                        |
 
-Con veredicto `valid`, el comprobante queda disponible en XML y en PDF.
+Con veredicto `valid`, el comprobante queda disponible en XML y en PDF. Un `valid` es el veredicto
+del momento de la consulta: Banxico puede reportar la devolución hasta 72 horas después, y la
+validación pasa a `returned`.
 
 ## Las familias de operaciones
 
-El cliente agrupa las 66 operaciones M2M de la API en once familias:
+El cliente agrupa las 69 operaciones M2M de la API en once familias:
 
-| familia                | qué cubre                                                                                                             |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `client.validations`   | Validar por campos o por imagen, consultar, listar, exportar, la política de reintentos y la descarga del comprobante |
-| `client.webhooks`      | Registrar endpoints, rotar su secreto, enviar un evento de prueba y leer el historial de entregas                     |
-| `client.catalog`       | Catálogo de bancos SPEI, banco emisor de una tarjeta y estado del servicio de Banxico                                 |
-| `client.beneficiaries` | Cuentas beneficiarias guardadas y la importación masiva, como ciclo completo                                          |
-| `client.usage`         | Cuota de validaciones, límites de tasa y registro de actividad de la API                                              |
-| `client.account`       | Perfil y política de reintentos predeterminada de la cuenta                                                           |
-| `client.dashboard`     | Resumen del panel                                                                                                     |
-| `client.plans`         | Catálogo y comparación de planes públicos, sin clave de API                                                           |
-| `client.insights`      | Resumen, tendencias, bancos y beneficiarios principales                                                               |
-| `client.finance`       | Resumen, estado de cuenta, vistas previas y descargas financieras                                                     |
-| `client.billing`       | Suscripción activa                                                                                                    |
+| familia                | qué cubre                                                                                                                                                |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `client.validations`   | Validar por campos o por imagen, consultar, listar, exportar, revisar el estado de pago, borrar, la política de reintentos y la descarga del comprobante |
+| `client.webhooks`      | Registrar endpoints, rotar su secreto, enviar un evento de prueba y leer el historial de entregas                                                        |
+| `client.catalog`       | Catálogo de bancos SPEI, banco emisor de una tarjeta y estado del servicio de Banxico                                                                    |
+| `client.beneficiaries` | Cuentas beneficiarias guardadas y la importación masiva, como ciclo completo                                                                             |
+| `client.usage`         | Cuota de validaciones, límites de tasa y registro de actividad de la API                                                                                 |
+| `client.account`       | Perfil y política de reintentos predeterminada de la cuenta                                                                                              |
+| `client.dashboard`     | Resumen del panel                                                                                                                                        |
+| `client.plans`         | Catálogo y comparación de planes públicos, sin clave de API                                                                                              |
+| `client.insights`      | Resumen, tendencias, bancos y beneficiarios principales                                                                                                  |
+| `client.finance`       | Resumen, estado de cuenta, vistas previas y descargas financieras                                                                                        |
+| `client.billing`       | Suscripción activa                                                                                                                                       |
 
 Las tres operaciones de uso más frecuente están también en la raíz del cliente, como atajo:
 `validateTransfer()`, `getValidation()` y `getCep()`.
@@ -102,7 +104,8 @@ const client = new Veriko({ apiKey: 'veriko_tu_clave_aqui' });
 La operación exige la fecha de envío, el importe, la cuenta beneficiaria y **la clave de rastreo
 o la referencia numérica**. Enviar las dos precisa la búsqueda. El banco emisor y el receptor son
 opcionales y mejoran la identificación. La API rechaza con `422` (`preflight_failed`) una petición
-sin `cuenta_beneficiaria`: no la busca entre los beneficiarios guardados.
+sin cuenta: no la busca entre los beneficiarios guardados. Cuando no se sabe cuál fue la cuenta,
+`cuentasCandidatas` sustituye a `cuentaBeneficiaria`.
 
 ```ts
 import { Veriko } from '@veriko-mx/sdk';
@@ -141,6 +144,8 @@ const validation = await client.validations.validateOcr({
 El SDK lee el archivo y lo codifica en base64. `imageUrl` recibe un comprobante ya publicado en
 HTTPS, y si se envían `image` e `imageUrl`, la API sólo considera `image`. Formatos: JPEG, PNG, WebP
 o PDF de 1 a 3 páginas, de hasta 12 MB.
+
+`cuentasCandidatas` reemplaza a `cuentaBeneficiaria` cuando la imagen no muestra la cuenta.
 
 El comprobante de una validación por OCR se descarga con `client.validations.image(id)`.
 
@@ -203,6 +208,50 @@ dígitos de la cuenta enviada (`sent_last4`) y de la que muestra la imagen (`rea
 validación por OCR. Ninguno cambia el veredicto, y los dos están ausentes cuando la API no los
 informa.
 
+### Varias cuentas candidatas
+
+`cuentasCandidatas` lleva de 2 a 3 cuentas en una sola validación, con una sola unidad de cuota.
+
+```ts
+const validation = await client.validateTransfer({
+  fecha: '2025-03-15',
+  monto: 15000.5,
+  claveRastreo: 'MXBA20250315001234',
+  cuentasCandidatas: ['012180004412345678', '002010077777777771'],
+});
+
+console.log(validation.attributes.candidate_match?.index); // posición en la lista enviada, desde 0
+console.log(validation.attributes.candidate_match?.account_last4); // 7771
+```
+
+`validateOcr()`, `enqueue()` y `enqueueOcr()` también la aceptan. La API consulta las cuentas en el
+orden enviado y adopta la primera que coincide con la transferencia. `attributes.candidate_match`
+trae su posición y sus últimos 4 dígitos, y la cuenta completa queda en
+`attributes.normalized_data.cuenta_beneficiaria`. El veredicto no cambia.
+
+Se envía una de las dos formas, no las dos: el tipo de los argumentos lo impide, y con
+`cuentaBeneficiaria` y `cuentasCandidatas` juntas, o sin ninguna, el SDK lanza
+`InvalidRequestError` (`cuenta_y_candidatas_excluyentes` o `cuenta_required`) y no llama a la API.
+Una lista que no cumple se rechaza con `422` (`cuentas_candidatas_invalidas`).
+
+### Conservar el comprobante
+
+La plataforma conserva el archivo de una validación por imagen, y `client.validations.image(id)` lo
+descarga. Con `retainImage: false` lo borra en cuanto la validación llega a un estado terminal del
+que ya no lo necesita. El veredicto y los datos extraídos se conservan.
+
+```ts
+const validation = await client.validations.validateOcr({
+  image: 'comprobante.png',
+  retainImage: false,
+});
+console.log(validation.attributes.image_retained); // false
+```
+
+`enqueueOcr()` también acepta `retainImage`. `image()` responde `410` con `image_not_retained`
+cuando el archivo no se conserva, y la API rechaza con `422` (`invalid_retain_image`) un valor que
+no es booleano.
+
 ### Listar y recorrer el historial
 
 ```ts
@@ -247,6 +296,59 @@ con `cep_not_available` y el SDK lanza `NotFoundError`.
 
 Las descargas y las exportaciones devuelven el archivo y no un enlace: `content`, `contentType` y
 el `filename` que propone la API en `Content-Disposition`.
+
+## Revisar el pago después
+
+`client.validations.recheck(id)` vuelve a consultar a Banxico el estado de pago de una validación
+`valid` creada hace 72 horas como máximo, sin consumir cuota.
+
+```ts
+const result = await client.validations.recheck(validation.id);
+
+console.log(result.changed); // true si pasó de valid a returned
+console.log(result.previousStatus); // 'valid'
+console.log(result.validation.attributes.status); // 'returned'
+```
+
+Si Banxico reporta `devuelto` o `en_proceso_devolucion`, la validación pasa a `returned`, conserva su
+CEP y la API emite el webhook `validation.returned`. El estado del pago queda en
+`attributes.banxico_result._payment_status`. Una validación que ya estaba en `returned` responde su
+estado actual sin consultar a Banxico, y `checkedAt` vale `null`.
+
+Cada validación admite una consulta cada 10 minutos: antes, el SDK lanza `RateLimitError` con
+`recheck_rate_limited`, y `retryAfter` trae los segundos que faltan. Una validación en otro estado,
+o con más de 72 horas, lanza `InvalidRequestError` con `recheck_not_eligible` o
+`recheck_window_expired`. Si Banxico no entrega un estado legible, lanza `ServerError` con
+`recheck_unavailable`: la validación conserva su intervalo y se puede reintentar de inmediato.
+
+## Borrar una validación
+
+`client.validations.delete(id)` retira una validación del historial, pero el registro, el CEP, los
+datos extraídos y el archivo del comprobante siguen existiendo. El borrado definitivo los elimina en
+dos pasos: el primero describe lo que se borraría y emite un token de un solo uso, y el segundo lo
+confirma.
+
+```ts
+const preparation = await client.validations.preparePurge(validation.id);
+
+console.log(preparation.attributes.will_delete); // lo que se borraría
+console.log(preparation.attributes.expires_in); // segundos de vigencia del token
+
+const result = await client.validations.executePurge(validation.id, {
+  confirmationToken: preparation.attributes.confirmation_token,
+});
+console.log(result.attributes.purged_at, result.attributes.file_removal);
+```
+
+**El borrado es irreversible y no devuelve cuota.** La validación queda como una lápida: conserva el
+veredicto, las fechas y el monto, y trae `attributes.purged_at`. Después, el CEP, el comprobante, los
+reintentos y `recheck()` responden `410` con `validation_purged`. `file_removal` vale `pending`
+cuando algún archivo no se pudo borrar en ese momento y el barrido diario lo termina.
+
+Una validación en curso lanza `ConflictError` con `purge_validation_in_progress`. Un token vencido,
+mal formado o de otra validación lanza `InvalidRequestError`, y uno ya usado, `ConflictError` con
+`confirmation_token_already_used`. Si la respuesta de `executePurge()` no llega,
+`client.getValidation(id)` dice si el borrado se completó.
 
 ## Registrar un webhook
 
@@ -403,6 +505,32 @@ para decidir el código de respuesta aparte. La comparación es en tiempo consta
 
 El receptor completo está en [`examples/express-webhook.mjs`](examples/express-webhook.mjs).
 
+### Una devolución posterior
+
+`validation.returned` avisa cuando una validación que había salido `valid` pasa después a
+`returned`. El endpoint recibe sólo los eventos a los que se suscribió, así que hay que añadirlo
+además de `validation.completed`:
+
+```ts
+const endpoint = await client.webhooks.create({
+  url: 'https://miapp.example.com/hooks/pagos',
+  events: ['validation.completed', 'validation.returned'],
+});
+```
+
+El cuerpo es el de `validation.completed` más `attributes.payment_status`, que `parseWebhook()`
+entrega en `evento.data.attributes.payment_status`:
+
+```ts
+if (evento.event === 'validation.returned') {
+  console.log(evento.data?.attributes.payment_status?.code); // devuelto o en_proceso_devolucion
+}
+```
+
+`checked_at` es el instante de la consulta. En el resto de los eventos `payment_status` está
+ausente. El evento no se emite al crear la validación: una operación que llega ya devuelta se
+entrega con `validation.completed` y `status` `returned`.
+
 ### Lo que Banxico confirmó
 
 Cuando `banxico_status` es `valid`, o `returned` con CEP descargado, `evento.data.attributes`
@@ -460,7 +588,9 @@ Hay dos mecanismos distintos con el mismo nombre.
 
 **Los del cliente** repiten una petición que falló por causas pasajeras. El SDK reintenta los
 `5xx`, el `408` y el `429`, y respeta el `Retry-After` de la respuesta cuando lo trae. El resto de
-los `4xx` no se reintenta, porque la petición hay que corregirla antes de repetirla.
+los `4xx` no se reintenta, porque la petición hay que corregirla antes de repetirla. `recheck()` y
+`executePurge()` no se reintentan solas: la primera tiene su propio tope de una consulta cada 10
+minutos, y el borrado es irreversible.
 
 ```ts
 const client = new Veriko({ maxRetries: 3 }); // 0 los desactiva; por omisión son 2
@@ -538,18 +668,19 @@ try {
 }
 ```
 
-| excepción                    | estado                                          |
-| ---------------------------- | ----------------------------------------------- |
-| `AuthenticationError`        | `401`                                           |
-| `ForbiddenError`             | `403`                                           |
-| `NotFoundError`              | `404`                                           |
-| `ConflictError`              | `409`                                           |
-| `InvalidRequestError`        | `400`, `413`, `422`                             |
-| `RateLimitError`             | `429`                                           |
-| `ServerError`                | `5xx`                                           |
-| `ConnectionError`            | Sin respuesta, con los reintentos agotados      |
-| `TimeoutError`               | `waitFor()` o `importWait()` agotaron su tiempo |
-| `SignatureVerificationError` | La firma de un webhook no cuadra                |
+| excepción                    | estado                                             |
+| ---------------------------- | -------------------------------------------------- |
+| `AuthenticationError`        | `401`                                              |
+| `ForbiddenError`             | `403`                                              |
+| `NotFoundError`              | `404`                                              |
+| `ConflictError`              | `409`                                              |
+| `InvalidRequestError`        | `400`, `413`, `422`                                |
+| `RateLimitError`             | `429`                                              |
+| `ServerError`                | `5xx`                                              |
+| `ApiError`                   | Cualquier otro estado de la API, por ejemplo `410` |
+| `ConnectionError`            | Sin respuesta, con los reintentos agotados         |
+| `TimeoutError`               | `waitFor()` o `importWait()` agotaron su tiempo    |
+| `SignatureVerificationError` | La firma de un webhook no cuadra                   |
 
 Cada error de la API trae `requestId`, que identifica la petición en los registros del sistema.
 
@@ -581,7 +712,7 @@ completos, por si hace falta una operación que el SDK todavía no envuelve.
 
 ## Superficie M2M
 
-El SDK cubre exactamente las 66 operaciones del spec público: `security: []` para las públicas y
+El SDK cubre exactamente las 69 operaciones del spec público: `security: []` para las públicas y
 `ApiKeyAuth` para las autenticadas.
 
 Entre ellas están el perfil y su política de reintentos, el resumen del panel, los dos endpoints
