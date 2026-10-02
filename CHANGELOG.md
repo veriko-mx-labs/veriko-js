@@ -5,6 +5,10 @@ versiones según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+Sin cambios todavía.
+
+## [0.4.12] — 2026-10-02
+
 ### Añadido
 
 - `validations.recheck()` (`POST /v1/validations/{id}/recheck`): vuelve a consultar a Banxico el
