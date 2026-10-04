@@ -669,6 +669,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/public/spei-calendar/{year}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Obtener el calendario de días inhábiles SPEI de un año
+         * @description Devuelve el calendario de días inhábiles SPEI de un año, con la disposición oficial de la que sale.
+         *
+         *     La respuesta incluye:
+         *
+         *     - `non_business_days`: Los días inhábiles que caen de lunes a viernes, en orden y con formato `YYYY-MM-DD`.
+         *     - `source`: La disposición de la **Comisión Nacional Bancaria y de Valores (CNBV)** publicada en el **Diario Oficial de la Federación (DOF)**, con su título y su fecha de publicación.
+         *
+         *     Los sábados y los domingos también son inhábiles, siempre, y no se repiten en `non_business_days`.
+         *
+         *     El calendario determina el día de operación de una transferencia. El SPEI opera todos los días, pero el día hábil cambia a las 18:00 (hora del centro de México): lo enviado a partir de esa hora, en sábado, en domingo o en un día inhábil opera el siguiente día hábil. Ese día es el `operationDate` de `banxico_result`, y puede diferir de la fecha de envío.
+         *
+         *     La consulta no consume cuota de validaciones. Un año sin calendario responde un estado HTTP `404` (con `spei_calendar_year_not_covered` en el cuerpo), y `meta.covered_years` lista los años disponibles. El calendario de cada año se añade cuando la CNBV publica su disposición, normalmente en diciembre del año anterior.
+         *
+         *     La respuesta es cacheable: incluye la cabecera `ETag`, que puede enviarse en otra petición como `If-None-Match`; si el calendario no ha cambiado, responde con un estado HTTP `304` (sin cuerpo).
+         *
+         *     La diferencia entre la fecha de envío y la de operación está en {% concept slug="timezone-handling" %}fechas y zona horaria{% /concept %}.
+         */
+        get: operations["getSpeiCalendar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/beneficiaries/export": {
         parameters: {
             query?: never;
@@ -2355,7 +2390,7 @@ export interface components {
         ValidationRequest: ({
             /**
              * Format: date
-             * @description Fecha de la transferencia en formato ISO 8601 (YYYY-MM-DD).
+             * @description Fecha de envío de la transferencia en formato ISO 8601 (YYYY-MM-DD). Con ella Banxico localiza el CEP, y puede diferir del día de operación que el CEP imprime (`banxico_result.operationDate`).
              * @example 2025-03-15
              */
             fecha: string;
@@ -2511,7 +2546,7 @@ export interface components {
                  * @example 1320
                  */
                 processing_time_ms?: number | null;
-                /** @description Copia de los campos de la petición original. */
+                /** @description Copia de los campos de la petición original. `fecha` conserva la fecha de envío tal como se envió, aunque Banxico haya encontrado el pago con otra (`banxico_result._fecha`). */
                 request_data?: {
                     [key: string]: unknown;
                 };
@@ -2666,15 +2701,26 @@ export interface components {
                  *     `label`, `settled`, `reversed` y `checked_at` (ISO 8601 UTC).
                  *     Su ausencia significa que no se pudo saber, nunca que el pago esté liquidado.
                  *     Se actualiza en cada revisión posterior, y con `devuelto` o `en_proceso_devolucion` la validación pasa a `returned`.
+                 *
+                 *     `_fecha` aparece cuando Banxico no encontró el pago con la fecha enviada y sí con otra.
+                 *     `used` es la fecha con la que se encontró, `requested` es la fecha con la que se consultó primero
+                 *     y `reason` es el motivo por el que se probó `used`.
+                 *     Valores de `reason`:
+                 *     `clave_embedded_date`: La clave de rastreo incrusta otra fecha, a un día hábil SPEI o menos de la enviada;
+                 *     `cutoff_18h`: La clave no incrusta fecha y el comprobante indica una hora cercana al corte de las 18:00,
+                 *     así que se probó el día siguiente;
+                 *     `dia_operacion`: La clave incrusta la fecha enviada, porque el comprobante trae la de operación,
+                 *     y se probó un día anterior hasta el día hábil previo.
+                 *     El veredicto sigue siendo el de Banxico, y `request_data.fecha` conserva la fecha enviada.
                  */
                 banxico_result?: ({
                     /**
-                     * @description Fecha de la operación tal como la reporta el CEP de Banxico (`AAAA-MM-DD`).
+                     * @description Día hábil SPEI que Banxico asignó a la operación, tal como lo reporta el CEP (`YYYY-MM-DD`), en hora del centro de México. Puede diferir de la fecha de envío: lo enviado a partir de las 18:00, en sábado, en domingo o en un día inhábil opera el siguiente día hábil.
                      * @example 2025-03-15
                      */
                     operationDate?: string;
                     /**
-                     * @description Hora de la operación tal como la reporta el CEP de Banxico (`HH:MM:SS`).
+                     * @description Hora de la operación tal como la reporta el CEP (`HH:MM:SS`), en hora del centro de México y no en UTC.
                      * @example 14:22:10
                      */
                     processingTime?: string;
@@ -3460,6 +3506,84 @@ export interface components {
         /** @description Respuesta de `GET /v1/public/bin-lookup/{bin}`. Un único recurso con el banco emisor SPEI resuelto contra el catálogo local de BIN (lectura pura, sin consulta externa). Un BIN desconocido devuelve `404`, no este cuerpo. */
         BinLookupResponse: components["schemas"]["SuccessEnvelope"] & {
             data: components["schemas"]["BinResource"];
+        };
+        /** @description Calendario de días inhábiles SPEI de un año, en formato JSON:API. `id` y `attributes.year` son siempre iguales: el año del calendario. */
+        SpeiCalendarResource: components["schemas"]["JsonApiResourceBase"] & {
+            /**
+             * @description Tipo de recurso JSON:API. Siempre `spei_calendar`.
+             * @example spei_calendar
+             * @enum {string}
+             */
+            type: "spei_calendar";
+            /**
+             * @description Año del calendario (cuatro dígitos).
+             * @example 2026
+             */
+            id: string;
+            /** @description Datos del calendario del año. */
+            attributes: {
+                /**
+                 * @description Año del calendario (cuatro dígitos). Mismo valor que `id`.
+                 * @example 2026
+                 */
+                year: number;
+                /**
+                 * @description Días inhábiles que caen de lunes a viernes (`YYYY-MM-DD`), de menor a mayor. Los sábados y los domingos también son inhábiles y no se repiten aquí.
+                 * @example [
+                 *       "2026-01-01",
+                 *       "2026-02-02",
+                 *       "2026-03-16",
+                 *       "2026-04-02",
+                 *       "2026-04-03",
+                 *       "2026-05-01",
+                 *       "2026-09-16",
+                 *       "2026-11-02",
+                 *       "2026-11-16",
+                 *       "2026-12-25"
+                 *     ]
+                 */
+                non_business_days: string[];
+                /** @description Disposición oficial de la que sale el calendario. */
+                source: {
+                    /**
+                     * @description Siglas de la autoridad que emite la disposición, por ejemplo `CNBV`.
+                     * @example CNBV
+                     */
+                    issuer: string;
+                    /**
+                     * @description Siglas del medio oficial en el que se publicó la disposición, por ejemplo `DOF`.
+                     * @example DOF
+                     */
+                    published_in: string;
+                    /**
+                     * Format: date
+                     * @description Fecha de publicación de la disposición (`YYYY-MM-DD`).
+                     * @example 2025-12-10
+                     */
+                    published_on: string;
+                    /**
+                     * @description Título oficial de la disposición, en español.
+                     * @example Disposiciones de carácter general que señalan los días del año 2026 en que las entidades financieras sujetas a la supervisión de la Comisión Nacional Bancaria y de Valores deberán cerrar sus puertas y suspender operaciones
+                     */
+                    title: string;
+                };
+            };
+        };
+        /** @description Respuesta de `GET /v1/public/spei-calendar/{year}`. Un único recurso con los días inhábiles SPEI del año y su fuente, y en `meta.covered_years` los años que tienen calendario. Un año sin calendario responde `404`, no este cuerpo. */
+        SpeiCalendarResponse: components["schemas"]["SuccessEnvelope"] & {
+            data: components["schemas"]["SpeiCalendarResource"];
+            /** @description Metadatos de la respuesta. */
+            meta?: {
+                /**
+                 * @description Años con calendario publicado, de menor a mayor.
+                 * @example [
+                 *       2024,
+                 *       2025,
+                 *       2026
+                 *     ]
+                 */
+                covered_years?: number[];
+            };
         };
         /** @description Cupo de beneficiarios activos del plan y ocupación actual de la cuenta autenticada. */
         BeneficiaryCapacity: {
@@ -7084,6 +7208,109 @@ export interface operations {
             };
             404: components["responses"]["NotFound"];
             422: components["responses"]["ValidationError"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getSpeiCalendar: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description **ETag** recibido en peticiones anteriores. Si los datos no han cambiado y el `etag_version` sigue igual, el server responde `304 Not Modified` (sin cuerpo) — evita recibir los datos de nuevo cuando el estado del recurso NO ha cambiado. */
+                "If-None-Match"?: components["parameters"]["IfNoneMatchHeader"];
+            };
+            path: {
+                /**
+                 * @description Año del calendario, de cuatro dígitos.
+                 * @example 2026
+                 */
+                year: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Calendario de días inhábiles SPEI del año, con su fuente. */
+            200: {
+                headers: {
+                    /** @description Firma del calendario actual. Pasar como `If-None-Match` en peticiones posteriores. */
+                    ETag?: string;
+                    /** @description TTL de caché en el cliente (1 h). */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpeiCalendarResponse"];
+                };
+            };
+            /** @description No modificado: el calendario no ha cambiado según el ETag enviado. */
+            304: {
+                headers: {
+                    /** @description ETag actual del calendario. */
+                    ETag?: string;
+                    /** @description TTL de caché en el cliente (1 h). */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El año no tiene calendario (código `spei_calendar_year_not_covered`). `meta.covered_years` lista los años disponibles. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "errors": [
+                     *         {
+                     *           "status": "404",
+                     *           "code": "spei_calendar_year_not_covered",
+                     *           "detail": "No tenemos el calendario de 2030. Los años disponibles van de 2024 a 2026."
+                     *         }
+                     *       ],
+                     *       "meta": {
+                     *         "version": "1.63.0",
+                     *         "request_id": "c1d2e3f4a5b6",
+                     *         "covered_years": [
+                     *           2024,
+                     *           2025,
+                     *           2026
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"] & {
+                        meta?: {
+                            /** @description Años con calendario publicado, de menor a mayor. */
+                            covered_years?: number[];
+                        };
+                    };
+                };
+            };
+            /** @description El año no tiene cuatro dígitos (código `spei_calendar_year_invalid`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "errors": [
+                     *         {
+                     *           "status": "422",
+                     *           "code": "spei_calendar_year_invalid",
+                     *           "detail": "El año debe tener cuatro dígitos, por ejemplo 2026."
+                     *         }
+                     *       ],
+                     *       "meta": {
+                     *         "version": "1.63.0",
+                     *         "request_id": "d2e3f4a5b6c7"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             429: components["responses"]["RateLimited"];
         };
     };
