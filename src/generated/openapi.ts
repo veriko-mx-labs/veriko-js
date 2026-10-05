@@ -755,11 +755,11 @@ export interface paths {
          *     - Tarjeta (16 dígitos): `bank_code` es opcional, se deriva del BIN.
          *     - Celular/DiMo (10 dígitos): `bank_code` es **obligatorio** en el cuerpo, ya que el número por sí solo no identifica a la institución bancaria.
          *
-         *     Si la cuenta a registrar no existe previamente, se registra y responde con un estado HTTP `200`.
+         *     Si la cuenta a registrar no existe previamente, se registra y responde con un estado HTTP `201`.
          *
          *     Si se intenta registrar una cuenta activa, responde con un estado HTTP `422` (con `beneficiary_already_registered` en el cuerpo).
          *
-         *     Si existe pero está archivada, el alta la **reactiva** y responde con un estado HTTP `200` (con `meta.reactivated=true` en el cuerpo).
+         *     Si existe pero está archivada, el alta la **reactiva** y responde con un estado HTTP `200` (con `meta.reactivated=true` en el cuerpo). Si la petición no trae `label`, la reactivación conserva el alias que la cuenta ya tenía; si lo trae, lo reemplaza.
          */
         post: operations["createBeneficiary"];
         delete?: never;
@@ -785,6 +785,8 @@ export interface paths {
          *     - Solo `bank_code`: se aplica únicamente sobre un beneficiario de tipo celular. En una CLABE o una tarjeta el banco se deriva del número, así que el valor enviado se descarta sin error.
          *
          *     Un cuerpo sin ningún campo editable responde con un estado HTTP `422` (con `no_valid_fields` en el cuerpo).
+         *
+         *     Si el `account_number` nuevo ya está registrado para la misma cuenta de usuario, activo o archivado, responde con un estado HTTP `422` (con `beneficiary_already_registered` en el cuerpo) y el beneficiario no cambia.
          */
         put: operations["updateBeneficiary"];
         post?: never;
@@ -1008,7 +1010,7 @@ export interface paths {
          *
          *     Reglas de la confirmación:
          *
-         *     - Filas `valid` y `correctable`: Se persisten (con sufijo de alias si hubo colisión de alias).
+         *     - Filas `valid` y `correctable`: Se persisten (con sufijo de alias si hubo colisión de alias). La excepción es un celular sin banco válido (`bank_code_required_for_phone` o `invalid_bank_code`): se corrige eligiendo el banco en la vista previa, y si al confirmar sigue sin banco no se guarda, queda como `fatal` con ese mismo código y cuenta en `skipped_count`.
          *     - Filas `fatal` y `duplicate_account`: Se omiten.
          *     - Cuentas previamente archivadas con el mismo número: Se reactivan en lugar de duplicarse.
          */
@@ -1172,7 +1174,10 @@ export interface paths {
          *     - `degraded`: Problemas parciales — latencia elevada o errores
          *       intermitentes.
          *     - `down`: El servicio es por el momento inaccesible.
-         *     - `unknown`: Aún no hay datos de chequeos de salud disponibles.
+         *     - `unknown`: No hay datos de salud vigentes: aún no se ha ejecutado ningún
+         *       chequeo, o el último es más viejo que tres veces `check_interval_seconds`
+         *       porque el chequeo automático dejó de correr. En ese caso `last_verified_at`
+         *       conserva la fecha de ese último chequeo.
          *
          *     La respuesta se cachea 60 segundos en el cliente con `Cache-Control`, y ese
          *     plazo se configura en el despliegue. Cualquier usuario autenticado puede
@@ -3623,12 +3628,12 @@ export interface components {
                  */
                 account_type: "clabe" | "card" | "phone";
                 /**
-                 * @description Código SPEI (5 dígitos) del banco resuelto.
+                 * @description Código SPEI (5 dígitos) del banco resuelto. Es la cadena vacía (`""`) cuando la cuenta no tiene un banco conocido: una tarjeta cuyo BIN no está en el directorio. En ese caso `bank_name` trae un texto de relleno en el idioma de la petición.
                  * @example 40012
                  */
                 bank_code: string;
                 /**
-                 * @description Nombre oficial del banco, resuelto a partir de su `bank_code`.
+                 * @description Nombre oficial del banco, resuelto a partir de su `bank_code`. Con un `bank_code` vacío es un texto de relleno («BIN no reconocido (411111)»), que se traduce al idioma de la petición.
                  * @example BBVA MEXICO
                  */
                 bank_name: string;
@@ -3726,7 +3731,7 @@ export interface components {
                  */
                 account_type: "clabe" | "card" | "phone";
                 /**
-                 * @description Código SPEI (5 dígitos) del banco resuelto.
+                 * @description Código SPEI (5 dígitos) del banco resuelto. Es la cadena vacía (`""`) para una tarjeta cuyo BIN no está en el directorio.
                  * @example 40012
                  */
                 bank_code: string;
@@ -4329,7 +4334,7 @@ export interface components {
         /** @description Estado público del servicio de verificación de Banxico, tal como lo devuelve `GET /v1/status/banxico`. Muestra el estado operativo actual y una explicación legible. */
         BanxicoPublicStatus: {
             /**
-             * @description Estado agregado del servicio de verificación de Banxico — `operational`: Todas las pruebas pasan y la latencia es normal; `degraded`: Problemas parciales (latencia elevada o errores intermitentes); `down`: Servicio inaccesible; `unknown`: Aún no hay datos de salud disponibles.
+             * @description Estado agregado del servicio de verificación de Banxico — `operational`: Todas las pruebas pasan y la latencia es normal; `degraded`: Problemas parciales (latencia elevada o errores intermitentes); `down`: Servicio inaccesible; `unknown`: no hay datos de salud vigentes, porque aún no se ha ejecutado ningún chequeo o porque el último tiene más de tres veces `check_interval_seconds` de antigüedad (el chequeo automático dejó de correr).
              * @example operational
              * @enum {string}
              */
@@ -4345,7 +4350,7 @@ export interface components {
              */
             message: string;
             /**
-             * @description Timestamp del último chequeo de salud ejecutado. `null` cuando aún no se ha ejecutado ningún chequeo.
+             * @description Timestamp del último chequeo de salud ejecutado. `null` cuando aún no se ha ejecutado ningún chequeo. Cuando `status` es `unknown` por un chequeo demasiado viejo, conserva la fecha de ese chequeo: dice desde cuándo no hay dato.
              * @example 2026-04-11T15:30:00Z
              */
             last_verified_at: components["schemas"]["TimestampUTC"] | null;
@@ -7527,7 +7532,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             413: components["responses"]["PayloadTooLarge"];
-            /** @description El cuerpo no pasó la validación. Los códigos posibles son `no_valid_fields`, `invalid_account_length`, `clabe_prefix_not_recognized`, `bank_code_required_for_phone`, `account_number_invalid_type` y `label_invalid_type`. Las dos últimas aparecen cuando `account_number` o `label` llegan con un tipo distinto de cadena de texto (por ejemplo, un número o un arreglo). Todo error de campo trae `source.pointer`. */
+            /** @description El cuerpo no pasó la validación. Los códigos posibles son `no_valid_fields`, `invalid_account_length`, `clabe_prefix_not_recognized`, `bank_code_required_for_phone`, `beneficiary_already_registered`, `account_number_invalid_type` y `label_invalid_type`. Las dos últimas aparecen cuando `account_number` o `label` llegan con un tipo distinto de cadena de texto (por ejemplo, un número o un arreglo). Todo error de campo trae `source.pointer`. */
             422: {
                 headers: {
                     [name: string]: unknown;
