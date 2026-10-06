@@ -2352,7 +2352,7 @@ export interface components {
                 telegram_linked?: boolean;
             };
             /**
-             * @description `true` cuando hay una aceptación vigente de los Términos de Servicio y el Aviso de Privacidad (ambos documentos). `false` cuando falta cualquiera de los dos, o cuando quedó antes de `LEGAL_REACCEPT_SINCE` (vacía por defecto). Gatea el modal de consentimiento post-login.
+             * @description `true` cuando no queda pendiente la aceptación de ningún documento: ni los Términos de Servicio ni el Aviso de Privacidad. `false` cuando falta la aceptación de cualquiera de los dos, o cuando el equipo exigió aceptar una versión que la cuenta todavía no ha aceptado. Gatea el modal de consentimiento post-login, que lista lo pendiente en `GET /users/me/legal/pending`.
              * @example true
              */
             legal_accepted?: boolean;
