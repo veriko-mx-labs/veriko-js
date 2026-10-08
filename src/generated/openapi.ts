@@ -2656,9 +2656,9 @@ export interface components {
                     created_at: string;
                 };
                 /**
-                 * @description Conflicto entre la cuenta enviada y la que muestra la imagen. Solo aparece en validaciones de tipo `ocr`, cuando se envió `cuenta_beneficiaria` y la imagen muestra otra cuenta completa de la misma longitud, válida y con confianza suficiente.
+                 * @description Conflicto entre la cuenta enviada y la que muestra la imagen. Solo aparece en validaciones de tipo `ocr`, cuando se envió `cuenta_beneficiaria` y la imagen muestra otra cuenta completa de la misma longitud, válida y con confianza suficiente, o una cuenta enmascarada cuyos dígitos finales visibles (3 o más) no son el final de la cuenta enviada.
                  *
-                 *     Prevalece la cuenta enviada, que es la que se consulta en Banxico: el campo no cambia el veredicto. Si el pago fue a la cuenta de la imagen, lo esperable es un `not_found`. Solo trae los últimos 4 dígitos de cada cuenta, y el conflicto también se añade a `normalization_warnings`.
+                 *     Prevalece la cuenta enviada, que es la que se consulta en Banxico: el campo no cambia el veredicto. Si el pago fue a la cuenta de la imagen, lo esperable es un `not_found`. Solo trae los últimos 4 dígitos de cada cuenta, y el conflicto también se añade a `normalization_warnings`. Con una cuenta enmascarada, `read_last4` trae los dígitos finales que el propio comprobante muestra (3 o 4), nunca más.
                  */
                 account_conflict?: {
                     /**
@@ -2667,7 +2667,7 @@ export interface components {
                      */
                     sent_last4: string;
                     /**
-                     * @description Últimos 4 dígitos de la cuenta completa que muestra la imagen.
+                     * @description Últimos 4 dígitos de la cuenta que muestra la imagen (los visibles, 3 o 4, si está enmascarada).
                      * @example 9012
                      */
                     read_last4: string;
