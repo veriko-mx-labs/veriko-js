@@ -4243,6 +4243,11 @@ export interface components {
                         /** @description Datos resumidos de la validación reciente mostrados en el panel. */
                         attributes?: {
                             /**
+                             * @description Clave Banxico canónica del banco, si se puede resolver.
+                             * @example 40012
+                             */
+                            bank_code?: string | null;
+                            /**
                              * @description Nombre del banco de la contraparte. Prioriza `receptor_name` o `emisor_name` guardado; si falta, intenta resolver el código de receptor o emisor. Si tampoco puede resolverlo, devuelve ese código o `Banco no identificado`.
                              * @example BBVA MEXICO
                              */
