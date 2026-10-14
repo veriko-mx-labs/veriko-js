@@ -2597,7 +2597,7 @@ export interface components {
                 etag_version?: number | null;
                 /**
                  * @description Referencia relativa del comprobante, imagen o PDF (solo si `validation_type` es del tipo `ocr`). No se publica cuando el archivo no se conserva: ver `image_retained`.
-                 * @example ocr/2026/04/a1b2c3d4.jpg
+                 * @example comprobantes/12345.jpg
                  */
                 image_path?: string | null;
                 /**
@@ -2918,6 +2918,16 @@ export interface components {
              *     ]
              */
             cuentas_candidatas?: string[];
+            /**
+             * @description **Código SPEI** del banco emisor (4 o 5 dígitos, p. ej. `40012`), para corregir el que se leyó del comprobante. Sustituye al leído antes de consultar Banxico. Un valor que no son 4 o 5 dígitos (un nombre, por ejemplo) se ignora y se conserva el leído.
+             * @example 40012
+             */
+            banco_emisor?: string;
+            /**
+             * @description **Código SPEI** del banco receptor (4 o 5 dígitos, p. ej. `40002`), para corregir el que se leyó del comprobante. Sustituye al leído antes de consultar Banxico. Un valor que no son 4 o 5 dígitos (un nombre, por ejemplo) se ignora y se conserva el leído.
+             * @example 40002
+             */
+            banco_receptor?: string;
             /** @description Política de reintentos automáticos para esta validación. Si se omite, se aplica la política general del usuario, configurada en `PUT /v1/users/me/retry-policy`. **Los reintentos no consumen cuota de validaciones**. */
             retry_policy?: components["schemas"]["RetryPolicy"];
             /**
@@ -3761,6 +3771,7 @@ export interface components {
             file: string;
             /**
              * @description Modo de lectura del archivo — `template`: Respeta los encabezados canónicos; `free`: Formato libre, el sistema deduce la estructura.
+             * @default template
              * @example template
              * @enum {string}
              */
@@ -5902,7 +5913,7 @@ export interface components {
                  *       "errors": [
                  *         {
                  *           "status": "403",
-                 *           "code": "forbidden",
+                 *           "code": "permission_denied",
                  *           "detail": "No tienes permiso para acceder a este recurso."
                  *         }
                  *       ],
@@ -6007,7 +6018,7 @@ export interface components {
         AsyncQueryParam: "0" | "1" | "true" | "false" | "yes";
         /** @description Identificador (UUID) de la validación */
         ValidationId: string;
-        /** @description **ETag** recibido en peticiones anteriores. Si los datos no han cambiado y el `etag_version` sigue igual, el server responde `304 Not Modified` (sin cuerpo) — evita recibir los datos de nuevo cuando el estado del recurso NO ha cambiado. */
+        /** @description **ETag** recibido en una respuesta anterior, tal cual (débil `W/"…"` en una validación, fuerte en los catálogos públicos). Si el recurso no ha cambiado, el server responde `304 Not Modified` (sin cuerpo) y evita mandar los datos de nuevo. */
         IfNoneMatchHeader: string;
     };
     requestBodies: never;
@@ -6492,7 +6503,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description **ETag** recibido en peticiones anteriores. Si los datos no han cambiado y el `etag_version` sigue igual, el server responde `304 Not Modified` (sin cuerpo) — evita recibir los datos de nuevo cuando el estado del recurso NO ha cambiado. */
+                /** @description **ETag** recibido en una respuesta anterior, tal cual (débil `W/"…"` en una validación, fuerte en los catálogos públicos). Si el recurso no ha cambiado, el server responde `304 Not Modified` (sin cuerpo) y evita mandar los datos de nuevo. */
                 "If-None-Match"?: components["parameters"]["IfNoneMatchHeader"];
             };
             path: {
@@ -7158,7 +7169,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description **ETag** recibido en peticiones anteriores. Si los datos no han cambiado y el `etag_version` sigue igual, el server responde `304 Not Modified` (sin cuerpo) — evita recibir los datos de nuevo cuando el estado del recurso NO ha cambiado. */
+                /** @description **ETag** recibido en una respuesta anterior, tal cual (débil `W/"…"` en una validación, fuerte en los catálogos públicos). Si el recurso no ha cambiado, el server responde `304 Not Modified` (sin cuerpo) y evita mandar los datos de nuevo. */
                 "If-None-Match"?: components["parameters"]["IfNoneMatchHeader"];
             };
             path?: never;
@@ -7225,7 +7236,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description **ETag** recibido en peticiones anteriores. Si los datos no han cambiado y el `etag_version` sigue igual, el server responde `304 Not Modified` (sin cuerpo) — evita recibir los datos de nuevo cuando el estado del recurso NO ha cambiado. */
+                /** @description **ETag** recibido en una respuesta anterior, tal cual (débil `W/"…"` en una validación, fuerte en los catálogos públicos). Si el recurso no ha cambiado, el server responde `304 Not Modified` (sin cuerpo) y evita mandar los datos de nuevo. */
                 "If-None-Match"?: components["parameters"]["IfNoneMatchHeader"];
             };
             path: {
