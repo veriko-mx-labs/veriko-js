@@ -5,6 +5,10 @@ versiones según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+Sin cambios todavía.
+
+## [0.4.13] — 2026-10-14
+
 ### Añadido
 
 - `catalog.speiCalendar()` (`GET /v1/public/spei-calendar/{year}`): el calendario de días inhábiles
