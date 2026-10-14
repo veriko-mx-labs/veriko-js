@@ -165,6 +165,8 @@ export {
   type RetryStateResource,
   type PublicPlanComparison,
   type PublicPlans,
+  type SpeiCalendar,
+  type SpeiCalendarOptions,
   type TelegramDispatch,
   type TimeseriesParams,
   type TransferAccountParams,

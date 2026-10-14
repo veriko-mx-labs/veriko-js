@@ -470,6 +470,19 @@ export type BankList = Bank[] & { etag?: string };
 /** El banco emisor de una tarjeta, resuelto por su BIN. */
 export type BinLookup = Schemas['BinResource'];
 
+/**
+ * El calendario de días inhábiles SPEI de un año, con la disposición de la que sale.
+ *
+ * `attributes.non_business_days` trae sólo los días inhábiles de lunes a viernes;
+ * los sábados y los domingos son inhábiles siempre.
+ */
+export type SpeiCalendar = Schemas['SpeiCalendarResource'] & {
+  /** Los años con calendario, de menor a mayor (`meta.covered_years`). */
+  coveredYears: number[];
+  /** Se manda como `ifNoneMatch` en la lectura siguiente. */
+  etag?: string;
+};
+
 /** Estado actual del servicio de consulta de Banxico. */
 export type BanxicoStatus = Schemas['BanxicoPublicStatusResource'];
 
@@ -730,6 +743,12 @@ export interface TimeseriesParams {
 /** Las opciones de `catalog.banks()`. */
 export interface BanksOptions {
   /** El `ETag` de una lectura anterior; con él, un catálogo sin cambios responde `304`. */
+  ifNoneMatch?: string;
+}
+
+/** Las opciones de `catalog.speiCalendar()`. */
+export interface SpeiCalendarOptions {
+  /** El `ETag` de una lectura anterior; con él, un calendario sin cambios responde `304`. */
   ifNoneMatch?: string;
 }
 

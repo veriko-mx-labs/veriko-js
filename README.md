@@ -52,13 +52,13 @@ validación pasa a `returned`.
 
 ## Las familias de operaciones
 
-El cliente agrupa las 69 operaciones M2M de la API en once familias:
+El cliente agrupa las 70 operaciones M2M de la API en once familias:
 
 | familia                | qué cubre                                                                                                                                                |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `client.validations`   | Validar por campos o por imagen, consultar, listar, exportar, revisar el estado de pago, borrar, la política de reintentos y la descarga del comprobante |
 | `client.webhooks`      | Registrar endpoints, rotar su secreto, enviar un evento de prueba y leer el historial de entregas                                                        |
-| `client.catalog`       | Catálogo de bancos SPEI, banco emisor de una tarjeta y estado del servicio de Banxico                                                                    |
+| `client.catalog`       | Catálogo de bancos SPEI, calendario de días inhábiles SPEI, banco emisor de una tarjeta y estado del servicio de Banxico                                 |
 | `client.beneficiaries` | Cuentas beneficiarias guardadas y la importación masiva, como ciclo completo                                                                             |
 | `client.usage`         | Cuota de validaciones, límites de tasa y registro de actividad de la API                                                                                 |
 | `client.account`       | Perfil y política de reintentos predeterminada de la cuenta                                                                                              |
@@ -378,6 +378,7 @@ el SDK consulta ese listado con `endpoint_id`.
 
 ```ts
 const banks = await client.catalog.banks(); // instituciones SPEI con su código
+const calendar = await client.catalog.speiCalendar(2026); // días inhábiles SPEI del año
 const card = await client.catalog.binLookup('455632'); // banco emisor de una tarjeta
 const status = await client.catalog.banxicoStatus();
 
@@ -386,6 +387,12 @@ console.log(status.attributes.status); // 'operational'
 
 `banxicoStatus()` sirve para distinguir un `cep_unavailable` propio de la transferencia de una caída
 del servicio, y `banxicoTimeseries()` devuelve la serie de latencia o de veredictos por ventana.
+
+`speiCalendar()` devuelve `SpeiCalendar`: `attributes.non_business_days` trae los días inhábiles de
+lunes a viernes (`YYYY-MM-DD`), `attributes.source` la disposición de la CNBV publicada en el DOF y
+`coveredYears` los años con calendario. Los sábados y los domingos son inhábiles siempre y no se
+repiten en la lista. La consulta no consume cuota. Un año sin calendario se lanza como
+`NotFoundError` con `spei_calendar_year_not_covered`.
 
 ## Beneficiarios
 
@@ -447,9 +454,9 @@ cuota. `breakdown()`, `heatmap()` y `apiUsage()` desglosan el consumo, y
 
 ## Lecturas condicionales
 
-`client.validations.get()` y `client.catalog.banks()` admiten `ifNoneMatch`. La respuesta trae el
-`ETag` en `etag`, y cuando nada cambió la API responde `304`, que el SDK lanza como `ApiError` con
-`status` 304.
+`client.validations.get()`, `client.catalog.banks()` y `client.catalog.speiCalendar()` admiten
+`ifNoneMatch`. La respuesta trae el `ETag` en `etag`, y cuando nada cambió la API responde `304`,
+que el SDK lanza como `ApiError` con `status` 304.
 
 ```ts
 import { ApiError } from '@veriko-mx/sdk';
@@ -712,7 +719,7 @@ completos, por si hace falta una operación que el SDK todavía no envuelve.
 
 ## Superficie M2M
 
-El SDK cubre exactamente las 69 operaciones del spec público: `security: []` para las públicas y
+El SDK cubre exactamente las 70 operaciones del spec público: `security: []` para las públicas y
 `ApiKeyAuth` para las autenticadas.
 
 Entre ellas están el perfil y su política de reintentos, el resumen del panel, los dos endpoints

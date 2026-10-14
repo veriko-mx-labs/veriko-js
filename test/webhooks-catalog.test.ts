@@ -7,6 +7,7 @@ import {
   ApiError,
   ConfigurationError,
   InvalidRequestError,
+  NotFoundError,
   Veriko,
   type CreateWebhookParams,
 } from '../src/index.js';
@@ -369,6 +370,49 @@ describe('client.webhooks y client.catalog', () => {
       assert.equal(bin.attributes.bank_name, 'BBVA MEXICO');
       assert.equal(bin.attributes.banxico_code, '40012');
       assert.equal(bin.attributes.card_brand, 'VISA');
+    });
+
+    it('el calendario de días inhábiles SPEI de un año', async () => {
+      server.enqueue('spei-calendar');
+
+      const calendar = await client.catalog.speiCalendar(2026);
+
+      assert.equal(server.request(0).url, '/v1/public/spei-calendar/2026');
+      assert.equal(calendar.attributes.year, 2026);
+      assert.equal(calendar.attributes.non_business_days.length, 10);
+      assert.equal(calendar.attributes.non_business_days[0], '2026-01-01');
+      assert.equal(calendar.attributes.source.issuer, 'CNBV');
+      assert.equal(calendar.attributes.source.published_on, '2025-12-10');
+      assert.deepEqual(calendar.coveredYears, [2024, 2025, 2026]);
+      assert.equal(calendar.etag, '"a1b2c3d4e5f6"');
+    });
+
+    it('el calendario SPEI admite ETag, y un 304 se lanza como ApiError', async () => {
+      server.enqueue('not-modified');
+
+      await assert.rejects(
+        () => client.catalog.speiCalendar(2026, { ifNoneMatch: '"a1b2c3d4e5f6"' }),
+        (error: unknown) => {
+          assert.ok(error instanceof ApiError);
+          assert.equal(error.status, 304);
+          return true;
+        },
+      );
+
+      assert.equal(server.header(0, 'if-none-match'), '"a1b2c3d4e5f6"');
+    });
+
+    it('un año sin calendario SPEI se lanza como NotFoundError', async () => {
+      server.enqueue('spei-calendar-404');
+
+      await assert.rejects(
+        () => client.catalog.speiCalendar(2030),
+        (error: unknown) => {
+          assert.ok(error instanceof NotFoundError);
+          assert.equal(error.code, 'spei_calendar_year_not_covered');
+          return true;
+        },
+      );
     });
 
     it('el estado del servicio de Banxico', async () => {

@@ -5,7 +5,13 @@ versiones según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
-Sin cambios todavía.
+### Añadido
+
+- `catalog.speiCalendar()` (`GET /v1/public/spei-calendar/{year}`): el calendario de días inhábiles
+  SPEI de un año. Devuelve `SpeiCalendar`, con `non_business_days` y `source` en `attributes` y los
+  años con calendario en `coveredYears`. Admite `ifNoneMatch`, y su `ETag` queda en `etag`. No
+  consume cuota. Un año sin calendario se lanza como `NotFoundError` con
+  `spei_calendar_year_not_covered`.
 
 ## [0.4.12] — 2026-10-02
 

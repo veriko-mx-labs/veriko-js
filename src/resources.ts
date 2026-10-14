@@ -110,6 +110,8 @@ import {
   type RetryAttempt,
   type RetryPolicy,
   type RetryStateResource,
+  type SpeiCalendar,
+  type SpeiCalendarOptions,
   type TelegramDispatch,
   type TimeseriesParams,
   type UpdateWebhookParams,
@@ -1073,7 +1075,7 @@ export class Webhooks {
 
 // ── Catálogo ────────────────────────────────────────────────────────────────
 
-/** Datos abiertos: el catálogo de bancos y el estado del servicio. */
+/** Datos abiertos: el catálogo de bancos, el calendario SPEI y el estado del servicio. */
 export class Catalog {
   private readonly transport: Transport;
 
@@ -1113,6 +1115,33 @@ export class Catalog {
       path: `/public/bin-lookup/${pathSegment(bin)}`,
     });
     return readData<BinLookup>(response, 'del BIN');
+  }
+
+  /**
+   * Calendario de días inhábiles SPEI de un año, con la disposición de la que sale.
+   *
+   * `GET /v1/public/spei-calendar/{year}`. No consume cuota. Un año sin calendario
+   * se lanza como `NotFoundError` con `spei_calendar_year_not_covered`. Con
+   * `ifNoneMatch` la API responde `304` cuando el calendario no cambió, y el SDK lo
+   * lanza como `ApiError` con `status` 304. El `ETag` de cada lectura queda en
+   * `etag`, y los años con calendario, en `coveredYears`.
+   */
+  async speiCalendar(year: number, options: SpeiCalendarOptions = {}): Promise<SpeiCalendar> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: `/public/spei-calendar/${pathSegment(String(year))}`,
+      headers: { 'if-none-match': options.ifNoneMatch },
+    });
+    if (response.status === 304) throw notModified('El calendario', response);
+
+    const calendar = readData<SpeiCalendar>(response, 'del calendario');
+    const covered = readMeta(readDocument(response))['covered_years'];
+    calendar.coveredYears = Array.isArray(covered)
+      ? covered.filter((year): year is number => typeof year === 'number')
+      : [];
+    const etag = response.headers['etag'];
+    if (etag) calendar.etag = etag;
+    return calendar;
   }
 
   /**

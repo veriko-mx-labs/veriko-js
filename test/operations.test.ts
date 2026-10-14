@@ -1,5 +1,5 @@
 /**
- * Las 69 operaciones M2M que cubre el SDK, contra el spec público.
+ * Las 70 operaciones M2M que cubre el SDK, contra el spec público.
  *
  * Cada caso llama a un método con todos sus argumentos opcionales y comprueba que
  * lo que llegó al servidor existe en el spec: el método y la ruta, los parámetros
@@ -431,6 +431,11 @@ const CASES: Case[] = [
     call: (client) => client.catalog.binLookup('455632'),
   },
   {
+    operationId: 'getSpeiCalendar',
+    recording: 'spei-calendar',
+    call: (client) => client.catalog.speiCalendar(2026, { ifNoneMatch: '"a1b2c3d4e5f6"' }),
+  },
+  {
     operationId: 'banxicoPublicStatus',
     recording: 'banxico-status',
     call: (client) => client.catalog.banxicoStatus(),
@@ -732,6 +737,7 @@ const SDK_OPERATIONS = [
   'exportAllDeliveries',
   'listBanks',
   'lookupBin',
+  'getSpeiCalendar',
   'banxicoPublicStatus',
   'banxicoPublicTimeseries',
   'createBeneficiary',
@@ -891,8 +897,8 @@ describe('el conjunto de operaciones M2M cubierto', () => {
   const implemented = new Set(SDK_OPERATIONS);
   const covered = new Set(CASES.map((testCase) => testCase.operationId));
 
-  it('cubre exactamente las 69 operaciones del contrato, sin familias parciales', () => {
-    assert.equal(implemented.size, 69);
+  it('cubre exactamente las 70 operaciones del contrato, sin familias parciales', () => {
+    assert.equal(implemented.size, 70);
     assert.deepEqual(covered, implemented);
     assert.deepEqual(coverageErrors(m2mOperationIds(), implemented, KNOWN_GAPS), []);
   });
