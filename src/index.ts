@@ -112,6 +112,7 @@ export {
   type CreateBeneficiaryParams,
   type CreateWebhookParams,
   type DeliveriesParams,
+  type DeliveryFilters,
   type DeliveryEventType,
   type DeliveryStatus,
   type DashboardSummary,

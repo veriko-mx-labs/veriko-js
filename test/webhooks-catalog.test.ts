@@ -249,6 +249,44 @@ describe('client.webhooks y client.catalog', () => {
       assert.equal(query(0).get('status'), 'failed');
     });
 
+    it('los filtros de varios valores viajan separados por comas', async () => {
+      server.enqueue('webhook-deliveries');
+
+      await client.webhooks.deliveries({
+        status: ['failed', 'retrying'],
+        eventType: ['validation.completed', 'validation.returned'],
+        responseStatus: ['5xx', 404, 'none'],
+        from: '2026-10-01',
+        minAttempt: 2,
+      });
+
+      assert.equal(query(0).get('status'), 'failed,retrying');
+      assert.equal(query(0).get('event_type'), 'validation.completed,validation.returned');
+      assert.equal(query(0).get('response_status'), '5xx,404,none');
+      assert.equal(query(0).get('from'), '2026-10-01');
+      assert.equal(query(0).get('min_attempt'), '2');
+    });
+
+    it('varios endpoints consultan el listado global', async () => {
+      server.enqueue('webhook-deliveries');
+      const other = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+
+      await client.webhooks.deliveries([WEBHOOK_ID, other]);
+
+      assert.equal(server.request(0).url.startsWith('/v1/webhooks/deliveries?'), true);
+      assert.equal(query(0).get('endpoint_id'), `${WEBHOOK_ID},${other}`);
+    });
+
+    it('con un endpoint y un filtro nuevo también se consulta el listado global', async () => {
+      server.enqueue('webhook-deliveries');
+
+      await client.webhooks.deliveries(WEBHOOK_ID, { minResponseTimeMs: 3000 });
+
+      assert.equal(server.request(0).url.startsWith('/v1/webhooks/deliveries?'), true);
+      assert.equal(query(0).get('endpoint_id'), WEBHOOK_ID);
+      assert.equal(query(0).get('min_response_time_ms'), '3000');
+    });
+
     it('iterDeliveries con una sola página no pide otra', async () => {
       server.enqueue('webhook-deliveries');
 
@@ -319,6 +357,22 @@ describe('client.webhooks y client.catalog', () => {
       assert.equal(server.request(0).url.startsWith('/v1/webhooks/deliveries/export?'), true);
       assert.equal(query(0).get('status'), 'failed');
       assert.equal(query(0).get('limit'), '50');
+    });
+
+    it('exportar las de un endpoint con un filtro nuevo va al listado global', async () => {
+      server.enqueue('deliveries-export-csv');
+
+      await client.webhooks.exportDeliveries(WEBHOOK_ID, {
+        q: 'erp.example.com',
+        to: '2026-10-15',
+        limit: 20,
+      });
+
+      assert.equal(server.request(0).url.startsWith('/v1/webhooks/deliveries/export?'), true);
+      assert.equal(query(0).get('endpoint_id'), WEBHOOK_ID);
+      assert.equal(query(0).get('q'), 'erp.example.com');
+      assert.equal(query(0).get('to'), '2026-10-15');
+      assert.equal(query(0).get('limit'), '20');
     });
 
     it('exportar con un formato fuera de la lista no llega a la API', async () => {

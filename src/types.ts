@@ -103,6 +103,10 @@ export interface OcrValidationRequest {
   cuenta_beneficiaria?: string;
   /** De 2 a 3 cuentas entre las que está la receptora. Va en lugar de `cuenta_beneficiaria`. */
   cuentas_candidatas?: string[];
+  /** Clave SPEI del banco emisor (4 o 5 dígitos) que sustituye a la leída del comprobante. */
+  banco_emisor?: string;
+  /** Clave SPEI del banco receptor (4 o 5 dígitos) que sustituye a la leída del comprobante. */
+  banco_receptor?: string;
   /** Política de reintentos automáticos de la API. */
   retry_policy?: RetryPolicy;
   /** Referencia propia, de 1 a 64 caracteres, que vuelve en la validación y en los webhooks. */
@@ -117,6 +121,8 @@ export const OCR_VALIDATION_REQUEST_FIELDS = [
   'image_url',
   'cuenta_beneficiaria',
   'cuentas_candidatas',
+  'banco_emisor',
+  'banco_receptor',
   'retry_policy',
   'client_ref',
   'retain_image',
@@ -576,10 +582,10 @@ export type BanxicoMetric = NonNullable<TimeseriesQuery['metric']>;
 export type BanxicoWindow = NonNullable<TimeseriesQuery['window']>;
 
 /** Estado de una entrega, para filtrar. */
-export type DeliveryStatus = NonNullable<DeliveriesQuery['status']>;
+export type DeliveryStatus = NonNullable<DeliveriesQuery['status']>[number];
 
 /** Tipo de evento de una entrega, para filtrar. */
-export type DeliveryEventType = NonNullable<DeliveriesQuery['event_type']>;
+export type DeliveryEventType = NonNullable<DeliveriesQuery['event_type']>[number];
 
 /**
  * La cuenta de una validación por imagen: la de `cuentaBeneficiaria`, o varias en
@@ -619,6 +625,14 @@ interface ValidateOcrBase {
    * `false`.
    */
   retainImage?: boolean;
+  /**
+   * Clave SPEI del banco emisor, de 4 o 5 dígitos (`'40012'`), que sustituye a la
+   * leída del comprobante antes de consultar a Banxico. Un valor con otro
+   * formato, como un nombre, se ignora y se conserva el leído.
+   */
+  bancoEmisor?: string;
+  /** Clave SPEI del banco receptor, con la misma regla que `bancoEmisor`. */
+  bancoReceptor?: string;
   /** Identificador del intento de negocio. Con él, repetir la petición no duplica la validación. */
   idempotencyKey?: string;
 }
@@ -665,6 +679,11 @@ export interface ValidationFilters {
   batchId?: number;
   /** Clave SPEI del banco emisor o receptor. */
   bank?: string;
+  /**
+   * Hasta 50 claves SPEI, en lista o separadas por comas: las validaciones cuyo
+   * banco emisor o receptor sea cualquiera de ellas. Con `bank`, se cumplen ambos.
+   */
+  banks?: string | readonly string[];
   amountMin?: number;
   amountMax?: number;
   /** Coincidencia exacta con la `client_ref` enviada al validar. */
@@ -713,23 +732,44 @@ export interface UpdateWebhookParams {
   status?: WebhookStatus;
 }
 
+/** Los filtros que comparten el listado y la exportación de entregas. */
+export interface DeliveryFilters {
+  /** Un estado, o varios. */
+  status?: DeliveryStatus | readonly DeliveryStatus[];
+  /** Un tipo de evento, o varios. */
+  eventType?: DeliveryEventType | readonly DeliveryEventType[];
+  /**
+   * El código HTTP con que respondió el receptor: exacto (`404`), una familia
+   * (`'5xx'`) o `'none'` para las entregas sin respuesta. Uno o varios.
+   */
+  responseStatus?: string | number | readonly (string | number)[];
+  /** Sólo las entregas de esta validación. */
+  validationId?: string;
+  /** Busca en el identificador, el endpoint, el evento, la validación y el código HTTP. */
+  q?: string;
+  /** Creadas desde este momento, incluido: `YYYY-MM-DD` o fecha y hora ISO 8601. */
+  from?: string;
+  /** Creadas hasta este momento, incluido. Una fecha sola llega al final de ese día en UTC. */
+  to?: string;
+  /** Número de intento mínimo. Con `2`, sólo los reintentos. */
+  minAttempt?: number;
+  /** Sólo las respuestas que tardaron al menos estos milisegundos. */
+  minResponseTimeMs?: number;
+}
+
 /** Los argumentos de `webhooks.deliveries()`. */
-export interface DeliveriesParams {
+export interface DeliveriesParams extends DeliveryFilters {
   page?: number;
   /** De 1 a 100. */
   perPage?: number;
-  status?: DeliveryStatus;
-  eventType?: DeliveryEventType;
 }
 
 /** Los argumentos de `webhooks.exportDeliveries()`. */
-export interface ExportDeliveriesParams {
+export interface ExportDeliveriesParams extends DeliveryFilters {
   /** `csv` por omisión. */
   format?: ExportFormat;
   /** Tope de filas, de 1 a 100 000. */
   limit?: number;
-  status?: DeliveryStatus;
-  eventType?: DeliveryEventType;
 }
 
 /** Los argumentos de `catalog.banxicoTimeseries()`. */

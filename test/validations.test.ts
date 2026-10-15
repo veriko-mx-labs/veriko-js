@@ -817,6 +817,42 @@ describe('client.validations', () => {
     });
   });
 
+  describe('bancos corregidos', () => {
+    it('bancoEmisor y bancoReceptor viajan en el cuerpo del OCR', async () => {
+      server.enqueue('validate-queued');
+
+      await client.validations.enqueueOcr({
+        image: Buffer.from('png'),
+        bancoEmisor: '40012',
+        bancoReceptor: '40002',
+      });
+
+      assert.equal(server.json(0)['banco_emisor'], '40012');
+      assert.equal(server.json(0)['banco_receptor'], '40002');
+    });
+
+    it('sin ellos el cuerpo no los lleva', async () => {
+      server.enqueue('validate-ocr');
+
+      await client.validations.validateOcr({ image: Buffer.from('png') });
+
+      assert.equal('banco_emisor' in server.json(0), false);
+      assert.equal('banco_receptor' in server.json(0), false);
+    });
+
+    it('varios bancos viajan separados por comas', async () => {
+      server.enqueue('validations-page1');
+      server.enqueue('validations-stats');
+
+      await client.validations.list({ banks: ['40012', '40014'], bank: '40072' });
+      await client.validations.stats({ banks: '40012,40014' });
+
+      assert.equal(query(0).get('banks'), '40012,40014');
+      assert.equal(query(0).get('bank'), '40072');
+      assert.equal(query(1).get('banks'), '40012,40014');
+    });
+  });
+
   describe('recheck', () => {
     it('una validación que pasa a returned', async () => {
       server.enqueue('validation-recheck-returned');

@@ -147,6 +147,10 @@ o PDF de 1 a 3 páginas, de hasta 12 MB.
 
 `cuentasCandidatas` reemplaza a `cuentaBeneficiaria` cuando la imagen no muestra la cuenta.
 
+`bancoEmisor` y `bancoReceptor` corrigen el banco que se leyó del comprobante. Llevan la clave SPEI
+de 4 o 5 dígitos (`'40012'`), que sustituye a la leída antes de consultar a Banxico; un valor con
+otro formato, como un nombre, se ignora y se conserva el leído.
+
 El comprobante de una validación por OCR se descarga con `client.validations.image(id)`.
 
 ### Sin esperar al veredicto
@@ -268,9 +272,10 @@ for await (const item of client.validations.iter({ from: '2025-03-01', to: '2025
 `totalPages` y `hasNext`.
 
 Los filtros (`status`, `type`, `from`, `to`, `search`, `playground`, `withDeleted`, `batchId`,
-`bank`, `amountMin`, `amountMax`, `clientRef` y `retryState`) van en `camelCase`. `status` acepta un estado o una
+`bank`, `banks`, `amountMin`, `amountMax`, `clientRef` y `retryState`) van en `camelCase`. `status` acepta un estado o una
 lista, y `withDeleted: true` devuelve sólo las validaciones retiradas, mientras que `false` devuelve
-sólo las activas.
+sólo las activas. `banks` filtra por varios bancos a la vez: hasta 50 claves SPEI, en lista o
+separadas por comas, y devuelve las validaciones cuyo banco emisor o receptor sea cualquiera de ellos.
 
 Un listado trae menos campos que `get()`: no incluye los datos enviados, el resultado de Banxico ni
 los enlaces al comprobante.
@@ -371,8 +376,23 @@ tres seguidos. Cuando eso pasa, el estado queda en `auto_disabled` y se reactiva
 
 El historial de intentos está en `client.webhooks.deliveries()`, con o sin identificador de
 endpoint, y se recorre con `iterDeliveries()`. `exportDeliveries()` lo descarga en CSV o en XLSX.
-Los filtros `status` y `eventType` sólo existen en el listado global: con un endpoint y un filtro,
-el SDK consulta ese listado con `endpoint_id`.
+Los filtros sólo existen en el listado global: con un endpoint y un filtro, o con una lista de hasta
+20 endpoints, el SDK consulta ese listado con `endpoint_id`.
+
+```ts
+const failed = await client.webhooks.deliveries({
+  status: ['failed', 'retrying'],
+  responseStatus: ['5xx', 'none'],
+  from: '2026-10-01',
+  minAttempt: 2,
+});
+```
+
+`status`, `eventType` y `responseStatus` aceptan un valor o una lista. `responseStatus` admite un
+código exacto (`404`), una familia (`'5xx'`) o `'none'` para las entregas sin respuesta. `from` y
+`to` acotan la fecha de creación, `validationId` deja las de una validación, `minResponseTimeMs` las
+respuestas lentas y `q` busca en el identificador, el endpoint, el evento, la validación y el código
+HTTP. `exportDeliveries()` acepta los mismos filtros y `limit`.
 
 ## Catálogo y estado de Banxico
 

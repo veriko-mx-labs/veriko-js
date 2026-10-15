@@ -94,6 +94,7 @@ import {
   type CepFormat,
   type CreateWebhookParams,
   type DeliveriesParams,
+  type DeliveryFilters,
   type DownloadedFile,
   type ExportDeliveriesParams,
   type ExecutePurgeParams,
@@ -176,11 +177,55 @@ export function filtersToQuery(filters: ValidationFilters): Query {
     with_deleted: flag(filters.withDeleted),
     batch_id: filters.batchId,
     bank: filters.bank,
+    banks: joinList(filters.banks),
     amount_min: filters.amountMin,
     amount_max: filters.amountMax,
     client_ref: filters.clientRef,
     retry_state: filters.retryState,
   };
+}
+
+/** Separa el endpoint, o la lista de endpoints, de los argumentos de una consulta de entregas. */
+function deliveriesArguments<T extends object>(
+  first: string | readonly string[] | T | undefined,
+  second: T | undefined,
+): [string | readonly string[] | undefined, T] {
+  if (typeof first === 'string' || Array.isArray(first)) {
+    return [first as string | readonly string[], second ?? ({} as T)];
+  }
+  return [undefined, (first as T | undefined) ?? ({} as T)];
+}
+
+/** Uno o varios endpoints para el filtro `endpoint_id`, separados por comas. */
+function endpointIds(webhookId: string | readonly string[] | undefined): string | undefined {
+  if (webhookId === undefined) return undefined;
+  const ids = typeof webhookId === 'string' ? [webhookId] : webhookId;
+  return ids.map((id) => checkedId(id)).join(',');
+}
+
+/** Los filtros de una consulta de entregas, con el nombre y el valor que la API espera. */
+export function deliveryFiltersToQuery(filters: DeliveryFilters): Query {
+  const responseStatus = filters.responseStatus;
+  return {
+    status: joinList(filters.status),
+    event_type: joinList(filters.eventType),
+    response_status:
+      responseStatus === undefined
+        ? undefined
+        : typeof responseStatus === 'object'
+          ? responseStatus.map(String).join(',')
+          : String(responseStatus),
+    validation_id: filters.validationId,
+    q: filters.q,
+    from: filters.from,
+    to: filters.to,
+    min_attempt: filters.minAttempt,
+    min_response_time_ms: filters.minResponseTimeMs,
+  };
+}
+
+function hasValues(query: Query): boolean {
+  return Object.values(query).some((value) => value !== undefined);
 }
 
 function idempotencyHeader(key: string | undefined): Record<string, string | undefined> {
@@ -287,6 +332,8 @@ async function ocrBody(params: ValidateOcrParams): Promise<OcrValidationRequest>
   if (params.retryPolicy !== undefined) body.retry_policy = params.retryPolicy;
   if (params.clientRef !== undefined) body.client_ref = params.clientRef;
   if (params.retainImage !== undefined) body.retain_image = params.retainImage;
+  if (params.bancoEmisor !== undefined) body.banco_emisor = params.bancoEmisor;
+  if (params.bancoReceptor !== undefined) body.banco_receptor = params.bancoReceptor;
   return body;
 }
 
@@ -969,23 +1016,25 @@ export class Webhooks {
    * Lista los intentos de entrega.
    *
    * Con `webhookId` consulta los de ese endpoint; sin él, los de todos. Los
-   * filtros `status` y `eventType` sólo existen en el listado global, así que con
-   * `webhookId` y un filtro la petición va a `GET /v1/webhooks/deliveries` con
-   * `endpoint_id`.
+   * filtros sólo existen en el listado global, así que con `webhookId` y un
+   * filtro la petición va a `GET /v1/webhooks/deliveries` con `endpoint_id`.
+   * Una lista de hasta 20 endpoints va siempre a ese listado.
    */
   deliveries(params?: DeliveriesParams): Promise<Page<WebhookDelivery>>;
-  deliveries(webhookId: string, params?: DeliveriesParams): Promise<Page<WebhookDelivery>>;
+  deliveries(
+    webhookId: string | readonly string[],
+    params?: DeliveriesParams,
+  ): Promise<Page<WebhookDelivery>>;
   async deliveries(
-    first?: string | DeliveriesParams,
+    first?: string | readonly string[] | DeliveriesParams,
     second?: DeliveriesParams,
   ): Promise<Page<WebhookDelivery>> {
-    const webhookId = typeof first === 'string' ? first : undefined;
-    const params: DeliveriesParams = (typeof first === 'string' ? second : first) ?? {};
-    const filtered = params.status !== undefined || params.eventType !== undefined;
+    const [webhookId, params] = deliveriesArguments(first, second);
+    const filters = deliveryFiltersToQuery(params);
 
     const paging = { page: params.page, per_page: params.perPage };
     const response =
-      webhookId !== undefined && !filtered
+      typeof webhookId === 'string' && !hasValues(filters)
         ? await this.transport.request({
             method: 'GET',
             path: `/webhooks/${pathSegment(webhookId)}/deliveries`,
@@ -994,12 +1043,7 @@ export class Webhooks {
         : await this.transport.request({
             method: 'GET',
             path: '/webhooks/deliveries',
-            query: {
-              ...paging,
-              endpoint_id: webhookId === undefined ? undefined : checkedId(webhookId),
-              status: params.status,
-              event_type: params.eventType,
-            },
+            query: { ...paging, endpoint_id: endpointIds(webhookId), ...filters },
           });
     return parsePage<WebhookDelivery>(response);
   }
@@ -1011,16 +1055,14 @@ export class Webhooks {
    */
   iterDeliveries(params?: DeliveriesParams & IterOptions): AsyncIterable<WebhookDelivery>;
   iterDeliveries(
-    webhookId: string,
+    webhookId: string | readonly string[],
     params?: DeliveriesParams & IterOptions,
   ): AsyncIterable<WebhookDelivery>;
   iterDeliveries(
-    first?: string | (DeliveriesParams & IterOptions),
+    first?: string | readonly string[] | (DeliveriesParams & IterOptions),
     second?: DeliveriesParams & IterOptions,
   ): AsyncIterable<WebhookDelivery> {
-    const webhookId = typeof first === 'string' ? first : undefined;
-    const options: DeliveriesParams & IterOptions =
-      (typeof first === 'string' ? second : first) ?? {};
+    const [webhookId, options] = deliveriesArguments(first, second);
     const { maxPages, page, ...filters } = options;
 
     return iteratePages(
@@ -1035,21 +1077,24 @@ export class Webhooks {
   /**
    * Exporta el historial de entregas en CSV o en XLSX.
    *
-   * Con `webhookId`, las de ese endpoint; sin él, las de todos. Como en
-   * `deliveries()`, un filtro con `webhookId` lleva la petición al listado global.
+   * Con `webhookId`, las de ese endpoint; sin él, las de todos. Admite los
+   * filtros de `deliveries()`, y como allí un filtro con `webhookId`, o una
+   * lista de endpoints, lleva la petición al listado global.
    */
   exportDeliveries(params?: ExportDeliveriesParams): Promise<DownloadedFile>;
-  exportDeliveries(webhookId: string, params?: ExportDeliveriesParams): Promise<DownloadedFile>;
   exportDeliveries(
-    first?: string | ExportDeliveriesParams,
+    webhookId: string | readonly string[],
+    params?: ExportDeliveriesParams,
+  ): Promise<DownloadedFile>;
+  exportDeliveries(
+    first?: string | readonly string[] | ExportDeliveriesParams,
     second?: ExportDeliveriesParams,
   ): Promise<DownloadedFile> {
-    const webhookId = typeof first === 'string' ? first : undefined;
-    const params: ExportDeliveriesParams = (typeof first === 'string' ? second : first) ?? {};
-    const filtered = params.status !== undefined || params.eventType !== undefined;
+    const [webhookId, params] = deliveriesArguments(first, second);
+    const filters = deliveryFiltersToQuery(params);
     const format = params.format ?? 'csv';
 
-    if (webhookId !== undefined && !filtered) {
+    if (typeof webhookId === 'string' && !hasValues(filters)) {
       return exportFile(
         this.transport,
         `/webhooks/${pathSegment(webhookId)}/deliveries/export`,
@@ -1062,13 +1107,8 @@ export class Webhooks {
       this.transport,
       '/webhooks/deliveries/export',
       format,
-      {
-        limit: params.limit,
-        endpoint_id: webhookId === undefined ? undefined : checkedId(webhookId),
-        status: params.status,
-        event_type: params.eventType,
-      },
-      webhookId === undefined ? 'entregas' : `entregas-${webhookId}`,
+      { limit: params.limit, endpoint_id: endpointIds(webhookId), ...filters },
+      typeof webhookId === 'string' ? `entregas-${webhookId}` : 'entregas',
     );
   }
 }
