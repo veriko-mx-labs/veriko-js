@@ -797,6 +797,13 @@ export interface SpeiCalendarOptions {
 /** Una cuenta beneficiaria guardada: CLABE, tarjeta o celular DiMo. */
 export type Beneficiary = Schemas['Beneficiary'];
 
+/**
+ * El resultado de `beneficiaries.create()`. `reactivated` es `true` cuando el
+ * alta reactivó una cuenta archivada con el mismo número (la API responde `200`
+ * con `meta.reactivated`) y `false` en un alta nueva.
+ */
+export type CreatedBeneficiary = Beneficiary & { reactivated: boolean };
+
 /** La cuenta que resuelve `beneficiaries.lookup()` dentro de la lista propia. */
 export type BeneficiaryLookup = Schemas['BeneficiaryLookupResource'];
 

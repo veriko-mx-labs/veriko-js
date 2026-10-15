@@ -72,6 +72,19 @@ describe('client.beneficiaries', () => {
       assert.equal(beneficiary.id, '50');
       assert.equal(beneficiary.attributes.account_type, 'clabe');
       assert.equal(beneficiary.attributes.bank_name, 'BBVA MEXICO');
+      assert.equal(beneficiary.reactivated, false);
+    });
+
+    it('registrar una cuenta archivada la reactiva', async () => {
+      server.enqueue('beneficiary-reactivated');
+
+      const beneficiary = await client.beneficiaries.create({
+        accountNumber: '012180004412345678',
+      });
+
+      assert.equal(beneficiary.reactivated, true);
+      assert.equal(beneficiary.id, '42');
+      assert.equal(beneficiary.attributes.status, 'active');
     });
 
     it('el banco de un celular viaja como bank_code', async () => {

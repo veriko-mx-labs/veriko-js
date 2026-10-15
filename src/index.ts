@@ -100,6 +100,7 @@ export {
   type BanxicoTimeseries,
   type BanxicoWindow,
   type Beneficiary,
+  type CreatedBeneficiary,
   type BeneficiaryAccountType,
   type BeneficiaryImportCommitted,
   type BeneficiaryImportJob,

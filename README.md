@@ -429,6 +429,10 @@ const found = await client.beneficiaries.lookup('012180004412345678'); // la cue
 console.log(found.attributes.bank_name);
 ```
 
+Registrar una cuenta archivada la reactiva: la API responde `200` en vez de `201` y `beneficiary.reactivated`
+es `true`. Sin `label`, la cuenta conserva su alias. Registrar una cuenta que ya está activa se lanza como
+`InvalidRequestError` con `beneficiary_already_registered`.
+
 La lista completa se recorre con `client.beneficiaries.list()`, que no pagina, y `delete()` archiva una cuenta sin
 borrarla: `list({ withArchived: true })` devuelve sólo las archivadas. `export()` la descarga en CSV o en
 XLSX.

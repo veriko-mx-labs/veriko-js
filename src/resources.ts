@@ -40,6 +40,7 @@ import {
   isSettled,
   type ApiUsage,
   type Beneficiary,
+  type CreatedBeneficiary,
   type BeneficiaryImportCommitted,
   type BeneficiaryImportJob,
   type BeneficiaryImportRow,
@@ -1278,9 +1279,12 @@ export class Beneficiaries {
    * `POST /v1/beneficiaries`. El tipo se detecta por longitud: CLABE (18 dígitos),
    * tarjeta (16) o celular DiMo (10). Para un celular, `bankCode` es obligatorio;
    * en CLABE y tarjeta se deriva del número. Un alta de una cuenta archivada la
-   * reactiva.
+   * reactiva: la API responde `200` en vez de `201` y `reactivated` es `true`.
+   * Sin `label`, la cuenta reactivada conserva su alias. Una cuenta activa con el
+   * mismo número se lanza como `InvalidRequestError` con
+   * `beneficiary_already_registered`.
    */
-  async create(params: CreateBeneficiaryParams): Promise<Beneficiary> {
+  async create(params: CreateBeneficiaryParams): Promise<CreatedBeneficiary> {
     // Quien llama desde JavaScript puede omitirlo; el tipo lo declara obligatorio.
     const accountNumber: string | undefined = params.accountNumber;
     if (!accountNumber) {
@@ -1294,7 +1298,9 @@ export class Beneficiaries {
     if (params.label !== undefined) body.label = params.label;
 
     const response = await this.transport.request({ method: 'POST', path: '/beneficiaries', body });
-    return readData<Beneficiary>(response, 'del beneficiario');
+    const beneficiary = readData<CreatedBeneficiary>(response, 'del beneficiario');
+    beneficiary.reactivated = readMeta(readDocument(response))['reactivated'] === true;
+    return beneficiary;
   }
 
   /**
