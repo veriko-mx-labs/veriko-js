@@ -3693,6 +3693,14 @@ export interface components {
         /** @description Respuesta de `POST /v1/beneficiaries` con el beneficiario en `data`. Devuelve `201` al crear un registro nuevo, y `200` cuando reactiva una cuenta archivada con el mismo `account_number`: Ahí `meta.reactivated` viene en `true`. */
         CreateBeneficiaryResponse: components["schemas"]["SuccessEnvelope"] & {
             data: components["schemas"]["Beneficiary"];
+            /** @description Metadatos del alta. */
+            meta?: {
+                /**
+                 * @description `true` cuando el alta reactivó una cuenta archivada con el mismo `account_number` y la respuesta es `200`. Un alta nueva (`201`) no lo incluye.
+                 * @example true
+                 */
+                reactivated?: boolean;
+            };
         };
         /** @description Cuerpo de `PUT /v1/beneficiaries/{id}`. Acepta envoltorio JSON:API `{ data: { attributes: {...} } }` o un objeto plano. Todos los campos son opcionales — solo se actualizan los presentes. Si el cuerpo no contiene ningún campo editable, el servidor responde `422 no_valid_fields`. Hay tres rutas de actualización. Con solo `label`, se sanea y se guarda. Con un `account_number` nuevo, se vuelven a derivar `account_type`, `bank_code` y `bank_name` con las mismas reglas que `POST /v1/beneficiaries`. Con solo `bank_code`, el cambio vale únicamente si el beneficiario es de tipo `phone`: En CLABE y tarjeta se ignora sin avisar—, y deja el evento de auditoría `beneficiary.phone_bank_updated` cuando el código cambia. */
         UpdateBeneficiaryRequest: {
