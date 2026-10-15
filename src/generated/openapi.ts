@@ -70,7 +70,7 @@ export interface paths {
          *
          *     La cuenta beneficiaria (`cuenta_beneficiaria`) es obligatoria en esta operación, salvo que se envíe `cuentas_candidatas`. Si faltan las dos, la petición se rechaza con `422 preflight_failed` y el error de campo `cuenta_required`: el servicio no la busca entre los beneficiarios guardados.
          *
-         *     Cuando no se sabe a cuál de varias cuentas se hizo el pago, `cuentas_candidatas` sustituye a `cuenta_beneficiaria`: de 2 a 3 cuentas en una sola validación y con una sola unidad de cuota. La consulta recorre las candidatas en el orden enviado y adopta la primera que coincide con la transferencia; esa cuenta vuelve completa en `normalized_data.cuenta_beneficiaria` y su posición en `candidate_match`. Si ninguna coincide, la respuesta es un estado HTTP `422` con el motivo en `code`. Las dos formas no pueden enviarse juntas (`422 cuenta_y_candidatas_excluyentes`) y una lista que no cumple se rechaza con `422 cuentas_candidatas_invalidas`, las dos antes de consumir cuota.
+         *     Cuando no se sabe a cuál de varias cuentas se hizo el pago, `cuentas_candidatas` sustituye a `cuenta_beneficiaria`: de 2 cuentas al máximo que admite el servicio (3 de forma predeterminada) en una sola validación y con una sola unidad de cuota. La consulta recorre las candidatas en el orden enviado y adopta la primera que coincide con la transferencia; esa cuenta vuelve completa en `normalized_data.cuenta_beneficiaria` y su posición en `candidate_match`. Si ninguna coincide, la respuesta es un estado HTTP `422` con el motivo en `code`. Las dos formas no pueden enviarse juntas (`422 cuenta_y_candidatas_excluyentes`) y una lista que no cumple se rechaza con `422 cuentas_candidatas_invalidas`, las dos antes de consumir cuota.
          *
          *     El veredicto final (estado terminal) de una validación puede ser alguno de estos:
          *
@@ -140,7 +140,7 @@ export interface paths {
          *     El campo `cuenta_beneficiaria` permite enviar explícitamente la cuenta receptora de la transferencia, enviarlo es especialmente útil cuando la imagen no lleva este dato o lo lleva incompleto.\
          *     Un beneficiario guardado (con `POST /v1/beneficiaries`) no sustituye a este campo: solo sirve para completar los dígitos de la cuenta que la imagen sí muestra. Si la imagen no trae dígitos suficientes, la validación se rechaza con `cuenta_unresolvable`, porque las cuentas guardadas no se prueban una por una.\
          *     \
-         *     Cuando no se sabe cuál de varias cuentas recibió el pago, `cuentas_candidatas` las prueba en una sola validación (de 2 a 3 cuentas, una sola unidad de cuota, también con `?async=1`) y sustituye a `cuenta_beneficiaria`: enviar las dos se rechaza con `422 cuenta_y_candidatas_excluyentes`, y una lista que no cumple, con `422 cuentas_candidatas_invalidas`, las dos antes de consumir cuota. La lista tiene prioridad sobre la cuenta que se lea en la imagen; la ganadora vuelve completa en `normalized_data.cuenta_beneficiaria` y su posición en `candidate_match`. Si ninguna coincide, la respuesta es un estado HTTP `422` con el motivo en `code`.
+         *     Cuando no se sabe cuál de varias cuentas recibió el pago, `cuentas_candidatas` las prueba en una sola validación (de 2 cuentas al máximo que admite el servicio, 3 de forma predeterminada; una sola unidad de cuota, también con `?async=1`) y sustituye a `cuenta_beneficiaria`: enviar las dos se rechaza con `422 cuenta_y_candidatas_excluyentes`, y una lista que no cumple, con `422 cuentas_candidatas_invalidas`, las dos antes de consumir cuota. La lista tiene prioridad sobre la cuenta que se lea en la imagen; la ganadora vuelve completa en `normalized_data.cuenta_beneficiaria` y su posición en `candidate_match`. Si ninguna coincide, la respuesta es un estado HTTP `422` con el motivo en `code`.
          *
          *     {% /callout %}
          *
@@ -327,7 +327,7 @@ export interface paths {
         };
         /**
          * Descargar el CEP oficial
-         * @description Descarga el {% concept slug="cep-concept" %}Comprobante Electrónico de Pago (CEP){% /concept %} emitido por Banxico de una validación con veredicto `valid`.
+         * @description Descarga el {% concept slug="cep-concept" %}Comprobante Electrónico de Pago (CEP){% /concept %} emitido por Banxico de una validación con veredicto `valid`, o `returned` cuando el CEP se descargó antes de conocerse la devolución.
          *
          *     El formato predeterminado es `xml`; con `format=pdf` se solicita el documento en PDF.
          *
@@ -439,13 +439,13 @@ export interface paths {
          *     **No se admite en tres casos:**\
          *     — Validaciones que llegaron por importación masiva.\
          *     — Validaciones ya resueltas.\
-         *     — Validaciones fuera de la antigüedad que permite el plan.
+         *     — Validaciones con más de siete días de antigüedad.
          *
          *     {% /callout %}
          *
          *     Un ciclo de reintentos puede devolver `terminal_state="exhausted"` cuando se alcanzan el máximo de reintentos configurado. También puede devolver `terminal_state="cancelled"` cuando el usuario cancela manualmente los reintentos de la validación.
          *
-         *     En ambos casos, el ciclo puede reactivarse mientras conserve reintentos disponibles.
+         *     En ambos casos, el ciclo puede reactivarse hasta tres veces; pasado ese tope, la petición se rechaza con `422 reactivation_cap_exceeded`.
          *
          *     El estado completo de una validación se obtiene con `GET /v1/validations/{id}`, y los límites están descritos en {% concept slug="retry-policy" %}la política de reintentos{% /concept %}.
          */
@@ -713,7 +713,7 @@ export interface paths {
         };
         /**
          * Exportar los beneficiarios de la cuenta de usuario
-         * @description Descarga las cuentas beneficiarias del usuario autenticado como archivo, usa el mismo filtro `with_archived` que `GET /v1/beneficiaries/list-beneficiaries`.
+         * @description Descarga las cuentas beneficiarias del usuario autenticado como archivo, usa el mismo filtro `with_archived` que `GET /v1/beneficiaries`.
          *
          *     El formato de descarga se elige con `?format` (`csv` por defecto, `xlsx` como alternativa). El tope de filas es de 100 000, y `?limit` sirve para pedir menos, nunca más.
          *
@@ -781,8 +781,8 @@ export interface paths {
          * @description Actualiza un beneficiario ya registrado. El cuerpo admite la envoltura JSON:API o un objeto plano, y lo que se envíe determina el alcance del cambio:
          *
          *     - Solo `label`: Se guarda, sin tocar la cuenta.
-         *     - Un `account_number` nuevo, o el alias antiguo: vuelven a derivarse `account_type`, `bank_code` y `bank_name`. Si el nuevo número es un celular (phone), el cuerpo debe llevar `bank_code`.
-         *     - Solo `bank_code`: se aplica únicamente sobre un beneficiario de tipo celular. En una CLABE o una tarjeta el banco se deriva del número, así que el valor enviado se descarta sin error.
+         *     - Un `account_number` nuevo: vuelven a derivarse `account_type`, `bank_code` y `bank_name`. Si el nuevo número es un celular (phone), el cuerpo debe llevar `bank_code`.
+         *     - Solo `bank_code`: se aplica únicamente sobre un beneficiario de tipo celular. En una CLABE o una tarjeta el banco se deriva del número, así que el valor enviado se descarta sin error; si era el único campo, responde con `no_valid_fields`.
          *
          *     Un cuerpo sin ningún campo editable responde con un estado HTTP `422` (con `no_valid_fields` en el cuerpo).
          *
@@ -835,9 +835,9 @@ export interface paths {
         };
         /**
          * Descargar la plantilla de importación de beneficiarios
-         * @description Devuelve un **archivo plantilla para la importación de beneficiarios** en el formato solicitado, con encabezados en español o inglés y filas de ejemplo para CLABE, tarjeta y celular/DiMo. Sirve de punto de partida para {% concept slug="bulk-imports" %}la importación masiva{% /concept %}.
+         * @description Devuelve un **archivo plantilla para la importación de beneficiarios** en el formato solicitado, con los encabezados fijos `alias`, `cuenta` y `banco` y filas de ejemplo para CLABE, tarjeta y celular/DiMo. Sirve de punto de partida para {% concept slug="bulk-imports" %}la importación masiva{% /concept %}.
          *
-         *     El idioma de los encabezados se negocia con la cabecera `Accept-Language`; de forma predeterminada se entregan en español, acepta después encabezados en ambos idiomas de forma insensible a acentos.
+         *     Los encabezados no cambian con el idioma: la cabecera `Accept-Language` sólo elige el idioma de las filas de ejemplo y del nombre de la hoja; de forma predeterminada se entregan en español. La importación acepta después encabezados en ambos idiomas de forma insensible a acentos.
          */
         get: operations["downloadBeneficiaryImportTemplate"];
         put?: never;
@@ -859,7 +859,7 @@ export interface paths {
         put?: never;
         /**
          * Iniciar importación masiva de beneficiarios
-         * @description Sube un archivo (CSV, XLS, XLSX, TXT o PDF) de hasta 20 MB y abre con él un trabajo de importación.
+         * @description Sube un archivo (CSV, XLS, XLSX, TXT, JSON o PDF) de hasta 20 MB y abre con él un trabajo de importación.
          *     Las hojas XLSX/XLS admiten hasta 10 000 filas y 64 columnas. Las fórmulas XLSX se leen como texto, sin ejecutarlas. Los PDF admiten hasta 50 páginas y limitan a 8 MiB la descompresión de cada flujo.
          *
          *     El modo de lectura decide cuánto trabajo hace el archivo y cuánto el servidor:
@@ -929,7 +929,7 @@ export interface paths {
          * Previsualizar las filas extraídas de la importación
          * @description Devuelve las filas extraídas del archivo en un trabajo de importación (paginadas y filtrables por grupo).
          *
-         *     Disponible solo cuando la importación está en `preview_ready` o estados posteriores con `total_rows>0`.
+         *     Responde en cualquier estado del trabajo; antes de `preview_ready` la lista sale vacía.
          *
          *     {% callout type="warning" %}
          *     En este endpoint los datos de CLABEs, tarjetas o celulares NO son enmascarados. Se presume que el usuario solicitante de la importación ya tiene en su poder dichos datos, por lo que no hay motivos para tratarlos bajo nuestra política de {% concept slug="pii-masking" %}enmascarado de datos{% /concept %}
@@ -1011,7 +1011,7 @@ export interface paths {
          *     Reglas de la confirmación:
          *
          *     - Filas `valid` y `correctable`: Se persisten (con sufijo de alias si hubo colisión de alias). La excepción es un celular sin banco válido (`bank_code_required_for_phone` o `invalid_bank_code`): se corrige eligiendo el banco en la vista previa, y si al confirmar sigue sin banco no se guarda, queda como `fatal` con ese mismo código y cuenta en `skipped_count`.
-         *     - Filas `fatal` y `duplicate_account`: Se omiten.
+         *     - Filas `fatal` y `duplicate_account`: Se omiten, salvo una `duplicate_account` cuya cuenta está archivada, que se reactiva.
          *     - Cuentas previamente archivadas con el mismo número: Se reactivan en lugar de duplicarse.
          */
         post: operations["commitBeneficiaryImport"];
@@ -1060,9 +1060,9 @@ export interface paths {
          * Obtener métricas de uso de la API
          * @description Devuelve las métricas de uso de la API del usuario autenticado:
          *
-         *     - Peticiones a la API hoy y en el mes.
+         *     - Peticiones con clave de API hoy y en el mes.
          *     - Cuota del plan vigente.
-         *     - Últimas peticiones a la API.
+         *     - Últimas 15 peticiones con clave de API.
          *     - Validaciones consumidas por mes.
          *     - Estado actual del servicio Banxico CEP.
          */
@@ -1086,7 +1086,7 @@ export interface paths {
          * Obtener el resumen del panel
          * @description Devuelve los contadores agregados del usuario: el total histórico, el total
          *     del mes UTC en curso, las validaciones con veredicto `valid`, el contador
-         *     mensual de los estados `pending` y `processing`, el monto promedio y la
+         *     mensual de los estados `queued` y `processing`, el monto promedio y la
          *     tasa de éxito. Incluye también la cantidad de beneficiarios activos.
          *
          *     `relationships.recent_validations` contiene las validaciones no retiradas
@@ -1270,7 +1270,7 @@ export interface paths {
          *
          *     Cada endpoint puede suscribirse a diferentes eventos, entre ellos:
          *
-         *     - Eventos `validation.*`: Esperan cualquier estado terminal de una validación para notificar ese estado mediante el webhook (p. ej: `validation.completed`, `validation.error`, etc).
+         *     - Eventos `validation.*`: Avisan de cada veredicto de una validación y de cada paso de sus reintentos automáticos (p. ej: `validation.completed`, `validation.error`, etc).
          *     - Evento `validation.returned`: avisa cuando una validación que ya había salido `valid` pasa después a `returned` porque Banxico reportó la devolución; no se emite al crear la validación, donde el evento es `validation.completed`. Para recibirlo hay que suscribirse a él además de a `validation.completed`.
          *     - Eventos `billing.*`: No producen entregas hasta que haya algún movimiento en la suscripción del usuario (p. ej: `billing.subscription_canceled`, `billing.payment_succeeded`, cuotas de uso, etc).
          *
@@ -1444,7 +1444,7 @@ export interface paths {
          * Listar entregas de todos los endpoints webhook
          * @description Devuelve una vista consolidada de las entregas hechas a los endpoints webhook del usuario autenticado.
          *
-         *     Se puede filtrar por endpoint, estado y tipo de evento.
+         *     Se puede buscar por texto con `q` y filtrar por endpoint, estado, tipo de evento, validación, código HTTP, rango de fechas, número de intento y tiempo de respuesta.
          */
         get: operations["listAllDeliveries"];
         put?: never;
@@ -1465,8 +1465,7 @@ export interface paths {
         /**
          * Exportar todas las entregas webhook como CSV o XLSX
          * @description Descarga el historial de entregas de **todos** los endpoints de la cuenta de usuario en
-         *     un archivo, con los mismos filtros que el listado: endpoint, estado y tipo de
-         *     evento.
+         *     un archivo, con los mismos filtros y la misma búsqueda (`q`) que el listado.
          *
          *     {% concept slug="exports-and-formats" %}El formato se elige{% /concept %} con `?format` —`csv` por defecto, `xlsx` como
          *     alternativa— y el tope es de 100 000 filas, que `?limit` puede bajar.
@@ -1597,8 +1596,9 @@ export interface paths {
         };
         /**
          * Consultar índices de consumo mes a mes
-         * @description Devuelve el consumo mensual de validaciones del usuario autenticado en los
-         *     últimos `months` meses, de más reciente a más antiguo.
+         * @description Devuelve el consumo mensual de validaciones del usuario autenticado en hasta
+         *     `months` meses con consumo, de más reciente a más antiguo. Los meses sin
+         *     consumo no aparecen.
          *
          *     {% callout type="warning" %}
          *     El límite que acompaña a cada fila es el de hoy, no el que regía aquel mes:
@@ -1623,7 +1623,7 @@ export interface paths {
         };
         /**
          * Desglosar consumo por operación
-         * @description Desglosa el consumo del periodo indicado por tipo de operación contabilizada (`validation`, `validation_ocr`, etc.).
+         * @description Desglosa el consumo del periodo indicado por tipo de operación contabilizada (`validation` y `sms_2fa`).
          *
          *     El parámetro `period` acepta `current` para el mes en curso o una cadena `YYYY-MM` para un mes específico.
          */
@@ -2131,7 +2131,7 @@ export interface components {
                 api_version?: string;
                 /**
                  * @description Identificador único de la petición (hex).
-                 * @example a1b2c3d4e5f6
+                 * @example a1b2c3d4e5f66f5e4d3c2b1a
                  */
                 request_id?: string;
                 datetime?: components["schemas"]["DatetimeMeta"];
@@ -2155,8 +2155,8 @@ export interface components {
                  */
                 version?: string;
                 /**
-                 * @description Identificador único de la petición (UUID hex).
-                 * @example a1b2c3d4e5f6
+                 * @description Identificador único de la petición (24 caracteres hex).
+                 * @example a1b2c3d4e5f66f5e4d3c2b1a
                  */
                 request_id?: string;
             };
@@ -2179,7 +2179,7 @@ export interface components {
                 api_version?: string;
                 /**
                  * @description Identificador único de la petición (hex).
-                 * @example a1b2c3d4e5f6
+                 * @example a1b2c3d4e5f66f5e4d3c2b1a
                  */
                 request_id?: string;
                 datetime?: components["schemas"]["DatetimeMeta"];
@@ -2227,17 +2227,17 @@ export interface components {
              */
             name?: string;
             /**
-             * @description Rol de la cuenta de usuario en la organización. Decide qué permisos tienen sus sesiones — `owner`: Es la titular; `admin`: La administra; `user`: La usa; `viewer`: Solo lee.
+             * @description Rol de la cuenta de usuario en la organización. Decide qué permisos tienen sus sesiones — `owner`: Es la titular; `admin`: La administra; `user`: La usa.
              * @example user
              * @enum {string}
              */
-            role?: "owner" | "admin" | "user" | "viewer";
+            role?: "owner" | "admin" | "user";
             /**
-             * @description Estado de la cuenta de usuario — `active`: Permite operar con normalidad; `suspended`: Cuenta suspendida; `pending_verification`: Falta verificación de correo electrónico.
+             * @description Estado de la cuenta de usuario — `active`: Permite operar con normalidad; `suspended`: Cuenta suspendida; `revoked`: Eliminada por el usuario.
              * @example active
              * @enum {string}
              */
-            status?: "active" | "suspended" | "pending_verification";
+            status?: "active" | "suspended" | "revoked";
             /**
              * @description Zona horaria IANA con la que se presentan las fechas al usuario.
              * @example America/Mexico_City
@@ -2265,7 +2265,7 @@ export interface components {
             api_key?: {
                 /**
                  * @description Primeros 8 caracteres de la clave de API.
-                 * @example veriko_a1b2
+                 * @example veriko_
                  */
                 prefix?: string;
                 /**
@@ -2319,7 +2319,7 @@ export interface components {
                  */
                 enabled?: boolean;
                 /**
-                 * @description Canal por el que se entrega el código de autenticación (OTP) — `sms`: Por mensaje de texto; `email`: Por correo electrónico; `null`: La autenticación de 2 factores (2FA) está desactivada.
+                 * @description Canal por el que se entrega el código de autenticación (OTP) — `sms`: Por mensaje de texto; `email`: Por correo electrónico; `null`: La cuenta de usuario nunca lo ha configurado. Al desactivar la 2FA se conserva el último canal usado.
                  * @example sms
                  * @enum {string|null}
                  */
@@ -2406,12 +2406,12 @@ export interface components {
              */
             monto: number;
             /**
-             * @description Clave de rastreo de la transferencia (entre 1 a 30 caracteres). Acepta letras, números, guiones, diagonales y espacios. Se recorta y se le quitan caracteres invisibles de ancho cero antes de validarse, para que la misma clave copiada y pegada compare igual en toda la plataforma. Requerida si `referencia_numerica` no es enviada; ambas pueden incluirse simultáneamente para mayor precisión de búsqueda.
+             * @description Clave de rastreo de la transferencia (entre 1 a 30 caracteres). Acepta letras, números, espacios y los signos de puntuación que admite Banxico (como guiones, diagonales, puntos, comas, `#`, `@` o `_`), pero no `<`, `>` ni la barra invertida. Se recorta y se le quitan caracteres invisibles de ancho cero antes de validarse, para que la misma clave copiada y pegada compare igual en toda la plataforma. Requerida si `referencia_numerica` no es enviada. Si vienen las dos, la consulta a Banxico se hace sólo por la clave.
              * @example MXBA20250315001234
              */
             clave_rastreo?: string;
             /**
-             * @description Referencia numérica de la transferencia (entre 1 y 7 dígitos). Acepta solo números y espacios. Requerida si `clave_rastreo` no es enviada; ambas pueden incluirse simultáneamente para mayor precisión de búsqueda.
+             * @description Referencia numérica de la transferencia (entre 1 y 7 dígitos). Acepta solo números y espacios. Requerida si `clave_rastreo` no es enviada. Si viene `clave_rastreo`, la consulta se hace sólo por la clave, y una referencia mal formada no se rechaza: se ignora y se deja un aviso.
              * @example 1234567
              */
             referencia_numerica?: string;
@@ -2457,15 +2457,12 @@ export interface components {
              */
             client_ref?: string;
         } & (unknown | unknown)) | unknown | unknown;
-        /**
-         * @description Código estable del fallo de una validación.
-         * @enum {string}
-         */
-        ValidationErrorCode: "network" | "captcha" | "max_retries_exceeded" | "ttl_expired" | "preflight_failed" | "rate_limit_exhausted" | "dispatch_failed" | "bank_code_unresolvable_for_phone" | "intra_bank_no_cep" | "not_found_identity" | "not_found_account" | "not_found_amount" | "not_found_account_and_amount" | "not_found_account_or_amount";
+        /** @description Código estable del fallo de una validación. La lista no es cerrada: un fallo inesperado trae `internal_error` y otros fallos pueden traer el código de su causa, así que trata un valor desconocido como un fallo genérico. */
+        ValidationErrorCode: string | ("network" | "captcha" | "max_retries_exceeded" | "ttl_expired" | "preflight_failed" | "rate_limit_exhausted" | "dispatch_failed" | "bank_code_unresolvable_for_phone" | "intra_bank_no_cep" | "not_found_identity" | "not_found_account" | "not_found_amount" | "not_found_account_and_amount" | "not_found_account_or_amount" | "internal_error");
         /** @description Estado completo del ciclo de reintentos, con configuración, avance y situación actual. */
         RetryStateFull: {
             /**
-             * @description `true` cuando existe un ciclo de reintentos activo.
+             * @description `true` cuando la validación tiene reintentos configurados, aunque su ciclo ya haya terminado (`terminal_state`).
              * @example true
              */
             enabled?: boolean;
@@ -2586,7 +2583,7 @@ export interface components {
                 processing_started_at?: string | null;
                 /**
                  * Format: date-time
-                 * @description Fecha y hora, en ISO 8601 UTC, de expiración para validaciones en cola. Tras esta marca, la validación pasa a `failed`.
+                 * @description Fecha y hora, en ISO 8601 UTC, de expiración para validaciones en cola. Tras esta marca, la validación pasa a `error` con `error_code` `ttl_expired`.
                  * @example 2026-04-30T10:15:00Z
                  */
                 expires_at?: string | null;
@@ -2597,7 +2594,7 @@ export interface components {
                 etag_version?: number | null;
                 /**
                  * @description Referencia relativa del comprobante, imagen o PDF (solo si `validation_type` es del tipo `ocr`). No se publica cuando el archivo no se conserva: ver `image_retained`.
-                 * @example comprobantes/12345.jpg
+                 * @example comprobantes/3fa85f64-5717-4562-b3fc-2c963f66afa6.jpg
                  */
                 image_path?: string | null;
                 /**
@@ -2630,7 +2627,7 @@ export interface components {
                  * @example 0.94
                  */
                 ocr_confidence?: number | null;
-                /** @description Campos normalizados después de la extracción OCR (solo si `validation_type` es del tipo `ocr`). */
+                /** @description Campos normalizados después de la extracción OCR (si `validation_type` es del tipo `ocr`), o la cuenta ganadora en `cuenta_beneficiaria` cuando una validación directa envió `cuentas_candidatas`. Una lápida conserva aquí solo el monto. */
                 normalized_data?: {
                     [key: string]: unknown;
                 } | null;
@@ -2816,13 +2813,13 @@ export interface components {
                  */
                 self?: string;
                 /**
-                 * @description URL del CEP en formato XML. `null` cuando `status` no es `valid`, o es `returned` sin comprobante (la operación se devolvió antes de emitirse un CEP).
-                 * @example /v1/validations/a1b2c3d4-e5f6-7890-abcd-ef0123456789/cep.xml
+                 * @description URL del CEP en formato XML. Solo aparece cuando `banxico_status` es `valid`, o es `returned` con comprobante, y la validación no se purgó; si no, se omite el objeto `links`.
+                 * @example /v1/validations/a1b2c3d4-e5f6-4890-abcd-ef0123456789/cep?format=xml
                  */
                 cep_xml?: string | null;
                 /**
-                 * @description URL del CEP en formato PDF. `null` cuando `status` no es `valid`, o es `returned` sin comprobante (la operación se devolvió antes de emitirse un CEP).
-                 * @example /v1/validations/a1b2c3d4-e5f6-7890-abcd-ef0123456789/cep.pdf
+                 * @description URL del CEP en formato PDF. Solo aparece cuando `banxico_status` es `valid`, o es `returned` con comprobante, y la validación no se purgó; si no, se omite el objeto `links`.
+                 * @example /v1/validations/a1b2c3d4-e5f6-4890-abcd-ef0123456789/cep?format=pdf
                  */
                 cep_pdf?: string | null;
             };
@@ -2891,13 +2888,13 @@ export interface components {
         OcrValidationRequest: {
             /**
              * Format: byte
-             * @description Comprobante codificado en base64, en imagen o en PDF. Si también se proporciona `image_url`, solo se considera `image`. Formatos aceptados: JPEG, PNG, WebP o PDF de 1 a 3 páginas. Tamaño máximo: `12 MB`. Dimensiones máximas de una imagen: `12000px` por lado. Admite el prefijo `data:image/...;base64,` o `data:application/pdf;base64,`.
+             * @description Comprobante codificado en base64, en imagen o en PDF. Si también se proporciona `image_url`, solo se considera `image_url`. Formatos aceptados: JPEG, PNG, WebP o PDF de 1 a 3 páginas. Tamaño máximo: `12 MB`. Dimensiones máximas de una imagen: `12000px` por lado. Admite el prefijo `data:image/...;base64,` o `data:application/pdf;base64,`.
              * @example iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==
              */
             image?: string;
             /**
              * Format: uri
-             * @description URL pública (HTTPS) del comprobante. Sigue los mismos límites de formato y tamaño que `image`: JPEG, PNG, WebP o PDF de 1 a 3 páginas, con un máximo de `12 MB`.
+             * @description URL pública (HTTPS) del comprobante. Sigue los mismos límites de formato y tamaño que `image`: JPEG, PNG, WebP o PDF de 1 a 3 páginas, con un máximo de `12 MB`. Una URL `http` responde un estado HTTP `422` (con `invalid_url_scheme` en el cuerpo), y una redirección hacia `http` no se sigue.
              * @example https://storage.example.com/receipts/comprobante-2025-03.jpg
              */
             image_url?: string;
@@ -2949,7 +2946,7 @@ export interface components {
         /** @description Estado resumido del ciclo de reintentos, con la configuración representada como `null`. */
         RetryStateCompact: {
             /**
-             * @description `true` cuando existe un ciclo de reintentos activo.
+             * @description `true` cuando la validación tiene reintentos configurados, aunque su ciclo ya haya terminado (`terminal_state`).
              * @example true
              */
             enabled?: boolean;
@@ -2996,7 +2993,7 @@ export interface components {
             id: string;
             /** @description Datos mostrados en el historial de validaciones. */
             attributes: {
-                /** @description Nombre del banco de la contraparte. Prioriza `receptor_name` o `emisor_name` guardado; si falta, intenta resolver el código de receptor o emisor. Si tampoco puede resolverlo, devuelve ese código o `Banco no identificado`. */
+                /** @description Nombre del banco de la contraparte. Prioriza `receptor_name` o `emisor_name` guardado; si falta, intenta resolver el código de receptor o emisor. Si tampoco puede resolverlo, devuelve el valor guardado cuando no es una clave numérica, o `Banco no identificado` (en inglés, `Unidentified bank`). */
                 bank_name?: string;
                 /** @description Clave Banxico canónica (3-5 dígitos) del banco de la contraparte, resuelta por la autoridad del dominio. `null` cuando el banco no pudo resolverse. Es aditiva respecto de `bank_name`: sirve para resolver recursos/avatares por clave, nunca por el nombre visible. */
                 bank_code?: string | null;
@@ -3487,7 +3484,7 @@ export interface components {
                  */
                 bin: string;
                 /**
-                 * @description Nombre oficial del banco, resuelto a partir de su `bank_code`.
+                 * @description Nombre del banco registrado para ese BIN.
                  * @example BBVA MEXICO
                  */
                 bank_name: string;
@@ -3765,7 +3762,7 @@ export interface components {
         CreateBeneficiaryImportRequest: {
             /**
              * Format: binary
-             * @description Archivo a importar. Formatos aceptados: CSV, XLS, XLSX, TXT o PDF. Tamaño máximo: 20 MB.
+             * @description Archivo a importar. Formatos aceptados: CSV, XLS, XLSX, TXT, JSON o PDF. Tamaño máximo: 20 MB.
              * @example beneficiarios-marzo.csv
              */
             file: string;
@@ -3827,11 +3824,11 @@ export interface components {
                  */
                 status?: "pending" | "parsing" | "preview_ready" | "committing" | "completed" | "failed" | "cancelled";
                 /**
-                 * @description Formato del archivo subido. Aceptados: `csv`, `xls`, `xlsx`, `txt` o `pdf`.
+                 * @description Formato del archivo subido. Aceptados: `csv`, `xls`, `xlsx`, `txt`, `json` o `pdf`.
                  * @example csv
                  * @enum {string}
                  */
-                file_format?: "csv" | "xls" | "xlsx" | "txt" | "pdf";
+                file_format?: "csv" | "xls" | "xlsx" | "txt" | "json" | "pdf";
                 /**
                  * @description Modo de lectura del archivo — `template`: Respeta los encabezados canónicos; `free`: Formato libre, el sistema deduce la estructura.
                  * @example template
@@ -3879,7 +3876,7 @@ export interface components {
                  */
                 llm_invoked?: boolean;
                 /**
-                 * @description Código estable del fallo del trabajo. `null` cuando no terminó en `failed`. Por ejemplo, `file_corrupt` o `plan_cap_exceeded`.
+                 * @description Código estable del fallo del trabajo. `null` cuando no terminó en `failed`. Por ejemplo, `file_corrupt` o `empty_file`.
                  * @example null
                  */
                 error_code?: string | null;
@@ -3985,7 +3982,7 @@ export interface components {
                     [key: string]: unknown;
                 };
                 /**
-                 * @description Fragmento del archivo original para diagnóstico. Los dígitos de 6 o más caracteres consecutivos aparecen enmascarados (`••••`) para evitar exposición de números de tarjeta en los cuerpos de depuración.
+                 * @description Fragmento del archivo original para diagnóstico. Las series de 13 a 19 dígitos que no son una CLABE (18 dígitos) aparecen enmascaradas (`••••` y los últimos cuatro), igual que un número de celular de 10 dígitos cuando lo precede una etiqueta como «cuenta» o «celular», para evitar exposición de números de tarjeta en los cuerpos de depuración.
                  * @example {}
                  */
                 raw_preview?: {
@@ -4122,17 +4119,17 @@ export interface components {
         /** @description Estadísticas de uso de la API, cuota de validaciones y estado de Banxico para la cuenta. */
         ApiUsage: {
             /**
-             * @description Cantidad de peticiones a la API del usuario en el día calendario actual (UTC).
+             * @description Cantidad de peticiones del usuario con clave de API en el día calendario actual (UTC).
              * @example 42
              */
             requests_today?: number;
             /**
-             * @description Cantidad de peticiones a la API del usuario en el mes calendario actual (UTC).
+             * @description Cantidad de peticiones del usuario con clave de API en el mes calendario actual (UTC).
              * @example 580
              */
             requests_month?: number;
             quota?: components["schemas"]["PlanQuotaState"];
-            /** @description Últimas peticiones a la API del usuario, de la más reciente a la más antigua. */
+            /** @description Últimas 15 peticiones del usuario con clave de API, de la más reciente a la más antigua. */
             recent_requests?: {
                 /**
                  * @description Verbo HTTP de la petición. Uno de `GET`, `POST`, `PUT`, `PATCH` o `DELETE`.
@@ -4203,7 +4200,7 @@ export interface components {
                  */
                 monthly_validations?: number;
                 /**
-                 * @description Cantidad de validaciones no retiradas del mes UTC en curso cuyo estado almacenado es `pending` o `processing`.
+                 * @description Cantidad de validaciones no retiradas del mes UTC en curso cuyo estado almacenado es `queued` o `processing`.
                  * @example 3
                  */
                 pending_month?: number;
@@ -4219,7 +4216,7 @@ export interface components {
                 avg_ticket?: number;
                 /**
                  * @description Tasa de éxito, expresada de `0` a `100`: `valid_validations` entre `total_validations`, redondeada a un decimal. La población histórica es la misma e incluye las validaciones retiradas y las del banco de pruebas (Playground); devuelve `0` cuando el total es `0`.
-                 * @example 0
+                 * @example 90.3
                  */
                 success_rate_percent?: number;
                 /**
@@ -4248,7 +4245,7 @@ export interface components {
                         /**
                          * Format: uuid
                          * @description Identificador único de la validación (UUID v4).
-                         * @example a1b2c3d4-e5f6-7890-abcd-ef0123456789
+                         * @example a1b2c3d4-e5f6-4890-abcd-ef0123456789
                          */
                         id?: string;
                         /** @description Datos resumidos de la validación reciente mostrados en el panel. */
@@ -4331,6 +4328,33 @@ export interface components {
             /** @description Veredictos que admiten reintentos automáticos. */
             eligible_outcomes?: string[];
         };
+        /** @description Política de reintentos guardada de la cuenta: activación, límite, intervalo y resultados elegibles. Desactivada o sin configurar, trae `enabled=false`, `max_retries=0`, `interval_seconds=0` y `outcomes` vacío. */
+        SavedRetryPolicy: {
+            /**
+             * @description `true` cuando el ciclo de reintentos está activo. Si es `false`, los demás campos pueden ser ignorados.
+             * @example true
+             */
+            enabled?: boolean;
+            /**
+             * @description Número máximo de reintentos automáticos. Una vez alcanzado, el ciclo pasa al estado terminal `exhausted`.
+             * @example 3
+             */
+            max_retries?: number;
+            /**
+             * @description Segundos de espera entre cada reintento. Valores válidos: 300–86400 (5 min a 24h).
+             * @example 600
+             */
+            interval_seconds?: number;
+            /**
+             * @description Resultados que originan un reintento. De forma predeterminada son `not_found`, `cep_unavailable` y `error`; la combinación `["not_found", "cep_unavailable"]` excluye `error`.
+             * @example [
+             *       "not_found",
+             *       "cep_unavailable",
+             *       "error"
+             *     ]
+             */
+            outcomes?: ("not_found" | "cep_unavailable" | "error")[];
+        };
         UserRetryPolicyResponse: components["schemas"]["SuccessEnvelope"] & {
             /** @description Metadatos de la respuesta y límites efectivos de reintentos. */
             meta?: {
@@ -4340,7 +4364,7 @@ export interface components {
             data?: {
                 /** @enum {string} */
                 type?: "retry_policy";
-                attributes?: components["schemas"]["RetryPolicy"];
+                attributes?: components["schemas"]["SavedRetryPolicy"];
             };
         };
         /** @description Cuerpo de la petición para actualizar la política de reintentos por defecto del usuario (aplica a futuras validaciones). */
@@ -4514,7 +4538,7 @@ export interface components {
         CreateWebhookRequest: {
             /**
              * Format: uri
-             * @description URL receptora del webhook. En producción se rechaza si no usa HTTPS, si resuelve a una dirección privada o si pasa de 2048 caracteres.
+             * @description URL receptora del webhook. Se rechaza si resuelve a una dirección privada o si pasa de 2048 caracteres y, en producción, también si no usa HTTPS.
              * @example https://example.com/webhooks/entregas
              */
             url: string;
@@ -4530,7 +4554,7 @@ export interface components {
         UpdateWebhookRequest: {
             /**
              * Format: uri
-             * @description Nueva URL receptora del webhook. En producción se rechaza si no usa HTTPS, si no resuelve a una dirección pública o si supera 2048 caracteres.
+             * @description Nueva URL receptora del webhook. Se rechaza si no resuelve a una dirección pública o si supera 2048 caracteres y, en producción, también si no usa HTTPS.
              * @example https://example.com/webhooks/entregas
              */
             url?: string;
@@ -4867,13 +4891,13 @@ export interface components {
              */
             remaining: number;
             /**
-             * @description Porcentaje del límite consumido en el ciclo actual, redondeado a 2 decimales.
+             * @description Porcentaje del límite consumido en el ciclo actual, redondeado a 2 decimales. Puede pasar de 100 si hay excedente.
              * @example 70.5
              */
             used_percent: number;
             /**
              * @description Nivel de alerta según el consumo: `ok` (<70 %), `warn` (70–89 %), `danger` (≥90 % o cuota agotada).
-             * @example ok
+             * @example warn
              * @enum {string}
              */
             tone: "ok" | "warn" | "danger";
@@ -5047,12 +5071,12 @@ export interface components {
                 /** @description Lista de celdas del mapa; cada entrada es una combinación de `day_of_week` y `hour_of_day` con su conteo. */
                 buckets?: {
                     /**
-                     * @description Día de la semana (0 = domingo … 6 = sábado).
+                     * @description Día de la semana en UTC (0 = domingo … 6 = sábado).
                      * @example 0
                      */
                     day_of_week?: number;
                     /**
-                     * @description Hora del día (0–23), hora del servidor.
+                     * @description Hora del día (0–23), en UTC.
                      * @example 0
                      */
                     hour_of_day?: number;
@@ -5247,22 +5271,20 @@ export interface components {
                  */
                 month?: string;
                 /**
-                 * Format: date-time
-                 * @description Inicio del mes en UTC (ISO 8601).
-                 * @example 2026-04-01T06:00:00Z
+                 * @description Inicio del mes en UTC, con formato `YYYY-MM-DD HH:MM:SS`.
+                 * @example 2026-04-01 06:00:00
                  */
                 from_utc?: string;
                 /**
-                 * Format: date-time
-                 * @description Fin del mes en UTC (ISO 8601, exclusivo).
-                 * @example 2026-05-01T06:00:00Z
+                 * @description Fin del mes en UTC (exclusivo), con formato `YYYY-MM-DD HH:MM:SS`.
+                 * @example 2026-05-01 06:00:00
                  */
                 to_utc?: string;
             };
             /** @description Conteos de validaciones por veredicto, más retiros mediante borrado lógico del periodo (informativo). */
             counts?: {
                 /**
-                 * @description Cantidad de validaciones completadas en el periodo (excluyendo las validaciones con estado `pending`).
+                 * @description Cantidad de validaciones del periodo, incluidas las que tienen estado `pending`.
                  * @example 287
                  */
                 total?: number;
@@ -5351,7 +5373,7 @@ export interface components {
                 verified_share_pct?: number;
             };
             /**
-             * @description Tasa de éxito: porcentaje de validaciones con resultado `valid` sobre el total completado, expresado de 0 a 100.
+             * @description Tasa de éxito: porcentaje de validaciones con resultado `valid` sobre `counts.total`, expresado de 0 a 100.
              * @example 79.4
              */
             success_rate?: number;
@@ -5506,9 +5528,20 @@ export interface components {
                  * @description Nombres de las columnas para formato CSV (en el mismo orden que las filas en `rows`).
                  * @example [
                  *       "Fecha",
-                 *       "Monto",
+                 *       "Folio plataforma",
+                 *       "Tipo",
                  *       "Clave de rastreo",
-                 *       "Estado"
+                 *       "Fecha operación",
+                 *       "Monto",
+                 *       "Banco emisor",
+                 *       "CLABE emisora",
+                 *       "Banco receptor",
+                 *       "CLABE receptora",
+                 *       "Beneficiario",
+                 *       "Veredicto Banxico",
+                 *       "CEP disponible",
+                 *       "Folio CEP",
+                 *       "Tiempo (ms)"
                  *     ]
                  */
                 headers?: string[];
@@ -5516,10 +5549,21 @@ export interface components {
                  * @description Primeras 20 filas (máximo) de datos del reporte.
                  * @example [
                  *       [
+                 *         "2026-04-15 10:32:00",
+                 *         "c3d4e5f6-a7b8-9012-cdef-123456789012",
+                 *         "direct",
+                 *         "MXBA20260415001234",
                  *         "2026-04-15",
                  *         "15000.50",
-                 *         "MXBA20260415001234",
-                 *         "valid"
+                 *         "BBVA MEXICO",
+                 *         "012180001234567891",
+                 *         "BANORTE",
+                 *         "072180009876543210",
+                 *         "Comercializadora Ejemplo SA de CV",
+                 *         "valid",
+                 *         "Sí",
+                 *         "",
+                 *         "412"
                  *       ]
                  *     ]
                  */
@@ -5539,7 +5583,7 @@ export interface components {
             plan_slug?: string;
             /**
              * @description Nombre del plan que muestran las interfaces.
-             * @example Pro
+             * @example Personal
              */
             plan_name?: string;
             /**
@@ -5666,17 +5710,59 @@ export interface components {
         BillingSubscriptionQuotaMeta: {
             /**
              * @description Identificador único y legible del plan. Coincide con `data.attributes.plan_slug`.
-             * @example pro
+             * @example personal
              */
-            plan?: string;
+            plan_slug?: string;
+            /**
+             * @description Nombre del plan que muestran las interfaces.
+             * @example Personal
+             */
+            plan_name?: string;
+            /**
+             * @description Modelo de facturación del plan — `free`: Sin cobro; `tiered`: Cuota fija; `metered`: Cobro por consumo; `hybrid`: Cuota fija más consumo.
+             * @example hybrid
+             * @enum {string}
+             */
+            billing_model?: "free" | "tiered" | "metered" | "hybrid";
+            /**
+             * @description Origen de la suscripción — `stripe`: Pago mediante Stripe; `admin_granted`: Concesión administrativa; `system_default`: Plan asignado por el sistema.
+             * @example stripe
+             * @enum {string}
+             */
+            source?: "stripe" | "admin_granted" | "system_default";
+            /**
+             * @description `true` cuando el usuario aceptó cobro por excedente en un plan `hybrid`. En ese caso, `effective_limit` salta de `included_validations` a `monthly_validation_limit`.
+             * @example false
+             */
+            overage_enabled?: boolean;
+            /**
+             * @description `true` cuando el plan es `hybrid` y el cobro por excedente todavía no está activo: el usuario puede activarlo.
+             * @example false
+             */
+            overage_available?: boolean;
+            /**
+             * @description Límite del ciclo fijado por un administrador para esta suscripción. Cuando existe, manda sobre el del plan. `null` sin ajuste.
+             * @example null
+             */
+            monthly_limit_override?: number | null;
+            /**
+             * @description Validaciones incluidas en la cuota base antes del cobro por excedentes. `null` cuando el plan no tiene cuota base.
+             * @example 500
+             */
+            included_validations?: number | null;
+            /**
+             * @description Tope de validaciones por ciclo de la suscripción. `0` no permite validaciones. En planes `hybrid`, es el tope duro cuando `overage_enabled` es `true`; cuando es `false`, `effective_limit` usa `included_validations`. En los demás modelos, es el límite efectivo salvo que exista un ajuste administrativo.
+             * @example 10000
+             */
+            monthly_validation_limit?: number;
             /**
              * @description Validaciones consumidas en el ciclo actual.
-             * @example 420
+             * @example 220
              */
             used?: number;
             /**
-             * @description Límite efectivo de validaciones para el ciclo actual. Tiene el mismo valor que `data.attributes.effective_limit`.
-             * @example 500
+             * @description Límite efectivo de validaciones para el ciclo actual. Tiene el mismo valor que `data.attributes.effective_limit`, salvo con `quota_kind=trial`: entonces es la asignación de prueba.
+             * @example 300
              */
             limit?: number;
             /**
@@ -5734,7 +5820,7 @@ export interface components {
                  *       ],
                  *       "meta": {
                  *         "version": "1.51.0",
-                 *         "request_id": "1a2b3c4d5e6f"
+                 *         "request_id": "1a2b3c4d5e6ff6e5d4c3b2a1"
                  *       }
                  *     }
                  */
@@ -5758,7 +5844,7 @@ export interface components {
                  *       ],
                  *       "meta": {
                  *         "version": "1.51.0",
-                 *         "request_id": "2b3c4d5e6f7a"
+                 *         "request_id": "2b3c4d5e6f7aa7f6e5d4c3b2"
                  *       }
                  *     }
                  */
@@ -5782,7 +5868,7 @@ export interface components {
                  *       ],
                  *       "meta": {
                  *         "version": "1.51.0",
-                 *         "request_id": "c4d5e6f7a8b9"
+                 *         "request_id": "c4d5e6f7a8b99b8a7f6e5d4c"
                  *       }
                  *     }
                  */
@@ -5814,7 +5900,7 @@ export interface components {
                  *       ],
                  *       "meta": {
                  *         "version": "1.51.0",
-                 *         "request_id": "f7a8b9c0d1e2",
+                 *         "request_id": "f7a8b9c0d1e22e1d0c9b8a7f",
                  *         "retry_after": 45
                  *       }
                  *     }
@@ -5860,7 +5946,7 @@ export interface components {
                  *       ],
                  *       "meta": {
                  *         "version": "1.51.0",
-                 *         "request_id": "3c4d5e6f7a8b"
+                 *         "request_id": "3c4d5e6f7a8bb8a7f6e5d4c3"
                  *       }
                  *     }
                  */
@@ -5886,7 +5972,7 @@ export interface components {
                  *       ],
                  *       "meta": {
                  *         "version": "1.51.0",
-                 *         "request_id": "2b3c4d5e6f7a"
+                 *         "request_id": "2b3c4d5e6f7aa7f6e5d4c3b2"
                  *       }
                  *     }
                  */
@@ -5919,7 +6005,7 @@ export interface components {
                  *       ],
                  *       "meta": {
                  *         "version": "1.51.0",
-                 *         "request_id": "d5e6f7a8b9c0"
+                 *         "request_id": "d5e6f7a8b9c00c9b8a7f6e5d"
                  *       }
                  *     }
                  */
@@ -5943,7 +6029,7 @@ export interface components {
                  *       ],
                  *       "meta": {
                  *         "version": "1.61.0",
-                 *         "request_id": "1a2b3c4d5e6f"
+                 *         "request_id": "1a2b3c4d5e6ff6e5d4c3b2a1"
                  *       }
                  *     }
                  */
@@ -5979,7 +6065,7 @@ export interface components {
                  *       ],
                  *       "meta": {
                  *         "version": "1.51.0",
-                 *         "request_id": "e6f7a8b9c0d1"
+                 *         "request_id": "e6f7a8b9c0d11d0c9b8a7f6e"
                  *       }
                  *     }
                  */
@@ -6003,7 +6089,7 @@ export interface components {
                  *       ],
                  *       "meta": {
                  *         "version": "1.51.0",
-                 *         "request_id": "d5e6f7a8b9c1"
+                 *         "request_id": "d5e6f7a8b9c11c9b8a7f6e5d"
                  *       }
                  *     }
                  */
@@ -6236,6 +6322,11 @@ export interface operations {
                  */
                 bank?: string;
                 /**
+                 * @description Filtro — Varias claves SPEI separadas por coma (hasta 50); devuelve las validaciones cuyo banco emisor o receptor sea cualquiera de ellas. Si un elemento no tiene de 1 a 5 dígitos, responde con estado HTTP `422` e `invalid_filter`. Se combina con `bank`: si mandas los dos, se cumplen ambos.
+                 * @example 40012,40014,40072
+                 */
+                banks?: string;
+                /**
                  * @description Filtro — Importe mínimo inclusivo, como número. El servidor también tolera enviarlo como texto con separador de miles o símbolo de moneda ("1,000.50", "$500") y lo normaliza con el mismo algoritmo que el resto de la plataforma, pero el contrato es un número: un cliente tipado debe mandarlo así. Un valor no vacío que no se reconozca como número devuelve un estado HTTP `422` con `invalid_filter`, en vez de ignorarse en silencio. Se aplica de forma independiente de `amount_max`.
                  * @example 1000.5
                  */
@@ -6340,6 +6431,11 @@ export interface operations {
                  * @example 012
                  */
                 bank?: string;
+                /**
+                 * @description Filtro — Varias claves SPEI separadas por coma (hasta 50); devuelve las validaciones cuyo banco emisor o receptor sea cualquiera de ellas. Si un elemento no tiene de 1 a 5 dígitos, responde con estado HTTP `422` e `invalid_filter`. Se combina con `bank`: si mandas los dos, se cumplen ambos.
+                 * @example 40012,40014,40072
+                 */
+                banks?: string;
                 /**
                  * @description Filtro — Importe mínimo inclusivo de las validaciones contadas.
                  * @example 1000.5
@@ -6453,6 +6549,11 @@ export interface operations {
                  * @example 012
                  */
                 bank?: string;
+                /**
+                 * @description Filtro — Varias claves SPEI separadas por coma (hasta 50); devuelve las validaciones cuyo banco emisor o receptor sea cualquiera de ellas. Si un elemento no tiene de 1 a 5 dígitos, responde con estado HTTP `422` e `invalid_filter`. Se combina con `bank`: si mandas los dos, se cumplen ambos.
+                 * @example 40012,40014,40072
+                 */
+                banks?: string;
                 /**
                  * @description Filtro — Importe mínimo inclusivo. Se aplica de forma independiente de `amount_max`.
                  * @example 1000.5
@@ -6634,7 +6735,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
-            /** @description Validación no encontrada (`not_found`) o el CEP no está disponible para esta validación (`cep_not_available`). Este último código se devuelve cuando `banxico_status` no es `valid` o falta el archivo solicitado. */
+            /** @description Validación no encontrada (`not_found`) o el CEP no está disponible para esta validación (`cep_not_available`). Este último código se devuelve cuando `banxico_status` no es `valid` ni `returned` o falta el archivo solicitado. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -7291,7 +7392,7 @@ export interface operations {
                      *       ],
                      *       "meta": {
                      *         "version": "1.63.0",
-                     *         "request_id": "c1d2e3f4a5b6",
+                     *         "request_id": "c1d2e3f4a5b66b5a4f3e2d1c",
                      *         "covered_years": [
                      *           2024,
                      *           2025,
@@ -7325,7 +7426,7 @@ export interface operations {
                      *       ],
                      *       "meta": {
                      *         "version": "1.63.0",
-                     *         "request_id": "d2e3f4a5b6c7"
+                     *         "request_id": "d2e3f4a5b6c77c6b5a4f3e2d"
                      *       }
                      *     }
                      */
@@ -7433,7 +7534,6 @@ export interface operations {
                      *         "attributes": {
                      *           "account_number": "012180004412345678",
                      *           "account_type": "clabe",
-                     *           "clabe": "012180004412345678",
                      *           "bank_code": "40012",
                      *           "bank_name": "BBVA MEXICO",
                      *           "label": "Proveedor ABC",
@@ -7473,7 +7573,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             413: components["responses"]["PayloadTooLarge"];
-            /** @description La cuenta no pasó la validación, o el alta chocó con un tope. Los códigos posibles son `account_number_required`, `account_number_invalid_type`, `label_invalid_type`, `invalid_account_length`, `clabe_prefix_not_recognized`, `bank_code_required_for_phone`, `beneficiary_already_registered` y `plan_cap_exceeded`. `account_number_invalid_type` y `label_invalid_type` aparecen cuando el campo llega con un tipo distinto de cadena de texto. Todo error de campo trae `source.pointer`. */
+            /** @description La cuenta no pasó la validación, o el alta chocó con un tope. Los códigos posibles son `account_number_required`, `account_number_invalid_type`, `label_invalid_type`, `invalid_account_format`, `invalid_account_length`, `invalid_clabe_checksum`, `invalid_card_luhn`, `clabe_prefix_not_recognized`, `bank_code_required_for_phone`, `invalid_bank_code`, `max_length_exceeded`, `beneficiary_already_registered` y `plan_cap_exceeded`. `account_number_invalid_type` y `label_invalid_type` aparecen cuando el campo llega con un tipo distinto de cadena de texto. Todo error de campo trae `source.pointer`. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -7517,7 +7617,6 @@ export interface operations {
                      *         "attributes": {
                      *           "account_number": "5512345678",
                      *           "account_type": "phone",
-                     *           "clabe": "5512345678",
                      *           "bank_code": "40021",
                      *           "bank_name": "HSBC",
                      *           "label": "Cuenta DiMo HSBC",
@@ -7548,7 +7647,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             413: components["responses"]["PayloadTooLarge"];
-            /** @description El cuerpo no pasó la validación. Los códigos posibles son `no_valid_fields`, `invalid_account_length`, `clabe_prefix_not_recognized`, `bank_code_required_for_phone`, `beneficiary_already_registered`, `account_number_invalid_type` y `label_invalid_type`. Las dos últimas aparecen cuando `account_number` o `label` llegan con un tipo distinto de cadena de texto (por ejemplo, un número o un arreglo). Todo error de campo trae `source.pointer`. */
+            /** @description El cuerpo no pasó la validación. Los códigos posibles son `no_valid_fields`, `invalid_account_format`, `invalid_account_length`, `invalid_clabe_checksum`, `invalid_card_luhn`, `clabe_prefix_not_recognized`, `bank_code_required_for_phone`, `invalid_bank_code`, `max_length_exceeded`, `beneficiary_already_registered`, `account_number_invalid_type` y `label_invalid_type`. Las dos últimas aparecen cuando `account_number` o `label` llegan con un tipo distinto de cadena de texto (por ejemplo, un número o un arreglo). Todo error de campo trae `source.pointer`. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -7639,7 +7738,7 @@ export interface operations {
                      *       "meta": {
                      *         "version": "1.47.0",
                      *         "api_version": "v1",
-                     *         "request_id": "b2c3d4e5f6a7"
+                     *         "request_id": "b2c3d4e5f6a77a6f5e4d3c2b"
                      *       }
                      *     }
                      */
@@ -7696,7 +7795,7 @@ export interface operations {
                      *       "meta": {
                      *         "version": "1.47.0",
                      *         "api_version": "v1",
-                     *         "request_id": "c5d6e7f8a9b0"
+                     *         "request_id": "c5d6e7f8a9b00b9a8f7e6d5c"
                      *       }
                      *     }
                      */
@@ -7736,7 +7835,7 @@ export interface operations {
                      *       "meta": {
                      *         "version": "1.47.0",
                      *         "api_version": "v1",
-                     *         "request_id": "e1f2a3b4c5d6"
+                     *         "request_id": "e1f2a3b4c5d66d5c4b3a2f1e"
                      *       }
                      *     }
                      */
@@ -7745,7 +7844,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
-            /** @description Falló la validación o la pre-condición. Códigos posibles: `file_required`, `file_too_large`, `unsupported_format` e `import_already_in_flight`. */
+            /** @description Falló la validación o la pre-condición. Códigos posibles: `file_required`, `upload_error`, `file_too_large`, `invalid_parse_mode`, `unsupported_format`, `import_already_in_flight` y `persist_failed`. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -7763,7 +7862,7 @@ export interface operations {
                      *       "meta": {
                      *         "version": "1.47.0",
                      *         "api_version": "v1",
-                     *         "request_id": "f2a3b4c5d6e7"
+                     *         "request_id": "f2a3b4c5d6e77e6d5c4b3a2f"
                      *       }
                      *     }
                      */
@@ -7843,7 +7942,7 @@ export interface operations {
                      *       "meta": {
                      *         "version": "1.47.0",
                      *         "api_version": "v1",
-                     *         "request_id": "f8a9b0c1d2e3"
+                     *         "request_id": "f8a9b0c1d2e33e2d1c0b9a8f"
                      *       }
                      *     }
                      */
@@ -7983,10 +8082,10 @@ export interface operations {
                      *           "parsed_account_type": "phone",
                      *           "parsed_bank_code": "40012",
                      *           "parsed_bank_name": "BBVA MEXICO",
-                     *           "parsed_label": null,
+                     *           "parsed_label": "Cuenta",
                      *           "error_codes": [],
                      *           "corrections_applied": {
-                     *             "alias_auto_assigned": "Beneficiario 002"
+                     *             "alias_auto_assigned": "Cuenta"
                      *           },
                      *           "user_overrides": {
                      *             "parsed_account_type": "phone",
@@ -8003,7 +8102,7 @@ export interface operations {
                      *       "meta": {
                      *         "version": "1.47.0",
                      *         "api_version": "v1",
-                     *         "request_id": "c1d2e3f4a5b6"
+                     *         "request_id": "c1d2e3f4a5b66b5a4f3e2d1c"
                      *       }
                      *     }
                      */
@@ -8067,7 +8166,7 @@ export interface operations {
                      *       "meta": {
                      *         "version": "1.47.0",
                      *         "api_version": "v1",
-                     *         "request_id": "f4a5b6c7d8e9"
+                     *         "request_id": "f4a5b6c7d8e99e8d7c6b5a4f"
                      *       }
                      *     }
                      */
@@ -8095,7 +8194,7 @@ export interface operations {
                      *       "meta": {
                      *         "version": "1.47.0",
                      *         "api_version": "v1",
-                     *         "request_id": "a5b6c7d8e9f0"
+                     *         "request_id": "a5b6c7d8e9f00f9e8d7c6b5a"
                      *       }
                      *     }
                      */
@@ -8722,21 +8821,65 @@ export interface operations {
                  */
                 per_page?: number;
                 /**
-                 * @description Filtro — Identificador único del endpoint webhook (UUID v4).
-                 * @example 7c9e6679-7425-40de-944b-e07fc1f90ae7
+                 * @description Filtro — Identificador único del endpoint webhook (UUID v4). Hasta 20, separados por comas.
+                 * @example [
+                 *       "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+                 *     ]
                  */
-                endpoint_id?: string;
+                endpoint_id?: string[];
                 /**
-                 * @description Filtro — Estado de la entrega. `success` llegó. `failed` es el resultado del último intento; Messenger puede programar otro si el fallo es recuperable. `retrying` se pospuso por el límite de salida y Messenger la reintentará. `pending` todavía no se ha intentado.
-                 * @example failed
+                 * @description Filtro — Estado de la entrega. `success` llegó. `failed` es el resultado del último intento; Messenger puede programar otro si el fallo es recuperable. `retrying` se pospuso por el límite de salida y Messenger la reintentará. `pending` todavía no se ha intentado. Varios estados, separados por comas.
+                 * @example [
+                 *       "failed"
+                 *     ]
                  */
-                status?: "success" | "failed" | "retrying" | "pending";
+                status?: ("success" | "failed" | "retrying" | "pending")[];
                 /**
-                 * @description Filtro — Tipo de evento que originó la entrega. **De validaciones**: `validation.completed` cuando termina bien, `validation.failed` cuando termina mal y `validation.error` cuando hay un error del servicio. **De los reintentos automáticos:** `validation.retry.scheduled` al programar un reintento automático, `validation.retry.resolved` cuando un reintento automático encuentra el CEP, y `validation.retry.exhausted` cuando los reintentos se agotan sin encontrar el CEP. **De la revisión posterior de un `valid`:** `validation.returned` cuando una validación que había salido `valid` pasa a `returned` porque Banxico reportó la devolución.\
-                 *     **De la suscripción:** `billing.payment_succeeded` y `billing.payment_failed` por cada cobro, `billing.invoice_upcoming` antes de la siguiente factura, `billing.trial_will_end` antes de que acabe la prueba gratuita, y `billing.subscription_canceled` al cancelar la suscripción. Las entregas sintéticas (envío de prueba) se marcan como `test`.
-                 * @example validation.completed
+                 * @description Filtro — Tipo de evento que originó la entrega. **De validaciones**: `validation.completed` cuando hay veredicto de Banxico, sea cual sea (también inválida o no encontrada, y aunque se abran reintentos), `validation.failed` cuando la entrada se rechaza y `validation.error` ante cualquier otro fallo. **De los reintentos automáticos:** `validation.retry.scheduled` al programar un reintento automático, `validation.retry.resolved` cuando un reintento automático encuentra el CEP, y `validation.retry.exhausted` cuando los reintentos se agotan sin encontrar el CEP. **De la revisión posterior de un `valid`:** `validation.returned` cuando una validación que había salido `valid` pasa a `returned` porque Banxico reportó la devolución.\
+                 *     **De la suscripción:** `billing.payment_succeeded` y `billing.payment_failed` por cada cobro, `billing.invoice_upcoming` antes de la siguiente factura, `billing.trial_will_end` antes de que acabe la prueba gratuita, y `billing.subscription_canceled` al cancelar la suscripción. Las entregas sintéticas (envío de prueba) se marcan como `test`. Varios tipos, separados por comas.
+                 * @example [
+                 *       "validation.completed"
+                 *     ]
                  */
-                event_type?: "validation.completed" | "validation.failed" | "validation.error" | "validation.retry.scheduled" | "validation.retry.resolved" | "validation.retry.exhausted" | "validation.returned" | "billing.payment_succeeded" | "billing.payment_failed" | "billing.trial_will_end" | "billing.subscription_canceled" | "billing.invoice_upcoming" | "test";
+                event_type?: ("validation.completed" | "validation.failed" | "validation.error" | "validation.retry.scheduled" | "validation.retry.resolved" | "validation.retry.exhausted" | "validation.returned" | "billing.payment_succeeded" | "billing.payment_failed" | "billing.trial_will_end" | "billing.subscription_canceled" | "billing.invoice_upcoming" | "test")[];
+                /**
+                 * @description Filtro — Busca en el identificador de la entrega, el identificador, la URL y la descripción del endpoint, el tipo de evento, el identificador de la validación y el código HTTP de la respuesta. No distingue mayúsculas; `%` y `_` se buscan tal cual. Más de 100 caracteres se recortan.
+                 * @example webhook.example.com
+                 */
+                q?: string;
+                /**
+                 * @description Filtro — Sólo las entregas de esta validación (UUID v4).
+                 * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+                 */
+                validation_id?: string;
+                /**
+                 * @description Filtro — Código HTTP con que respondió el receptor, separados por comas. Vale un código exacto (`404`), una familia (`2xx`, `4xx`, `5xx`) o `none` para las que no tuvieron respuesta (tiempo agotado, conexión rechazada o todavía sin intentar). Varios valores suman resultados.
+                 * @example [
+                 *       "5xx",
+                 *       "none"
+                 *     ]
+                 */
+                response_status?: string[];
+                /**
+                 * @description Filtro — Entregas creadas desde este momento, incluido. Acepta fecha (`2026-10-01`, medianoche UTC) o fecha y hora ISO 8601 con zona.
+                 * @example 2026-10-01T00:00:00Z
+                 */
+                from?: string;
+                /**
+                 * @description Filtro — Entregas creadas hasta este momento, incluido. Una fecha sola llega al final de ese día en UTC.
+                 * @example 2026-10-15T23:59:59Z
+                 */
+                to?: string;
+                /**
+                 * @description Filtro — Sólo las entregas cuyo número de intento es al menos este. Con `2` quedan las que se reintentaron.
+                 * @example 2
+                 */
+                min_attempt?: number;
+                /**
+                 * @description Filtro — Sólo las entregas cuyo receptor tardó al menos estos milisegundos en responder.
+                 * @example 3000
+                 */
+                min_response_time_ms?: number;
             };
             header?: never;
             path?: never;
@@ -8776,22 +8919,66 @@ export interface operations {
         parameters: {
             query?: {
                 /**
-                 * @description Filtro — Identificador único del endpoint webhook (UUID v4).
-                 * @example 7c9e6679-7425-40de-944b-e07fc1f90ae7
+                 * @description Filtro — Identificador único del endpoint webhook (UUID v4). Hasta 20, separados por comas.
+                 * @example [
+                 *       "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+                 *     ]
                  */
-                endpoint_id?: string;
+                endpoint_id?: string[];
                 /**
                  * @description \
-                 *     Filtro — Estado de la entrega. `success` llegó. `failed` es el resultado del último intento; Messenger puede programar otro si el fallo es recuperable. `retrying` se pospuso por el límite de salida y Messenger la reintentará. `pending` todavía no se ha intentado.
-                 * @example failed
+                 *     Filtro — Estado de la entrega. `success` llegó. `failed` es el resultado del último intento; Messenger puede programar otro si el fallo es recuperable. `retrying` se pospuso por el límite de salida y Messenger la reintentará. `pending` todavía no se ha intentado. Varios estados, separados por comas.
+                 * @example [
+                 *       "failed"
+                 *     ]
                  */
-                status?: "success" | "failed" | "retrying" | "pending";
+                status?: ("success" | "failed" | "retrying" | "pending")[];
                 /**
-                 * @description Filtro — Tipo de evento que originó la entrega. **De validaciones**: `validation.completed` cuando termina bien, `validation.failed` cuando termina mal y `validation.error` cuando hay un error del servicio. **De los reintentos automáticos:** `validation.retry.scheduled` al programar un reintento automático, `validation.retry.resolved` cuando un reintento automático encuentra el CEP, y `validation.retry.exhausted` cuando los reintentos se agotan sin encontrar el CEP. **De la revisión posterior de un `valid`:** `validation.returned` cuando una validación que había salido `valid` pasa a `returned` porque Banxico reportó la devolución.\
-                 *     **De la suscripción:** `billing.payment_succeeded` y `billing.payment_failed` por cada cobro, `billing.invoice_upcoming` antes de la siguiente factura, `billing.trial_will_end` antes de que acabe la prueba gratuita, y `billing.subscription_canceled` al cancelar la suscripción. Las entregas sintéticas (envío de prueba) se marcan como `test`.
-                 * @example validation.completed
+                 * @description Filtro — Tipo de evento que originó la entrega. **De validaciones**: `validation.completed` cuando hay veredicto de Banxico, sea cual sea (también inválida o no encontrada, y aunque se abran reintentos), `validation.failed` cuando la entrada se rechaza y `validation.error` ante cualquier otro fallo. **De los reintentos automáticos:** `validation.retry.scheduled` al programar un reintento automático, `validation.retry.resolved` cuando un reintento automático encuentra el CEP, y `validation.retry.exhausted` cuando los reintentos se agotan sin encontrar el CEP. **De la revisión posterior de un `valid`:** `validation.returned` cuando una validación que había salido `valid` pasa a `returned` porque Banxico reportó la devolución.\
+                 *     **De la suscripción:** `billing.payment_succeeded` y `billing.payment_failed` por cada cobro, `billing.invoice_upcoming` antes de la siguiente factura, `billing.trial_will_end` antes de que acabe la prueba gratuita, y `billing.subscription_canceled` al cancelar la suscripción. Las entregas sintéticas (envío de prueba) se marcan como `test`. Varios tipos, separados por comas.
+                 * @example [
+                 *       "validation.completed"
+                 *     ]
                  */
-                event_type?: "validation.completed" | "validation.failed" | "validation.error" | "validation.retry.scheduled" | "validation.retry.resolved" | "validation.retry.exhausted" | "validation.returned" | "billing.payment_succeeded" | "billing.payment_failed" | "billing.trial_will_end" | "billing.subscription_canceled" | "billing.invoice_upcoming" | "test";
+                event_type?: ("validation.completed" | "validation.failed" | "validation.error" | "validation.retry.scheduled" | "validation.retry.resolved" | "validation.retry.exhausted" | "validation.returned" | "billing.payment_succeeded" | "billing.payment_failed" | "billing.trial_will_end" | "billing.subscription_canceled" | "billing.invoice_upcoming" | "test")[];
+                /**
+                 * @description Filtro — Busca en el identificador de la entrega, el identificador, la URL y la descripción del endpoint, el tipo de evento, el identificador de la validación y el código HTTP de la respuesta. No distingue mayúsculas; `%` y `_` se buscan tal cual. Más de 100 caracteres se recortan.
+                 * @example webhook.example.com
+                 */
+                q?: string;
+                /**
+                 * @description Filtro — Sólo las entregas de esta validación (UUID v4).
+                 * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+                 */
+                validation_id?: string;
+                /**
+                 * @description Filtro — Código HTTP con que respondió el receptor, separados por comas. Vale un código exacto (`404`), una familia (`2xx`, `4xx`, `5xx`) o `none` para las que no tuvieron respuesta (tiempo agotado, conexión rechazada o todavía sin intentar). Varios valores suman resultados.
+                 * @example [
+                 *       "5xx",
+                 *       "none"
+                 *     ]
+                 */
+                response_status?: string[];
+                /**
+                 * @description Filtro — Entregas creadas desde este momento, incluido. Acepta fecha (`2026-10-01`, medianoche UTC) o fecha y hora ISO 8601 con zona.
+                 * @example 2026-10-01T00:00:00Z
+                 */
+                from?: string;
+                /**
+                 * @description Filtro — Entregas creadas hasta este momento, incluido. Una fecha sola llega al final de ese día en UTC.
+                 * @example 2026-10-15T23:59:59Z
+                 */
+                to?: string;
+                /**
+                 * @description Filtro — Sólo las entregas cuyo número de intento es al menos este. Con `2` quedan las que se reintentaron.
+                 * @example 2
+                 */
+                min_attempt?: number;
+                /**
+                 * @description Filtro — Sólo las entregas cuyo receptor tardó al menos estos milisegundos en responder.
+                 * @example 3000
+                 */
+                min_response_time_ms?: number;
                 /**
                  * @description Formato del archivo a descargar. Valores aceptados: `csv` y `xlsx`. Cualquier otro valor se sirve como `csv`.
                  * @example csv
