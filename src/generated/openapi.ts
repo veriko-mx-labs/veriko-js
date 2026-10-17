@@ -1172,7 +1172,8 @@ export interface paths {
          *
          *     - `operational`: Todos los chequeos pasan y la latencia es normal.
          *     - `degraded`: Problemas parciales — latencia elevada o errores
-         *       intermitentes.
+         *       intermitentes. Un aviso preventivo que no afecta las consultas (por
+         *       ejemplo, un certificado próximo a vencer) no produce `degraded`.
          *     - `down`: El servicio es por el momento inaccesible.
          *     - `unknown`: No hay datos de salud vigentes: aún no se ha ejecutado ningún
          *       chequeo, o el último es más viejo que tres veces `check_interval_seconds`
@@ -4382,7 +4383,7 @@ export interface components {
         /** @description Estado público del servicio de verificación de Banxico, tal como lo devuelve `GET /v1/status/banxico`. Muestra el estado operativo actual y una explicación legible. */
         BanxicoPublicStatus: {
             /**
-             * @description Estado agregado del servicio de verificación de Banxico — `operational`: Todas las pruebas pasan y la latencia es normal; `degraded`: Problemas parciales (latencia elevada o errores intermitentes); `down`: Servicio inaccesible; `unknown`: no hay datos de salud vigentes, porque aún no se ha ejecutado ningún chequeo o porque el último tiene más de tres veces `check_interval_seconds` de antigüedad (el chequeo automático dejó de correr).
+             * @description Estado agregado del servicio de verificación de Banxico — `operational`: Todas las pruebas pasan y la latencia es normal; `degraded`: Problemas parciales (latencia elevada o errores intermitentes). Un aviso preventivo que no afecta las consultas —por ejemplo, un certificado próximo a vencer— no produce `degraded`: el servicio sigue operando con normalidad; `down`: Servicio inaccesible; `unknown`: no hay datos de salud vigentes, porque aún no se ha ejecutado ningún chequeo o porque el último tiene más de tres veces `check_interval_seconds` de antigüedad (el chequeo automático dejó de correr).
              * @example operational
              * @enum {string}
              */
