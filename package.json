@@ -65,7 +65,7 @@
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true});require('node:fs').rmSync('dist-test',{recursive:true,force:true})\""
   },
   "devDependencies": {
-    "@eslint/js": "^9.13.0",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.7.0",
     "ajv": "^8.20.0",
     "eslint": "^9.13.0",
