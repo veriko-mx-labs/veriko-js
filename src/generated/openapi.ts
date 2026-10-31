@@ -1095,7 +1095,7 @@ export interface paths {
          *     más recientes. La cantidad se controla con `?limit=`, entre `1` y `10`;
          *     el valor predeterminado es `5`.
          *
-         *     `comenzar_milestones_completed` indica el progreso del wizard `/comenzar`.
+         *     `onboarding_milestones_completed` indica el progreso del wizard `/comenzar`.
          */
         get: operations["getDashboardSummary"];
         put?: never;
@@ -2735,7 +2735,9 @@ export interface components {
                  *     `cutoff_18h`: La clave no incrusta fecha y el comprobante indica una hora cercana al corte de las 18:00,
                  *     así que se probó el día siguiente;
                  *     `dia_operacion`: La clave incrusta la fecha enviada, porque el comprobante trae la de operación,
-                 *     y se probó un día anterior hasta el día hábil previo.
+                 *     y se probó un día anterior hasta el día hábil previo;
+                 *     `future_date`: El comprobante trae el siguiente día hábil (el banco lo imprime así cuando el pago fue en día inhábil o fuera de horario),
+                 *     y se probaron los días anteriores hasta hoy.
                  *     El veredicto sigue siendo el de Banxico, y `request_data.fecha` conserva la fecha enviada.
                  */
                 banxico_result?: ({
@@ -4259,7 +4261,7 @@ export interface components {
                  * @description Cantidad de hitos completados del wizard `/comenzar`: (1) existe al menos una validación OCR no retirada, (2) existe al menos una validación manual no retirada, (3) existe al menos un beneficiario activo y (4) se cumplen a la vez (1) y (2). Total máximo: `4`.
                  * @example 0
                  */
-                comenzar_milestones_completed?: number;
+                onboarding_milestones_completed?: number;
             };
             /** @description Relaciones JSON:API del panel (referencias a recursos asociados). */
             relationships?: {
