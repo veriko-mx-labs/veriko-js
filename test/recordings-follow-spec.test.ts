@@ -40,6 +40,9 @@ const OPERATION_RECORDINGS: Record<string, readonly string[]> = {
   getFinanceByBank: ['finance-by-bank'],
   getFinanceAccounting: ['finance-accounting'],
   getFinanceCeps: ['finance-ceps'],
+  createFinanceCepExport: ['finance-cep-export-queued'],
+  listFinanceCepExports: ['finance-cep-exports'],
+  getFinanceCepExport: ['finance-cep-export-ready'],
   billingGetSubscription: ['billing-subscription'],
   exportApiUsage: ['api-usage-export-csv'],
   getApiUsage: ['api-usage'],
@@ -116,6 +119,7 @@ const NON_RESPONSE_RECORDINGS = new Set([
   'webhook-validation-completed',
   'webhook-validation-banxico-confirmed',
   'webhook-validation-client-ref',
+  'webhook-validation-not-found',
   'webhook-validation-returned',
 ]);
 

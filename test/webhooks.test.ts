@@ -174,6 +174,28 @@ describe('parseWebhook', () => {
     assert.equal(evento.data?.attributes.client_ref, 'orden-4812');
   });
 
+  it('lee el motivo cuando la validación no se confirmó', () => {
+    const payload = recordedBody('webhook-validation-not-found');
+
+    const evento = parseWebhook(payload, firmar(payload), SECRET);
+
+    assert.equal(evento.data?.attributes.status, 'not_found');
+    assert.equal(evento.data.attributes.error_code, 'not_found_amount');
+    assert.equal(
+      evento.data.attributes.error_message,
+      'Banxico encontró la operación con un importe distinto.',
+    );
+  });
+
+  it('no trae el motivo cuando la entrega no lo incluye', () => {
+    const payload = recordedBody('webhook-validation-completed');
+
+    const evento = parseWebhook(payload, firmar(payload), SECRET);
+
+    assert.equal(evento.data?.attributes.error_code, undefined);
+    assert.equal(evento.data?.attributes.error_message, undefined);
+  });
+
   it('no trae client_ref cuando la entrega no lo incluye', () => {
     const payload = recordedBody('webhook-validation-completed');
 

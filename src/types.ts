@@ -565,6 +565,12 @@ export interface FinanceCepsParams {
   userId?: string;
 }
 
+/** Los argumentos de `finance.createCepExport()`. */
+export interface FinanceCepExportParams extends FinanceCepsParams, IdempotentOptions {}
+
+/** Una exportación de CEP en segundo plano: `id`, `attributes.status` y `links`. */
+export type FinanceCepExport = ResourceOf<'getFinanceCepExport', 200>;
+
 type ListValidationsQuery = NonNullable<operations['listValidations']['parameters']['query']>;
 type TimeseriesQuery = NonNullable<operations['banxicoPublicTimeseries']['parameters']['query']>;
 type DeliveriesQuery = NonNullable<operations['listAllDeliveries']['parameters']['query']>;

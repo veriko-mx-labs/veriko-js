@@ -1,5 +1,5 @@
 /**
- * Las 70 operaciones M2M que cubre el SDK, contra el spec público.
+ * Las 74 operaciones M2M que cubre el SDK, contra el spec público.
  *
  * Cada caso llama a un método con todos sus argumentos opcionales y comprueba que
  * lo que llegó al servidor existe en el spec: el método y la ruta, los parámetros
@@ -722,6 +722,33 @@ const CASES: Case[] = [
     call: (client) => client.finance.getCeps({ from: '2026-04-01', to: '2026-04-30', userId: ID }),
   },
   {
+    operationId: 'createFinanceCepExport',
+    recording: 'finance-cep-export-queued',
+    allBody: true,
+    call: (client) =>
+      client.finance.createCepExport({
+        from: '2026-04-01',
+        to: '2026-04-30',
+        userId: ID,
+        idempotencyKey: 'pedido-6',
+      }),
+  },
+  {
+    operationId: 'listFinanceCepExports',
+    recording: 'finance-cep-exports',
+    call: (client) => client.finance.listCepExports(),
+  },
+  {
+    operationId: 'getFinanceCepExport',
+    recording: 'finance-cep-export-ready',
+    call: (client) => client.finance.getCepExport(ID),
+  },
+  {
+    operationId: 'downloadFinanceCepExport',
+    recording: 'finance-ceps',
+    call: (client) => client.finance.downloadCepExport(ID),
+  },
+  {
     operationId: 'billingGetSubscription',
     recording: 'billing-subscription',
     call: (client) => client.billing.getSubscription(),
@@ -799,6 +826,10 @@ const SDK_OPERATIONS = [
   'getFinanceByBank',
   'getFinanceAccounting',
   'getFinanceCeps',
+  'createFinanceCepExport',
+  'listFinanceCepExports',
+  'getFinanceCepExport',
+  'downloadFinanceCepExport',
   'billingGetSubscription',
 ];
 
@@ -918,8 +949,8 @@ describe('el conjunto de operaciones M2M cubierto', () => {
   const implemented = new Set(SDK_OPERATIONS);
   const covered = new Set(CASES.map((testCase) => testCase.operationId));
 
-  it('cubre exactamente las 70 operaciones del contrato, sin familias parciales', () => {
-    assert.equal(implemented.size, 70);
+  it('cubre exactamente las 74 operaciones del contrato, sin familias parciales', () => {
+    assert.equal(implemented.size, 74);
     assert.deepEqual(covered, implemented);
     assert.deepEqual(coverageErrors(m2mOperationIds(), implemented, KNOWN_GAPS), []);
   });

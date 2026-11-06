@@ -128,6 +128,8 @@ export {
   type ExportUsageParams,
   type ExportValidationsParams,
   type FinanceAccountingParams,
+  type FinanceCepExport,
+  type FinanceCepExportParams,
   type FinanceCepsParams,
   type FinanceDecimal,
   type FinanceParams,

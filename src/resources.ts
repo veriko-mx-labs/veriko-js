@@ -68,6 +68,8 @@ import {
   type DashboardSummary,
   type DashboardSummaryParams,
   type FinanceAccountingParams,
+  type FinanceCepExport,
+  type FinanceCepExportParams,
   type FinanceCepsParams,
   type FinanceParams,
   type FinancePreview,
@@ -2004,6 +2006,59 @@ export class Finance {
 
   ceps(params: FinanceCepsParams): Promise<DownloadedFile> {
     return this.getCeps(params);
+  }
+
+  /**
+   * Pide el ZIP de CEP de un rango para armarlo en segundo plano.
+   *
+   * `POST /v1/finance/ceps/exports`. Devuelve la exportación en `queued`. Si ya
+   * hay una en curso del mismo rango, devuelve esa.
+   */
+  async createCepExport(params: FinanceCepExportParams): Promise<FinanceCepExport> {
+    const body: Schemas['CreateCepArchiveRequest'] = { from: params.from, to: params.to };
+    if (params.userId !== undefined) body.user_id = params.userId;
+    const response = await this.transport.request({
+      method: 'POST',
+      path: '/finance/ceps/exports',
+      body,
+      headers: idempotencyHeader(params.idempotencyKey),
+    });
+    return readData<FinanceCepExport>(response, 'de la exportación de CEP');
+  }
+
+  /** Las exportaciones recientes de CEP, la más reciente primero. `GET /v1/finance/ceps/exports`. */
+  async listCepExports(): Promise<FinanceCepExport[]> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: '/finance/ceps/exports',
+    });
+    return readList<FinanceCepExport>(response, 'de las exportaciones de CEP');
+  }
+
+  /**
+   * El estado de una exportación de CEP. `GET /v1/finance/ceps/exports/{id}`.
+   *
+   * `attributes.status` es terminal en `ready`, `failed` o `expired`; con
+   * `ready`, `links.download` trae la ruta del archivo.
+   */
+  async getCepExport(exportId: string): Promise<FinanceCepExport> {
+    const response = await this.transport.request({
+      method: 'GET',
+      path: `/finance/ceps/exports/${pathSegment(exportId)}`,
+    });
+    return readData<FinanceCepExport>(response, 'de la exportación de CEP');
+  }
+
+  /** El ZIP de una exportación de CEP en `ready`. `GET /v1/finance/ceps/exports/{id}/download`. */
+  downloadCepExport(exportId: string): Promise<DownloadedFile> {
+    return financeFile(
+      this.transport,
+      `/finance/ceps/exports/${pathSegment(exportId)}/download`,
+      {},
+      'zip',
+      'ceps',
+      false,
+    );
   }
 }
 
