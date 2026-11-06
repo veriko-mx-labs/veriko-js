@@ -637,6 +637,8 @@ export interface paths {
          *     El atributo `code` identifica a cada institución bancaria.
          *
          *     La lista es cacheable: incluye la cabecera `ETag`, que puede enviarse en otra petición como `If-None-Match`; si el catálogo no ha cambiado, responde con un estado HTTP `304` (sin cuerpo).
+         *
+         *     La comparación de `If-None-Match` sigue el estándar HTTP (RFC 9110): acepta una lista de firmas separadas por comas y el valor `*`, y trata como iguales la firma fuerte y su variante débil (`W/"…"`). Así el `304` también funciona cuando Cloudflare o el servidor comprimen la respuesta y modifican el `ETag` (por ejemplo, `W/"…"` o `"…-gzip"`). Las peticiones sin `If-None-Match` reciben siempre el catálogo completo.
          */
         get: operations["listBanks"];
         put?: never;
@@ -1424,8 +1426,10 @@ export interface paths {
          * Regenerar la firma secreta de un endpoint webhook
          * @description Rota el secreto con el que se firman las entregas de un endpoint webhook. El secreto nuevo viaja **una sola vez**, en esta respuesta, y no hay forma de volver a consultarlo.
          *
-         *     {% callout type="danger" %}
-         *     **El secreto anterior queda invalidado en el acto**: Un receptor que valide firmas dejará de validar las entregas siguientes hasta que se le configure el secreto nuevo.
+         *     Durante las **24 horas** siguientes, cada entrega lleva además la firma con el secreto anterior en la cabecera `X-Webhook-Signature-Old` (mismo formato que `X-Webhook-Signature-Timestamped`). Así, las entregas en cola o en reintento no se rechazan mientras actualizas tu receptor: acepta la firma vigente o la anterior hasta la hora de `previous_secret_expires_at`.
+         *
+         *     {% callout type="warning" %}
+         *     **Si el secreto anterior se expuso, no esperes la gracia**: envía `{"immediate": true}` y el anterior deja de firmar en el acto. Un receptor que aún no tenga el secreto nuevo rechazará las entregas siguientes hasta que lo configures.
          *
          *     {% /callout %}
          */
@@ -2029,6 +2033,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/finance/ceps/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar las exportaciones recientes de comprobantes
+         * @description Devuelve las últimas 20 exportaciones asíncronas de CEP que pidió quien consulta, la más reciente primero, con su estado, tamaño y vencimiento.
+         *
+         *     Incluye las `ready`, las `failed` y las `expired` (estas últimas se conservan 30 días para explicar qué pasó). Una exportación que pidió otra persona no aparece.
+         */
+        get: operations["listFinanceCepExports"];
+        put?: never;
+        /**
+         * Pedir el archivo de comprobantes en segundo plano
+         * @description Encola la preparación del ZIP de CEP de un rango de fechas y responde de inmediato con un estado HTTP `202`. Es la alternativa asíncrona de `GET /v1/finance/ceps` para rangos grandes: el archivo se arma en segundo plano, sin mantener la conexión abierta.
+         *
+         *     La respuesta trae la exportación en estado `queued` y su ubicación en la cabecera `Location`. Consulta `GET /v1/finance/ceps/exports/{id}` hasta que `status` sea terminal (`ready`, `failed` o `expired`) y descarga el archivo con `GET /v1/finance/ceps/exports/{id}/download`. Cuando termina, el servicio también avisa por correo electrónico y dentro de la app, con un enlace (nunca con el archivo adjunto).
+         *
+         *     El archivo es el mismo ZIP que entrega `GET /v1/finance/ceps`. Una vez listo se puede descargar durante **24 horas**; después se borra y hay que pedirlo de nuevo.
+         *
+         *     Antes de encolar, el servicio cuenta los CEP del rango:
+         *
+         *     - Sin comprobantes, responde con un estado HTTP `404` (con `no_ceps` en el cuerpo), igual que el ZIP síncrono.
+         *     - Con más de **10 000** comprobantes, responde con un estado HTTP `422` (con `range_too_large` en el cuerpo). Divide el rango en periodos más cortos.
+         *
+         *     Si ya existe una exportación en curso del mismo rango, devuelve esa en lugar de crear otra. Cada cuenta puede tener **2** exportaciones en curso a la vez (`429`, con `export_limit_reached`) y la plataforma admite **5** en total (`503`, con `exports_busy`).
+         *
+         *     La operación admite `Idempotency-Key`.
+         */
+        post: operations["createFinanceCepExport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/ceps/exports/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Consultar el estado de una exportación de comprobantes
+         * @description Devuelve el estado de una exportación asíncrona de CEP. Mientras `status` sea `queued` o `building`, vuelve a consultar con una pausa de unos segundos; `ready`, `failed` y `expired` son terminales.
+         *
+         *     Con `ready`, el recurso trae `item_count`, `size_bytes` y `expires_at`, y el enlace `links.download`. Con `failed`, `error_code` dice la causa.
+         *
+         *     Una exportación que no existe o que pidió otra persona responde con un estado HTTP `404` (con `export_not_found` en el cuerpo).
+         */
+        get: operations["getFinanceCepExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/ceps/exports/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Descargar el archivo de una exportación de comprobantes
+         * @description Entrega el ZIP de una exportación asíncrona de CEP que está `ready`. Es el mismo archivo que `GET /v1/finance/ceps`: los XML y PDF bajo `ceps/` y los manifiestos `manifest.csv` y `manifest.xlsx`.
+         *
+         *     - Si la exportación todavía está en curso o falló, responde con un estado HTTP `409` (con `export_not_ready` en el cuerpo).
+         *     - Si el archivo venció (24 horas después de quedar listo), responde con un estado HTTP `410` (con `export_expired` en el cuerpo). Pide la exportación de nuevo.
+         *     - Si no existe o la pidió otra persona, responde con un estado HTTP `404` (con `export_not_found` en el cuerpo).
+         *
+         *     Mientras no venza, se puede descargar las veces que haga falta.
+         */
+        get: operations["downloadFinanceCepExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/billing/subscription": {
         parameters: {
             query?: never;
@@ -2084,6 +2177,17 @@ export interface components {
              * @example El campo fecha es obligatorio.
              */
             detail: string;
+            /**
+             * @description El siguiente paso, en una frase y en el idioma de `detail`. Sólo viene en los códigos que tienen uno claro; no ramifiques por su texto.
+             * @example Envía la clave en `clave_rastreo` o el número en `referencia_numerica`.
+             */
+            hint?: string;
+            /**
+             * Format: uri
+             * @description Página del portal que explica el error, en el idioma de la petición. Sólo viene en los códigos que tienen una.
+             * @example https://docs.veriko.mx/es/how-to/validate-ocr
+             */
+            docs_url?: string;
             /** @description Origen estructurado del error (JSON Pointer al campo que falló). */
             source?: {
                 /**
@@ -2133,7 +2237,7 @@ export interface components {
                  */
                 api_version?: string;
                 /**
-                 * @description Identificador único de la petición (hex).
+                 * @description Identificador único de la petición, de 24 caracteres hexadecimales. Guárdalo y cítalo al escribir a soporte: con él se ubica la petición.
                  * @example a1b2c3d4e5f66f5e4d3c2b1a
                  */
                 request_id?: string;
@@ -2158,7 +2262,7 @@ export interface components {
                  */
                 version?: string;
                 /**
-                 * @description Identificador único de la petición (24 caracteres hex).
+                 * @description Identificador único de la petición, de 24 caracteres hexadecimales. Guárdalo y cítalo al escribir a soporte: con él se ubica la petición.
                  * @example a1b2c3d4e5f66f5e4d3c2b1a
                  */
                 request_id?: string;
@@ -2181,7 +2285,7 @@ export interface components {
                  */
                 api_version?: string;
                 /**
-                 * @description Identificador único de la petición (hex).
+                 * @description Identificador único de la petición, de 24 caracteres hexadecimales. Guárdalo y cítalo al escribir a soporte: con él se ubica la petición.
                  * @example a1b2c3d4e5f66f5e4d3c2b1a
                  */
                 request_id?: string;
@@ -4565,6 +4669,11 @@ export interface components {
                 secret_hint?: string;
                 created_at: components["schemas"]["TimestampUTC"];
                 updated_at: components["schemas"]["TimestampUTC"];
+                /**
+                 * @description Fin del periodo de gracia del secret anterior, en ISO 8601 UTC. Tras regenerar el secret, el anterior sigue firmando las entregas durante 24 horas en la cabecera `X-Webhook-Signature-Old`. `null` cuando no hay una rotación en curso, cuando la gracia ya venció o cuando la regeneración se pidió con `immediate: true`. El secret anterior nunca se devuelve.
+                 * @example null
+                 */
+                previous_secret_expires_at: components["schemas"]["TimestampUTC"] | null;
             } & (unknown | unknown);
         };
         /** @description Cuerpo de `POST /v1/webhooks` con la URL HTTPS receptora, los eventos suscritos y una etiqueta opcional. */
@@ -4701,6 +4810,14 @@ export interface components {
                 error_message: string | null;
                 created_at: components["schemas"]["TimestampUTC"];
             };
+        };
+        /** @description Cuerpo opcional de la regeneración del secreto de un endpoint webhook. Sin cuerpo, el secreto anterior conserva 24 horas de gracia. */
+        RegenerateWebhookSecretRequest: {
+            /**
+             * @description `true` revoca el secreto anterior en el acto, sin periodo de gracia. Úsalo si el secreto se expuso.
+             * @default false
+             */
+            immediate: boolean;
         };
         /** @description Característica bilingüe de un plan, con indicador visual, orden y estado. */
         PlanFeature: {
@@ -5607,6 +5724,117 @@ export interface components {
         FinancePreviewResponse: components["schemas"]["SuccessEnvelope"] & {
             data: components["schemas"]["FinancePreviewResource"];
         };
+        /** @description Atributos de una exportación asíncrona del archivo de CEP. */
+        CepArchiveAttributes: {
+            /**
+             * @description Estado de la exportación — `queued`: En cola; `building`: Se está armando el archivo; `ready`: El archivo está listo para descargar; `failed`: No se pudo generar (consultar `error_code`); `expired`: El archivo venció y se borró. Los estados terminales son `ready`, `failed` y `expired`: mientras sea `queued` o `building`, sigue consultando.
+             * @example ready
+             * @enum {string}
+             */
+            status?: "queued" | "building" | "ready" | "failed" | "expired";
+            /**
+             * Format: date
+             * @description Fecha de inicio del rango (inclusive, `YYYY-MM-DD`).
+             * @example 2026-04-01
+             */
+            from?: string;
+            /**
+             * Format: date
+             * @description Fecha de fin del rango (inclusive, `YYYY-MM-DD`).
+             * @example 2026-04-30
+             */
+            to?: string;
+            /**
+             * @description Número de CEP incluidos en el archivo. `null` hasta que la exportación está `ready`.
+             * @example 42
+             */
+            item_count?: number | null;
+            /**
+             * @description Tamaño del archivo ZIP en bytes. `null` hasta que la exportación está `ready`.
+             * @example 1638400
+             */
+            size_bytes?: number | null;
+            /**
+             * @description Causa del fallo cuando `status` es `failed` — `range_too_large`: El rango supera el máximo de CEP por exportación; `no_ceps`: El rango ya no tiene CEP disponibles; `storage_full`: El servicio no tiene espacio para guardar el archivo; `build_failed`: Falló el armado del archivo. `null` en cualquier otro estado.
+             * @example null
+             * @enum {string|null}
+             */
+            error_code?: "range_too_large" | "no_ceps" | "storage_full" | "build_failed" | null;
+            /**
+             * Format: date-time
+             * @description Momento en que se pidió la exportación, en UTC.
+             * @example 2026-05-01T15:00:00Z
+             */
+            created_at?: string;
+            /**
+             * Format: date-time
+             * @description Momento en que terminó (`ready` o `failed`), en UTC. `null` mientras está en curso.
+             * @example 2026-05-01T15:00:20Z
+             */
+            completed_at?: string | null;
+            /**
+             * Format: date-time
+             * @description Momento a partir del cual el archivo ya no se puede descargar, en UTC: 24 horas después de `completed_at`. `null` hasta que la exportación está `ready`.
+             * @example 2026-05-02T15:00:20Z
+             */
+            expires_at?: string | null;
+        };
+        /** @description Recurso JSON:API de una exportación asíncrona del archivo de CEP. */
+        CepArchiveResource: components["schemas"]["JsonApiResourceBase"] & {
+            /**
+             * @description Tipo del recurso JSON:API. Siempre `cep_archive`.
+             * @example cep_archive
+             */
+            type?: string;
+            /**
+             * Format: uuid
+             * @example f47ac10b-58cc-4372-a567-0e02b2c3d479
+             */
+            id?: string;
+            attributes?: components["schemas"]["CepArchiveAttributes"];
+            /** @description Enlaces de la exportación. `download` aparece solo cuando el estado es `ready`. */
+            links?: {
+                /**
+                 * @description Ruta de esta exportación, para consultar su estado.
+                 * @example /v1/finance/ceps/exports/f47ac10b-58cc-4372-a567-0e02b2c3d479
+                 */
+                self?: string;
+                /**
+                 * @description Ruta de descarga del ZIP. Solo aparece cuando el estado es `ready`.
+                 * @example /v1/finance/ceps/exports/f47ac10b-58cc-4372-a567-0e02b2c3d479/download
+                 */
+                download?: string;
+            };
+        };
+        /** @description Respuesta con las exportaciones recientes del archivo de CEP en `data`, la más reciente primero. */
+        CepArchiveListResponse: components["schemas"]["SuccessEnvelope"] & {
+            data: components["schemas"]["CepArchiveResource"][];
+        };
+        /** @description Cuerpo de `POST /v1/finance/ceps/exports`. También se acepta envuelto en `data.attributes`. */
+        CreateCepArchiveRequest: {
+            /**
+             * Format: date
+             * @description Fecha de inicio (inclusive, `YYYY-MM-DD`).
+             * @example 2026-04-01
+             */
+            from: string;
+            /**
+             * Format: date
+             * @description Fecha de fin (inclusive, `YYYY-MM-DD`). Debe ser ≥ `from`.
+             * @example 2026-04-30
+             */
+            to: string;
+            /**
+             * Format: uuid
+             * @description Solo para administradores — UUID de la cuenta cuyos CEP se exportan.
+             * @example f47ac10b-58cc-4372-a567-0e02b2c3d479
+             */
+            user_id?: string;
+        };
+        /** @description Respuesta con una exportación asíncrona del archivo de CEP en `data`. */
+        CepArchiveResponse: components["schemas"]["SuccessEnvelope"] & {
+            data: components["schemas"]["CepArchiveResource"];
+        };
         /** @description Suscripción activa del usuario, con su origen, estado, ciclo y límites. Cada usuario tiene exactamente una. Los campos `trial_*`, `cancel_*` y `stripe_subscription_id` son nulos cuando no aplican. */
         BillingSubscriptionAttributes: {
             /**
@@ -5836,6 +6064,97 @@ export interface components {
         };
     };
     responses: {
+        /** @description Límite de tasa excedido (`rate_limit_exceeded`: espera unos segundos) o cuota del plan agotada (`quota_exceeded`: espera al siguiente periodo o cambia de plan). */
+        RateLimited: {
+            headers: {
+                /** @description Segundos a esperar antes de reintentar. Coincide con la ventana de rate-limit del endpoint (típicamente 60s para listas, 1-5s para operaciones idempotentes en vuelo). */
+                "Retry-After"?: number;
+                /** @description Límite de solicitudes configurado para este bucket. Se emite en cada 429 y, en la API autenticada, también en las respuestas correctas, donde es el tope por clave del plan de la cuenta. */
+                "X-RateLimit-Limit"?: number;
+                /** @description Solicitudes restantes en la ventana actual. Siempre 0 en el momento del 429; en una respuesta correcta de la API autenticada es lo que queda del tope por clave. */
+                "X-RateLimit-Remaining"?: number;
+                /** @description Unix epoch absoluto (segundos) en que se reinicia la ventana. Se emite en cada 429, junto con Retry-After, y en las respuestas correctas de la API autenticada. Puede existir sobreescritura por endpoint (p. ej. `rate_limited_login`). */
+                "X-RateLimit-Reset"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "errors": [
+                 *         {
+                 *           "status": "429",
+                 *           "code": "rate_limit_exceeded",
+                 *           "detail": "Límite de peticiones excedido. Inténtalo de nuevo en 45 segundos.",
+                 *           "hint": "Espera los segundos de `meta.retry_after` antes de reintentar.",
+                 *           "docs_url": "https://docs.veriko.mx/es/concepts/rate-limits"
+                 *         }
+                 *       ],
+                 *       "meta": {
+                 *         "version": "1.51.0",
+                 *         "request_id": "f7a8b9c0d1e22e1d0c9b8a7f",
+                 *         "retry_after": 45
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"] & {
+                    meta?: {
+                        /**
+                         * @description Segundos a esperar antes de reintentar. Es el mismo valor que la cabecera `Retry-After`, para clientes que no leen cabeceras HTTP.
+                         * @example 45
+                         */
+                        retry_after?: number;
+                    };
+                };
+            };
+        };
+        /** @description Se requiere autenticación o las credenciales son inválidas */
+        Unauthorized: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "errors": [
+                 *         {
+                 *           "status": "401",
+                 *           "code": "unauthorized",
+                 *           "detail": "Credenciales de autenticación ausentes o inválidas."
+                 *         }
+                 *       ],
+                 *       "meta": {
+                 *         "version": "1.51.0",
+                 *         "request_id": "c4d5e6f7a8b99b8a7f6e5d4c"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description Permisos insuficientes */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "errors": [
+                 *         {
+                 *           "status": "403",
+                 *           "code": "permission_denied",
+                 *           "detail": "No tienes permiso para acceder a este recurso."
+                 *         }
+                 *       ],
+                 *       "meta": {
+                 *         "version": "1.51.0",
+                 *         "request_id": "d5e6f7a8b9c00c9b8a7f6e5d"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
         /** @description El cuerpo de la petición supera el tamaño máximo admitido (`body_too_large`). */
         PayloadTooLarge: {
             headers: {
@@ -5882,71 +6201,6 @@ export interface components {
                  *     }
                  */
                 "application/json": components["schemas"]["ErrorResponse"];
-            };
-        };
-        /** @description Se requiere autenticación o las credenciales son inválidas */
-        Unauthorized: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                /**
-                 * @example {
-                 *       "errors": [
-                 *         {
-                 *           "status": "401",
-                 *           "code": "unauthorized",
-                 *           "detail": "Credenciales de autenticación ausentes o inválidas."
-                 *         }
-                 *       ],
-                 *       "meta": {
-                 *         "version": "1.51.0",
-                 *         "request_id": "c4d5e6f7a8b99b8a7f6e5d4c"
-                 *       }
-                 *     }
-                 */
-                "application/json": components["schemas"]["ErrorResponse"];
-            };
-        };
-        /** @description Límite de tasa excedido */
-        RateLimited: {
-            headers: {
-                /** @description Segundos a esperar antes de reintentar. Coincide con la ventana de rate-limit del endpoint (típicamente 60s para listas, 1-5s para operaciones idempotentes en vuelo). */
-                "Retry-After"?: number;
-                /** @description Límite de solicitudes configurado para este bucket. Se emite en cada 429 y, en la API autenticada, también en las respuestas correctas, donde es el tope por clave del plan de la cuenta. */
-                "X-RateLimit-Limit"?: number;
-                /** @description Solicitudes restantes en la ventana actual. Siempre 0 en el momento del 429; en una respuesta correcta de la API autenticada es lo que queda del tope por clave. */
-                "X-RateLimit-Remaining"?: number;
-                /** @description Unix epoch absoluto (segundos) en que se reinicia la ventana. Se emite en cada 429, junto con Retry-After, y en las respuestas correctas de la API autenticada. Puede existir sobreescritura por endpoint (p. ej. `rate_limited_login`). */
-                "X-RateLimit-Reset"?: number;
-                [name: string]: unknown;
-            };
-            content: {
-                /**
-                 * @example {
-                 *       "errors": [
-                 *         {
-                 *           "status": "429",
-                 *           "code": "rate_limit_exceeded",
-                 *           "detail": "Límite de peticiones excedido. Inténtalo de nuevo en 45 segundos."
-                 *         }
-                 *       ],
-                 *       "meta": {
-                 *         "version": "1.51.0",
-                 *         "request_id": "f7a8b9c0d1e22e1d0c9b8a7f",
-                 *         "retry_after": 45
-                 *       }
-                 *     }
-                 */
-                "application/json": components["schemas"]["ErrorResponse"] & {
-                    meta?: {
-                        /**
-                         * @description Segundos a esperar antes de reintentar. Es el mismo valor que la cabecera `Retry-After`, para clientes que no leen cabeceras HTTP.
-                         * @example 45
-                         */
-                        retry_after?: number;
-                    };
-                };
             };
         };
         /** @description Validación asíncrona aceptada. Se debe sondear `GET /v1/validations/{id}` hasta uno de los estados terminales (`valid`, `not_found`, `cep_unavailable`, `invalid`, `returned`, `failed`, `error`). `meta.next_poll_after_seconds` indica el intervalo recomendado para el primer sondeo. */
@@ -6020,30 +6274,6 @@ export interface components {
                 [name: string]: unknown;
             };
             content?: never;
-        };
-        /** @description Permisos insuficientes */
-        Forbidden: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                /**
-                 * @example {
-                 *       "errors": [
-                 *         {
-                 *           "status": "403",
-                 *           "code": "permission_denied",
-                 *           "detail": "No tienes permiso para acceder a este recurso."
-                 *         }
-                 *       ],
-                 *       "meta": {
-                 *         "version": "1.51.0",
-                 *         "request_id": "d5e6f7a8b9c00c9b8a7f6e5d"
-                 *       }
-                 *     }
-                 */
-                "application/json": components["schemas"]["ErrorResponse"];
-            };
         };
         /** @description La validación se purgó y este recurso ya no existe (`validation_purged`). */
         ValidationPurged: {
@@ -7314,7 +7544,7 @@ export interface operations {
             /** @description Catálogo completo de instituciones participantes del sistema SPEI. */
             200: {
                 headers: {
-                    /** @description Firma de la petición actual. Pasar como `If-None-Match` en peticiones posteriores. */
+                    /** @description Firma fuerte del contenido del catálogo: no cambia mientras los bancos y sus alias sean los mismos. Pasar como `If-None-Match` en peticiones posteriores. Una intermediaria puede devolverla como débil (`W/"…"`) o con el sufijo `-gzip` al comprimir; ambas formas siguen dando `304`. */
                     ETag?: string;
                     /** @description TTL de caché en el cliente (1 h). */
                     "Cache-Control"?: string;
@@ -7324,12 +7554,12 @@ export interface operations {
                     "application/json": components["schemas"]["ListBanksResponse"];
                 };
             };
-            /** @description No modificado — los datos no han cambiado según el ETag enviado. */
+            /** @description No modificado: el catálogo no ha cambiado respecto de la firma enviada en `If-None-Match`. No incluye cuerpo. */
             304: {
                 headers: {
-                    /** @description ETag actual de la instantánea. */
+                    /** @description Firma actual del catálogo, la misma que llevaría la respuesta 200. */
                     ETag?: string;
-                    /** @description TTL de caché en el cliente. */
+                    /** @description TTL de caché en el cliente (1 h), igual que en la respuesta 200. */
                     "Cache-Control"?: string;
                     [name: string]: unknown;
                 };
@@ -8813,7 +9043,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        /** @description Opcional. Sin cuerpo, la regeneración deja 24 horas de gracia al secreto anterior. */
+        requestBody?: {
+            content: {
+                /**
+                 * @example {
+                 *       "immediate": false
+                 *     }
+                 */
+                "application/json": components["schemas"]["RegenerateWebhookSecretRequest"];
+            };
+        };
         responses: {
             /** @description Nuevo secret generado. Solo se devuelve en esta respuesta. */
             200: {
@@ -8826,10 +9066,29 @@ export interface operations {
                     };
                 };
             };
+            /** @description `body_empty` o `invalid_json`: se envió un cuerpo que no es JSON válido. El cuerpo es opcional; si no hace falta `immediate`, omítelo. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             /** @description `not_found`: El endpoint no existe o no pertenece al usuario. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            413: components["responses"]["PayloadTooLarge"];
+            /** @description `webhook_immediate_invalid_type`: `immediate` no es un booleano. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9770,6 +10029,208 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             /** @description `no_ceps`: El rango no contiene ningún CEP disponible. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listFinanceCepExports: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Las exportaciones recientes, la más reciente primero. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CepArchiveListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createFinanceCepExport: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Llave opcional que garantiza que la petición se procese **exactamente una vez** dentro de un TTL de 24 horas. Los reintentos con la misma llave y el mismo cuerpo devuelven la respuesta cacheada con la cabecera `Idempotent-Replayed: true` (sin re-disparar webhooks) y sin crear una nueva validación. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKeyHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "from": "2026-04-01",
+                 *       "to": "2026-04-30"
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateCepArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description La exportación quedó en cola (`queued`), o es la que ya estaba en curso para ese rango. */
+            202: {
+                headers: {
+                    /** @description Ruta de la exportación, para consultar su estado. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CepArchiveResponse"];
+                };
+            };
+            /** @description `invalid_range`: Fechas mal formadas o `to < from`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description `no_ceps`: El rango no contiene ningún CEP disponible. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            413: components["responses"]["PayloadTooLarge"];
+            /** @description `range_too_large`: El rango supera el máximo de CEP por exportación (10 000). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `export_limit_reached`: La cuenta ya tiene el máximo de exportaciones en curso. Consultar `Retry-After`. */
+            429: {
+                headers: {
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `exports_busy`: Hay demasiadas exportaciones en curso en la plataforma, o `dispatch_failed`: no se pudo encolar. Consultar `Retry-After` cuando viene. */
+            503: {
+                headers: {
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getFinanceCepExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID de la exportación. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Estado de la exportación. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CepArchiveResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description `export_not_found`: La exportación no existe o la pidió otra persona. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    downloadFinanceCepExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID de la exportación. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ZIP con los XML/PDF de CEP y los manifiestos CSV + XLSX. */
+            200: {
+                headers: {
+                    "Content-Type"?: "application/zip";
+                    /** @description Nombre de archivo sugerido para la descarga. */
+                    "Content-Disposition"?: string;
+                    /** @description Tamaño exacto del ZIP en bytes. */
+                    "Content-Length"?: number;
+                    /** @description Número de CEPs incluidos en el ZIP. */
+                    "X-Finance-Items"?: number;
+                    /** @description Deshabilita el almacenamiento en caché por parte de intermediarios durante la descarga. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description `export_not_found`: La exportación no existe o la pidió otra persona. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `export_not_ready`: La exportación sigue en curso o falló. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `export_expired`: El archivo venció y se borró. Pedir la exportación de nuevo. */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
