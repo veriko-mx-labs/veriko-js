@@ -7,6 +7,24 @@ versiones según [SemVer](https://semver.org/lang/es/).
 
 Sin cambios todavía.
 
+## [0.5.1] — 2026-11-06
+
+### Añadido
+
+- Exportaciones de CEP en segundo plano, para rangos que no conviene descargar en una sola petición:
+  `finance.createCepExport()` pide el ZIP de un rango y devuelve la exportación en `queued`;
+  `finance.listCepExports()` lista las recientes; `finance.getCepExport()` consulta su estado, que es
+  terminal en `ready`, `failed` o `expired`; y `finance.downloadCepExport()` descarga el ZIP cuando está
+  en `ready`. Los tipos son `FinanceCepExport` y `FinanceCepExportParams`.
+- `WebhookEndpoint.previous_secret_expires_at`: hasta cuándo se acepta la firma con el secreto anterior
+  después de `webhooks.regenerateSecret()`.
+- `Validation.error_message` y `WebhookDelivery.error_message`: el motivo legible cuando la validación no
+  se confirmó.
+
+### Cambiado
+
+- `DashboardSummary`: `comenzar_milestones_completed` ahora es `onboarding_milestones_completed`.
+
 ## [0.5.0] — 2026-10-27
 
 ### Cambiado
