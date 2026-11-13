@@ -1,0 +1,41 @@
+{
+  "status": 200,
+  "headers": {
+    "Content-Type": "application/json; charset=utf-8",
+    "Deprecation": "date=\"2026-11-11\"",
+    "Sunset": "Mon, 01 Mar 2027 00:00:00 GMT",
+    "Link": "<https://docs.veriko.mx/en/how-to/migrate-to-english-field-names>; rel=\"deprecation\""
+  },
+  "json": {
+    "data": {
+      "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "type": "validation",
+      "attributes": {
+        "validation_type": "direct",
+        "is_playground": false,
+        "status": "valid",
+        "banxico_status": "valid",
+        "processing_time_ms": 1320,
+        "created_at": "2025-03-15T14:22:10Z",
+        "completed_at": "2025-03-15T14:22:11Z",
+        "normalized_data": {
+          "amount": 15000.5
+        },
+        "purged_at": "2026-10-02T09:30:00Z"
+      },
+      "links": {
+        "self": "/v1/validations/f47ac10b-58cc-4372-a567-0e02b2c3d479"
+      }
+    },
+    "meta": {
+      "version": "1.51.0",
+      "request_id": "b3c4d5e6f7a88a7f6e5d4c3b",
+      "field_names_notice": {
+        "code": "legacy_response_fields",
+        "message": "The response carries Spanish field names next to the English ones. The Spanish names stop being sent on March 1, 2027; read the English ones. See the migration guide.",
+        "sunset": "2027-03-01",
+        "documentation_url": "https://docs.veriko.mx/en/how-to/migrate-to-english-field-names"
+      }
+    }
+  }
+}

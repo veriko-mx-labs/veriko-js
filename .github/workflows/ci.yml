@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  autoria:
+    if: github.event_name != 'workflow_dispatch'
+    uses: veriko-mx-labs/.github/.github/workflows/autoria.yml@39a6ff721b020af5a33fb370b62a829eaacbeab3
+    secrets:
+      config: ${{ secrets.VERIKO_LABS_AUTORIA_CONFIG }}
+  lint:
+    name: Style, types and spec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      - run: npm ci
+
+      - name: eslint
+        run: npm run lint
+
+      - name: prettier
+        run: npm run format:check
+
+      - name: tsc
+        run: npm run typecheck
+
+      - name: The versioned spec meets the API contract
+        run: npm run check:spec-public
+
+      - name: The generated types are up to date with the spec
+        run: npm run check:types-fresh
+
+  test:
+    name: Tests (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['18', '20', '22', '24']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - run: npm ci
+
+      - run: npm test
+
+  examples:
+    name: The examples run against the recordings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      - run: npm ci
+
+      # Builds the package and the test harness, then runs every file in examples/ as a
+      # child process whose base URL is the recorded-responses server. It never reaches the API.
+      - run: npm run test:examples
+
+  build:
+    name: The package works in ESM and CommonJS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Pack
+        run: npm pack
+
+      # The tarball is installed in a separate project: that checks what the person
+      # who installs the package receives, not what is in the working tree.
+      - name: Install the package in a test project
+        run: |
+          mkdir -p /tmp/consumer && cd /tmp/consumer
+          npm init -y > /dev/null
+          npm install "$GITHUB_WORKSPACE"/veriko-mx-sdk-*.tgz
+
+      - name: Import from ESM
+        working-directory: /tmp/consumer
+        run: |
+          node --input-type=module -e "
+            import { Veriko, verifyWebhook, computeSignature, isSettled, SIGNATURE_HEADER } from '@veriko-mx/sdk';
+            const signature = computeSignature('{}', 'sec');
+            if (typeof Veriko !== 'function') throw new Error('Veriko was not exported');
+            if (typeof isSettled !== 'function') throw new Error('isSettled was not exported');
+            const client = new Veriko({ apiKey: 'veriko_test' });
+            for (const [family, method] of [['validations', 'waitFor'], ['webhooks', 'create'], ['catalog', 'banks'], ['beneficiaries', 'importWait'], ['usage', 'summary']]) {
+              if (typeof client[family][method] !== 'function') throw new Error(family + '.' + method + ' does not exist');
+            }
+            if (SIGNATURE_HEADER !== 'X-Webhook-Signature') throw new Error('unexpected header');
+            if (!verifyWebhook('{}', 'sha256=' + signature, 'sec')) throw new Error('the signature did not match');
+            console.log('ESM works');
+          "
+
+      - name: Require from CommonJS
+        working-directory: /tmp/consumer
+        run: |
+          node --input-type=commonjs -e "
+            const { Veriko, verifyWebhook, computeSignature, isSettled } = require('@veriko-mx/sdk');
+            const signature = computeSignature('{}', 'sec');
+            if (typeof Veriko !== 'function') throw new Error('Veriko was not exported');
+            if (typeof isSettled !== 'function') throw new Error('isSettled was not exported');
+            const client = new Veriko({ apiKey: 'veriko_test' });
+            for (const [family, method] of [['validations', 'waitFor'], ['webhooks', 'create'], ['catalog', 'banks'], ['beneficiaries', 'importWait'], ['usage', 'summary']]) {
+              if (typeof client[family][method] !== 'function') throw new Error(family + '.' + method + ' does not exist');
+            }
+            if (!verifyWebhook('{}', signature, 'sec')) throw new Error('the signature did not match');
+            console.log('CommonJS works');
+          "

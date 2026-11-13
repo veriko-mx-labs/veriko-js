@@ -1,0 +1,10 @@
+{
+  "status": 304,
+  "headers": {
+    "ETag": "W/\"3-not_found\"",
+    "Deprecation": "date=\"2026-11-11\"",
+    "Sunset": "Mon, 01 Mar 2027 00:00:00 GMT",
+    "Link": "<https://docs.veriko.mx/en/how-to/migrate-to-english-field-names>; rel=\"deprecation\""
+  },
+  "body": ""
+}

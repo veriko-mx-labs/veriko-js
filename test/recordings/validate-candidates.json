@@ -1,0 +1,62 @@
+{
+  "status": 200,
+  "headers": {
+    "Content-Type": "application/json; charset=utf-8",
+    "Deprecation": "date=\"2026-11-11\"",
+    "Sunset": "Mon, 01 Mar 2027 00:00:00 GMT",
+    "Link": "<https://docs.veriko.mx/en/how-to/migrate-to-english-field-names>; rel=\"deprecation\""
+  },
+  "json": {
+    "data": {
+      "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "type": "validation",
+      "attributes": {
+        "validation_type": "direct",
+        "is_playground": false,
+        "status": "valid",
+        "banxico_status": "valid",
+        "processing_time_ms": 1320,
+        "request_data": {
+          "send_date": "2025-03-15",
+          "amount": 15000.5,
+          "tracking_key": "MXBA20250315001234",
+          "sender_bank": "BANCO NACIONAL DE MEXICO",
+          "candidate_accounts": ["012180004412345678", "002010077777777771"]
+        },
+        "created_at": "2025-03-15T14:22:10Z",
+        "completed_at": "2025-03-15T14:22:11Z",
+        "retry_state": {
+          "enabled": false,
+          "max_retries": null,
+          "interval_seconds": null,
+          "outcomes": null,
+          "attempts_completed": 0,
+          "next_attempt_at": null,
+          "resolved_at": null,
+          "exhausted_at": null,
+          "cancelled_at": null,
+          "terminal_state": null
+        },
+        "candidate_match": {
+          "index": 1,
+          "account_last4": "7771"
+        }
+      },
+      "links": {
+        "self": "/v1/validations/f47ac10b-58cc-4372-a567-0e02b2c3d479",
+        "cep_xml": "/v1/validations/f47ac10b-58cc-4372-a567-0e02b2c3d479/cep?format=xml",
+        "cep_pdf": "/v1/validations/f47ac10b-58cc-4372-a567-0e02b2c3d479/cep?format=pdf"
+      }
+    },
+    "meta": {
+      "version": "1.51.0",
+      "request_id": "b3c4d5e6f7a88a7f6e5d4c3b",
+      "field_names_notice": {
+        "code": "legacy_response_fields",
+        "message": "The response carries Spanish field names next to the English ones. The Spanish names stop being sent on March 1, 2027; read the English ones. See the migration guide.",
+        "sunset": "2027-03-01",
+        "documentation_url": "https://docs.veriko.mx/en/how-to/migrate-to-english-field-names"
+      }
+    }
+  }
+}
