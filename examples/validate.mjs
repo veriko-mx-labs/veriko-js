@@ -1,23 +1,22 @@
 /**
- * Validate a SPEI transfer and download its CEP, in Node.
+ * Valida una transferencia SPEI y descarga su CEP, en Node.
  *
- *     export VERIKO_API_KEY=veriko_your_key_here
+ *     export VERIKO_API_KEY=veriko_tu_clave_aqui
  *     node examples/validate.mjs
  *
- * The transfer data goes in the object below. The date is the send date, in
- * YYYY-MM-DD format, and the operation requires the tracking key or the numeric
- * reference.
+ * Los datos de la transferencia van en el objeto de abajo. La fecha es la fecha de envío, en
+ * formato YYYY-MM-DD, y la operación exige la clave de rastreo o la referencia numérica.
  */
 
 import { writeFile } from 'node:fs/promises';
 
 import { ApiError, RateLimitError, Veriko, hasCep } from '@veriko-mx/sdk';
 
-const client = new Veriko(); // reads VERIKO_API_KEY from the environment
+const client = new Veriko(); // lee VERIKO_API_KEY del entorno
 
 let validation;
 try {
-  // validateAndWait() polls when the API answers 202 because Banxico took longer than 45 seconds.
+  // validateAndWait() consulta cuando la API responde 202 porque Banxico tardó más de 45 segundos.
   validation = await client.validations.validateAndWait({
     sendDate: '2025-03-15',
     amount: 15000.5,
@@ -30,10 +29,14 @@ try {
   });
 } catch (error) {
   if (error instanceof RateLimitError) {
-    console.error(`Rate limit or quota (${error.kind}). Retry in`, error.retryAfter, 'seconds');
+    console.error(
+      `Límite de tasa o de cuota (${error.kind}). Reintenta en`,
+      error.retryAfter,
+      'segundos',
+    );
   } else if (error instanceof ApiError) {
-    console.error('The API rejected the request:', error.code, error.detail);
-    if (error.hint) console.error('Hint:', error.hint);
+    console.error('La API rechazó la petición:', error.code, error.detail);
+    if (error.hint) console.error('Sugerencia:', error.hint);
     console.error('request_id:', error.requestId);
   } else {
     throw error;
@@ -41,16 +44,16 @@ try {
   process.exit(1);
 }
 
-console.log('Validation:', validation.id);
-console.log('Verdict:   ', validation.attributes.status);
+console.log('Validación:', validation.id);
+console.log('Veredicto: ', validation.attributes.status);
 console.log('Banxico:   ', validation.attributes.banxico_status);
-console.log('Took:      ', validation.attributes.processing_time_ms, 'ms');
+console.log('Tardó:    ', validation.attributes.processing_time_ms, 'ms');
 
 if (!hasCep(validation)) {
-  console.log('No receipt to download.');
+  console.log('No hay comprobante que descargar.');
   process.exit(0);
 }
 
 const cep = await client.getCep(validation.id, { format: 'pdf' });
 await writeFile(cep.filename, cep.content);
-console.log('CEP saved to', cep.filename, `(${cep.content.length} bytes)`);
+console.log('CEP guardado en', cep.filename, `(${cep.content.length} bytes)`);

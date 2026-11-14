@@ -41,7 +41,7 @@ const SCRIPTS = {
   'validate.mjs': {
     recordings: ['validate-valid', 'cep-pdf'],
     requests: ['POST /v1/validate', `GET /v1/validations/${ID}/cep`],
-    output: ['Verdict:    valid', 'CEP saved to'],
+    output: ['Veredicto:  valid', 'CEP guardado en'],
     files: 1,
   },
   'async-and-webhooks.mjs': {
@@ -65,7 +65,7 @@ const SCRIPTS = {
       `GET /v1/validations/${ID}`,
       `GET /v1/validations/${ID}/cep`,
     ],
-    output: ['registered', 'Test delivered', 'Queued 2 validations', '-> valid'],
+    output: ['registrado', 'Prueba entregada', 'En cola: 2 validaciones', '-> valid'],
     files: 1,
   },
   'm2m-surface.mjs': {
@@ -191,10 +191,10 @@ async function runReceiver(example) {
 
   try {
     const deadline = Date.now() + 15_000;
-    while (!output.includes('listening') && Date.now() < deadline) {
+    while (!output.includes('escuchando') && Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 50));
     }
-    if (!output.includes('listening')) {
+    if (!output.includes('escuchando')) {
       fail(example, `it did not start\n${output}`);
       return;
     }

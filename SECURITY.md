@@ -1,8 +1,8 @@
-# Security
+# Seguridad
 
-Report vulnerabilities through a private security advisory on GitHub for this repository. Include a
-reproducible description and the impact, and do not attach API keys, receipts, account numbers or
-customer data.
+Reporta vulnerabilidades mediante un aviso privado de seguridad en GitHub para este repositorio.
+Incluye una descripción reproducible y el impacto, y no adjuntes claves de API, comprobantes,
+números de cuenta ni datos de clientes.
 
-Do not use public issues for vulnerabilities that are not fixed. If an API key appears in logs or in a
-report, revoke it before you share any evidence.
+No uses issues públicos para vulnerabilidades que no estén corregidas. Si una clave de API aparece
+en registros o en un reporte, revócala antes de compartir cualquier evidencia.

@@ -13,6 +13,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
+import ts from 'typescript';
+
 import * as sdk from '../src/index.js';
 import {
   OCR_PARAM_ALIASES,
@@ -28,6 +30,34 @@ const NAMES = legacyNames();
 function mentions(text: string): string[] {
   const pattern = new RegExp(`(?<![A-Za-z0-9_-])(${NAMES.join('|')})(?![A-Za-z0-9_])`, 'g');
   return [...new Set([...text.matchAll(pattern)].map((match) => match[1] ?? ''))];
+}
+
+/** Identifiers and exact string literals of a script; prose in comments and messages is skipped. */
+function identifiersIn(code: string): string[] {
+  const found: string[] = [];
+  const source = ts.createSourceFile('x.mjs', code, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node) || ts.isPrivateIdentifier(node)) found.push(node.text);
+    else if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))
+      found.push(node.text);
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return found;
+}
+
+/** Identifiers of a Markdown file: backtick spans and the code in fenced blocks, not the prose. */
+function codeIn(markdown: string): string[] {
+  const fence = /^(```|~~~)[^\n]*\n([\s\S]*?)^\1/gm;
+  const blocks = [...markdown.matchAll(fence)].flatMap((m) => identifiersIn(m[2] ?? ''));
+  const prose = markdown.replace(fence, '');
+  const spans = [...prose.matchAll(/`([^`\n]+)`/g)].flatMap((m) => identifiersIn(m[1] ?? ''));
+  return [...blocks, ...spans];
+}
+
+function mentionsAny(identifiers: string[]): string[] {
+  const names = new Set(NAMES);
+  return [...new Set(identifiers.filter((name) => names.has(name)))];
 }
 
 function filesUnder(directory: string): string[] {
@@ -92,16 +122,24 @@ describe('names from earlier versions stay out of the public surface', () => {
     assert.equal('resolveAliases' in sdk, false);
   });
 
-  it('the README, the CHANGELOG and the examples do not mention them', () => {
-    const files = [
-      join(PROJECT_ROOT, 'README.md'),
-      join(PROJECT_ROOT, 'CHANGELOG.md'),
-      ...filesUnder(join(PROJECT_ROOT, 'examples')),
-    ];
-    for (const file of files) {
-      const hits = mentions(readFileSync(file, 'utf8'));
+  it('the README, the CHANGELOG and the examples do not use them as identifiers', () => {
+    const docs = [join(PROJECT_ROOT, 'README.md'), join(PROJECT_ROOT, 'CHANGELOG.md')];
+    for (const file of docs) {
+      const hits = mentionsAny(codeIn(readFileSync(file, 'utf8')));
       assert.deepEqual(hits, [], `${file} mentions ${hits.join(', ')}`);
     }
+    for (const file of filesUnder(join(PROJECT_ROOT, 'examples'))) {
+      const hits = mentionsAny(identifiersIn(readFileSync(file, 'utf8')));
+      assert.deepEqual(hits, [], `${file} mentions ${hits.join(', ')}`);
+    }
+  });
+
+  it('the check sees an alias in a code span, a code block or an identifier', () => {
+    assert.deepEqual(mentionsAny(codeIn('Usa `monto` aquí.')), ['monto']);
+    assert.deepEqual(mentionsAny(codeIn('```js\nawait x({ monto: 1 });\n```\n')), ['monto']);
+    assert.deepEqual(mentionsAny(identifiersIn('const o = { monto: 1 };')), ['monto']);
+    assert.deepEqual(mentionsAny(codeIn('El monto y la fecha en prosa.')), []);
+    assert.deepEqual(mentionsAny(identifiersIn("// el monto\nconsole.log('la fecha');")), []);
   });
 
   it('the source outside the map does not mention them either', () => {

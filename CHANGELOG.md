@@ -1,430 +1,410 @@
-# Changelog
+# Registro de cambios
 
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
-versions follow [SemVer](https://semver.org/).
+Formato de [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/);
+versiones según [SemVer](https://semver.org/lang/es/).
+
+## [0.6.1] - 2026-11-14
+
+### Cambiado
+
+- El README, el registro de cambios, la guía de contribución y la ficha del paquete en npm están en
+  español. La API, los nombres y el comportamiento no cambian.
 
 ## [0.6.0] - 2026-11-13
 
-### Added
+### Añadido
 
-- `beneficiaries.validateAccount({ account, type })`: checks an account number without saving it (type,
-  length, check digit and bank). It returns `AccountValidation`.
-- `validateOcr()`, `enqueueOcr()` and `validations.validateOcr()` accept `recipientIsBank`.
-- `userAgentPrefix`: the product that wraps the SDK goes before its token, as the MCP server does.
-- `buildUserAgent()` returns the header the client sends.
-- Per-call options as the last argument of every method: `signal`, `timeoutMs`, `maxRetries`,
-  `idempotencyKey`, `headers`, `acceptLanguage` and `onResponse`. `Authorization` cannot be
-  overridden through `headers`.
-- `ApiPromise`: every method returns a `Promise` that also offers `.withResponse()`, which resolves
-  `{ data, response }`. `ResponseMeta` carries `status`, `headers`, `requestId`, `apiVersion`, `meta`,
-  `rateLimit`, `quota`, `replayed`, `etag`, `location`, `retryAfter`, `deprecation`, `sunset`, `link`
-  and `attempts`.
-- The client options `onResponse` and `onDeprecation`. Without an `onDeprecation` handler, a response
-  with `Deprecation` or `Sunset` emits one process warning (`VERIKO_API_DEPRECATION`) per endpoint.
-- Error classes `NotModifiedError` (`304`), `GoneError` (`410`), `PayloadTooLargeError` (`413`, a
-  subclass of `InvalidRequestError`), `QuotaExceededError` (a subclass of `RateLimitError`),
-  `RequestTimeoutError` (a subclass of `ConnectionError`) and `RequestAbortedError`.
-- `ApiError` exposes `hint`, `docsUrl`, `pointer`, `codes`, `hasCode()`, `validationId`, `retryAfter`
-  and `local`, next to the full `errors` list. `RateLimitError` adds `kind`, `limit`, `remaining` and
-  `resetAt`, and `ConflictError` adds `inProgress`. `ConnectionError` adds `attempts`.
-- `ERROR_CODES` and `IDEMPOTENCY_KEY_PATTERN`.
-- `validations.validateAndWait()` and `validations.validateOcrAndWait()`. `validate()` and
-  `validateOcr()` return `ValidationResult`, whose `queued` field carries the `202` acknowledgment
+- `beneficiaries.validateAccount({ account, type })`: comprueba un número de cuenta sin guardarlo
+  (tipo, longitud, dígito verificador y banco). Devuelve `AccountValidation`.
+- `validateOcr()`, `enqueueOcr()` y `validations.validateOcr()` aceptan `recipientIsBank`.
+- `userAgentPrefix`: el producto que envuelve al SDK va antes de su token, igual que en el servidor MCP.
+- `buildUserAgent()` devuelve la cabecera que envía el cliente.
+- Opciones por llamada como último argumento de todos los métodos: `signal`, `timeoutMs`,
+  `maxRetries`, `idempotencyKey`, `headers`, `acceptLanguage` y `onResponse`. `Authorization` no se
+  puede sustituir mediante `headers`.
+- `ApiPromise`: todos los métodos devuelven una `Promise` que además ofrece `.withResponse()`, que
+  se resuelve en `{ data, response }`. `ResponseMeta` trae `status`, `headers`, `requestId`,
+  `apiVersion`, `meta`, `rateLimit`, `quota`, `replayed`, `etag`, `location`, `retryAfter`,
+  `deprecation`, `sunset`, `link` y `attempts`.
+- Las opciones de cliente `onResponse` y `onDeprecation`. Sin un manejador `onDeprecation`, una
+  respuesta con `Deprecation` o `Sunset` emite un aviso de proceso (`VERIKO_API_DEPRECATION`) por
+  endpoint.
+- Las clases de error `NotModifiedError` (`304`), `GoneError` (`410`), `PayloadTooLargeError` (`413`,
+  subclase de `InvalidRequestError`), `QuotaExceededError` (subclase de `RateLimitError`),
+  `RequestTimeoutError` (subclase de `ConnectionError`) y `RequestAbortedError`.
+- `ApiError` expone `hint`, `docsUrl`, `pointer`, `codes`, `hasCode()`, `validationId`, `retryAfter` y
+  `local`, junto a la lista completa `errors`. `RateLimitError` añade `kind`, `limit`, `remaining` y
+  `resetAt`, y `ConflictError` añade `inProgress`. `ConnectionError` añade `attempts`.
+- `ERROR_CODES` e `IDEMPOTENCY_KEY_PATTERN`.
+- `validations.validateAndWait()` y `validations.validateOcrAndWait()`. `validate()` y
+  `validateOcr()` devuelven `ValidationResult`, cuyo campo `queued` trae el acuse `202`
   (`asyncReason`, `nextPollAfterSeconds`, `expiresAt`, `etag`, `location`).
-- `finance.waitForCepExport()`, `CEP_EXPORT_TERMINAL_STATUSES` and `isCepExportTerminal()`.
-- `webhooks.regenerateSecret(id, { immediate })`. With `immediate: true`, the previous secret stops
-  being valid at once.
-- `OLD_SIGNATURE_HEADER`, `oldSignatureFromHeaders()` and `verifyWebhookHeaders()`. `parseWebhook()`
-  and the verification functions accept a list of secrets, for a rotation. `parseWebhook()` also
-  accepts the request headers instead of the signature value, and verifies the timestamped signature
-  and `X-Webhook-Signature-Old` within the tolerance window.
-- `WebhookEvent.rawData`: the `data` of the body for events that are not about a validation.
-- `DownloadedFile.headers` and `Page.meta`.
-- `*Stream()` variants of the large downloads, which resolve to a `DownloadedStream` (a web
-  `ReadableStream` with `contentType`, `filename`, `contentLength` and `headers`) and do not buffer the
-  body: `validations.cepStream()`, `validations.imageStream()`, `validations.exportStream()`,
-  `webhooks.exportDeliveriesStream()`, `beneficiaries.exportStream()`,
+- `finance.waitForCepExport()`, `CEP_EXPORT_TERMINAL_STATUSES` e `isCepExportTerminal()`.
+- `webhooks.regenerateSecret(id, { immediate })`. Con `immediate: true`, el secreto anterior deja de
+  valer de inmediato.
+- `OLD_SIGNATURE_HEADER`, `oldSignatureFromHeaders()` y `verifyWebhookHeaders()`. `parseWebhook()` y
+  las funciones de verificación aceptan una lista de secretos, para una rotación. `parseWebhook()`
+  acepta además las cabeceras de la petición en lugar del valor de la firma, y verifica la firma con
+  marca de tiempo y `X-Webhook-Signature-Old` dentro de la ventana de tolerancia.
+- `WebhookEvent.rawData`: el `data` del cuerpo en los eventos que no son de una validación.
+- `DownloadedFile.headers` y `Page.meta`.
+- Variantes `*Stream()` de las descargas grandes, que se resuelven en un `DownloadedStream` (un
+  `ReadableStream` web con `contentType`, `filename`, `contentLength` y `headers`) y no guardan el
+  cuerpo en memoria: `validations.cepStream()`, `validations.imageStream()`,
+  `validations.exportStream()`, `webhooks.exportDeliveriesStream()`, `beneficiaries.exportStream()`,
   `beneficiaries.importTemplateStream()`, `usage.exportStream()`, `finance.statementStream()`,
-  `finance.reportStream()`, `finance.cepsStream()` and `finance.downloadCepExportStream()`. The
-  buffered methods are unchanged.
-- `WebhookEvent` is a union discriminated by `event`: `ValidationWebhookEvent`,
-  `ValidationReturnedWebhookEvent` (with `attributes.payment_status` typed), `BillingWebhookEvent` and
-  `TestWebhookEvent`. `parseWebhook()` returns `WebhookEvent` or `UnknownWebhookEvent`, and
-  `isKnownWebhookEvent()` tells them apart. `VALIDATION_WEBHOOK_EVENTS` and `BILLING_WEBHOOK_EVENTS`
-  list the names.
-- `verifyDelivery()`, which checks a delivery from its headers and takes `requireTimestamp`, and
-  `attemptTimestamp()`. The parsed event carries `deliveryId` and `attemptTimestamp`, and takes the
-  event name from `X-Veriko-Event` when the body has none. Header lookup accepts the CGI spelling
-  (`HTTP_X_WEBHOOK_SIGNATURE`).
-- `npm run test:examples` and a CI job that run every file in `examples/` against the recorded
-  responses.
-- The retry options `maxRetryAfterMs` (60 seconds) and `maxInProgressWaitMs` (120 seconds).
-- A per-call `acceptLanguage`, which sets the language of `error.detail` for that call.
+  `finance.reportStream()`, `finance.cepsStream()` y `finance.downloadCepExportStream()`. Los métodos
+  que devuelven el cuerpo completo no cambian.
+- `WebhookEvent` es una unión discriminada por `event`: `ValidationWebhookEvent`,
+  `ValidationReturnedWebhookEvent` (con `attributes.payment_status` tipado), `BillingWebhookEvent` y
+  `TestWebhookEvent`. `parseWebhook()` devuelve `WebhookEvent` o `UnknownWebhookEvent`, e
+  `isKnownWebhookEvent()` los distingue. `VALIDATION_WEBHOOK_EVENTS` y `BILLING_WEBHOOK_EVENTS` listan
+  los nombres.
+- `verifyDelivery()`, que comprueba una entrega a partir de sus cabeceras y acepta
+  `requireTimestamp`, y `attemptTimestamp()`. El evento interpretado trae `deliveryId` y
+  `attemptTimestamp`, y toma el nombre del evento de `X-Veriko-Event` cuando el cuerpo no lo trae. La
+  búsqueda de cabeceras acepta la grafía CGI (`HTTP_X_WEBHOOK_SIGNATURE`).
+- Las opciones de reintento `maxRetryAfterMs` (60 segundos) y `maxInProgressWaitMs` (120 segundos).
 
-### Changed
+### Cambiado
 
-- The arguments of `validateTransfer()`, `validations.validate()`, `validateOcr()`, `enqueue()` and
-  `enqueueOcr()` use the English names of the API: `sendDate`, `amount`, `trackingKey`,
-  `numericReference`, `senderBank`, `receiverBank`, `beneficiaryAccount`, `candidateAccounts` and
-  `recipientIsBank`. The body always goes out with the English names (`send_date`, `amount`, and so on).
-- `recipientIsBank` is a boolean and is sent as one. `0` and `1` are still accepted, and the SDK
-  converts them.
-- Responses expose the English names (`request_data`, `ocr_result`, `normalized_data`,
-  `confidence_by_field`, the listings, the finance summary and the detected accounts). If the API sends
-  only a name from an earlier version, the SDK fills in the current name with the same value.
-- The `User-Agent` becomes `veriko-sdk-js/<version> (<runtime> <version>; <system> <architecture>)`, for
-  example `veriko-sdk-js/0.6.0 (node 22.11.0; linux x64)`. The runtime is `node`, `deno` or `bun`. It
-  carries no other machine data. `userAgentSuffix` is still appended at the end.
-- A `POST` is retried only when it carries an `Idempotency-Key`. The six operations that accept the
-  header generate one when the caller gives none: `validate()`, `validateOcr()` (and so `enqueue()`
-  and `enqueueOcr()`), `setRetryPolicy()`, `cancelRetries()`, `account.updateMyRetryPolicy()` and
-  `finance.createCepExport()`.
-- A `409` with `idempotency_key_in_progress` waits for `Retry-After` (or the backoff) and repeats the
-  request with the same key, up to `maxInProgressWaitMs` of accumulated waiting.
-- `Retry-After` is honored in full. When it is longer than `maxRetryAfterMs`, the call throws the typed
-  error with `retryAfter` set, and does not wait.
-- `waitFor()` pauses at least as long as `Retry-After` or `meta.next_poll_after_seconds` ask, ends at
-  the `expires_at` of the validation (with a 30 second grace period) or after five minutes, and sends
-  the `ETag` of the acknowledgment on its first poll. It accepts the call options.
-- `isSettled()` keeps the polling open only for the outcomes the retry policy repeats (`not_found`,
-  `cep_unavailable` and `error`).
-- Errors the SDK raises before sending a request use the English codes of the API
+- Los argumentos de `validateTransfer()`, `validations.validate()`, `validateOcr()`, `enqueue()` y
+  `enqueueOcr()` usan los nombres en inglés de la API: `sendDate`, `amount`, `trackingKey`,
+  `numericReference`, `senderBank`, `receiverBank`, `beneficiaryAccount`, `candidateAccounts` y
+  `recipientIsBank`. El cuerpo sale siempre con los nombres en inglés (`send_date`, `amount`, etcétera).
+- `recipientIsBank` es booleano y se envía como booleano. `0` y `1` se siguen aceptando, y el SDK los
+  convierte.
+- Las respuestas exponen los nombres en inglés (`request_data`, `ocr_result`, `normalized_data`,
+  `confidence_by_field`, los listados, el resumen de finanzas y las cuentas detectadas). Si la API
+  envía sólo un nombre de una versión anterior, el SDK completa el nombre actual con el mismo valor.
+- El `User-Agent` pasa a ser `veriko-sdk-js/<versión> (<entorno> <versión>; <sistema> <arquitectura>)`,
+  por ejemplo `veriko-sdk-js/0.6.0 (node 22.11.0; linux x64)`. El entorno es `node`, `deno` o `bun`. No
+  lleva ningún otro dato de la máquina. `userAgentSuffix` se sigue añadiendo al final.
+- Un `POST` se reintenta sólo cuando lleva un `Idempotency-Key`. Las seis operaciones que aceptan la
+  cabecera generan una cuando quien llama no da ninguna: `validate()`, `validateOcr()` (y por tanto
+  `enqueue()` y `enqueueOcr()`), `setRetryPolicy()`, `cancelRetries()`,
+  `account.updateMyRetryPolicy()` y `finance.createCepExport()`.
+- Un `409` con `idempotency_key_in_progress` espera el `Retry-After` (o la espera creciente) y repite
+  la petición con la misma clave, hasta `maxInProgressWaitMs` de espera acumulada.
+- `Retry-After` se respeta completo. Cuando es mayor que `maxRetryAfterMs`, la llamada lanza el error
+  tipado con `retryAfter` establecido, y no espera.
+- `waitFor()` hace una pausa al menos tan larga como piden `Retry-After` o
+  `meta.next_poll_after_seconds`, termina en el `expires_at` de la validación (con 30 segundos de
+  margen) o a los cinco minutos, y envía el `ETag` del acuse en su primera consulta. Acepta las
+  opciones de llamada.
+- `isSettled()` mantiene abierta la consulta sólo para los resultados que la política de reintentos
+  repite (`not_found`, `cep_unavailable` y `error`).
+- Los errores que el SDK lanza antes de enviar una petición usan los códigos en inglés de la API
   (`tracking_key_or_reference_required`, `account_required`,
   `account_and_candidates_mutually_exclusive`, `candidate_accounts_invalid`,
-  `image_or_image_url_required`, `invalid_amount`, `invalid_idempotency_key`) and set `local: true`.
-- The preview query sends the `buckets` filter as `buckets[]`, which is the form the API reads.
-- The Content-Disposition parser reads `filename*` (RFC 6266) and quoted names that contain `;`.
-- `ValidationFilters.status` is typed with `ValidationStatus`, and the card fields of
-  `AccountValidation` are nullable.
-- `WebhookEvent` is a union and no longer an interface with `event: string`. Code that reads
-  `event.data` keeps compiling; for `billing.*` and `test` events, `data` is `undefined` and the body
-  is in `rawData`. A validation event without the validation resource, or a `validation.returned`
-  without `payment_status`, comes back as `UnknownWebhookEvent`.
-- The webhook example is `examples/webhook-receiver.mjs`. It uses `node:http` and no longer needs
-  Express.
-- The recordings follow the 1.212.1 responses: `Deprecation`, `Sunset` and `Link` headers and
-  `meta.field_names_notice` on the seven operations that announce the field-name change, 24-character
-  request ids and the trace counters of the purge.
-- The generated types and their JSDoc use the English text of the spec (`x-translations.en`), and
-  leave out the field names from earlier versions. `npm run gen:types` runs `scripts/generate-types.mjs`.
-- The operations coverage test derives the M2M set from `spec/openapi.yaml` and compares it with the
-  methods one to one.
-- The prose of the package, the runtime error messages, the fallback file names of the downloads and
-  the examples are in English. The README documents every feature above.
+  `image_or_image_url_required`, `invalid_amount`, `invalid_idempotency_key`) y fijan `local: true`.
+- La consulta de la vista previa envía el filtro `buckets` como `buckets[]`, que es la forma que lee
+  la API.
+- El intérprete de Content-Disposition lee `filename*` (RFC 6266) y los nombres entre comillas que
+  contienen `;`.
+- `ValidationFilters.status` se tipa con `ValidationStatus`, y los campos de tarjeta de
+  `AccountValidation` aceptan `null`.
+- `WebhookEvent` es una unión y ya no una interfaz con `event: string`. El código que lee `event.data`
+  sigue compilando; en los eventos `billing.*` y `test`, `data` es `undefined` y el cuerpo está en
+  `rawData`. Un evento de validación sin el recurso de la validación, o un `validation.returned` sin
+  `payment_status`, llega como `UnknownWebhookEvent`.
 
-### Deprecated
+### Obsoleto
 
-Field names from earlier versions keep working for existing integrations and emit a deprecation
-warning. They are not part of the typed API, and a future version removes them. Sending an earlier
-name and its current name together throws `InvalidRequestError` (`alias_conflict`).
+Los nombres de campo de versiones anteriores siguen funcionando para las integraciones existentes y
+emiten un aviso de obsolescencia. No forman parte de la API tipada y una versión futura los quitará.
+Enviar un nombre anterior junto con su nombre actual lanza `InvalidRequestError`
+(`alias_conflict`).
 
-### Fixed
+### Corregido
 
-- The default timeout goes from 30 to 60 seconds: the API can take up to 45 seconds on a synchronous
-  validation before it answers `202`, and with 30 the SDK abandoned the request first. `timeoutMs` is
-  still set per client.
-- `quota_exceeded` is no longer retried even when it arrives with `429`: the plan quota does not refill
-  in seconds, so the error is thrown at once. `rate_limit_exceeded` is still retried.
-- `WEBHOOK_EVENTS` matches the event types of the contract: `validation_import.completed`, which does
-  not exist, is removed, and `billing.payment_succeeded`, `billing.payment_failed`,
-  `billing.trial_will_end`, `billing.subscription_canceled` and `billing.invoice_upcoming` are added.
-- `Webhooks.deliveries()` and its variants throw `ConfigurationError` when the endpoint filter has more
-  than 20 endpoints, as the API accepts at most 20.
-- `amount` rejects `NaN`, an empty value and a non-numeric string with `invalid_amount`.
-- The signature comparison is constant-time and works with non-ASCII input.
-- Reading `process.env` is guarded, so the client loads in runtimes that have no `process`.
-- Imports upload a `.json` file with its own content type.
+- El tiempo de espera predeterminado pasa de 30 a 60 segundos: la API puede tardar hasta 45 segundos
+  en una validación síncrona antes de responder `202`, y con 30 el SDK abandonaba la petición antes.
+  `timeoutMs` se sigue fijando por cliente.
+- `quota_exceeded` ya no se reintenta aunque llegue con `429`: la cuota del plan no se repone en
+  segundos, así que el error se lanza de inmediato. `rate_limit_exceeded` se sigue reintentando.
+- `WEBHOOK_EVENTS` coincide con los tipos de evento del contrato: se quita `validation_import.completed`,
+  que no existe, y se añaden `billing.payment_succeeded`, `billing.payment_failed`,
+  `billing.trial_will_end`, `billing.subscription_canceled` y `billing.invoice_upcoming`.
+- `Webhooks.deliveries()` y sus variantes lanzan `ConfigurationError` cuando el filtro de endpoint
+  trae más de 20 endpoints, porque la API acepta 20 como máximo.
+- `amount` rechaza `NaN`, un valor vacío y una cadena no numérica con `invalid_amount`.
+- La comparación de firmas corre en tiempo constante y funciona con entradas no ASCII.
+- La lectura de `process.env` está protegida, así que el cliente carga en entornos que no tienen
+  `process`.
+- Las importaciones suben un archivo `.json` con su propio tipo de contenido.
 
 ## [0.5.4] - 2026-11-09
 
-### Changed
+### Cambiado
 
-- The bundled spec moves to the `1.181.7` public contract. The generated types carry
-  `attributes.account_cross_checked` on `Validation`: it is `true` when the account queried at Banxico
-  belongs to the client itself. With `false`, a `valid` confirms that the transfer exists, but not that
-  it was paid to the expected account. They also carry `meta.async_reason` in the `202` acknowledgment.
-- `validateTransfer()` and `validateOcr()` document that the API answers `202` in `processing` when the
-  Banxico query passes 45 seconds; the verdict is collected with `get()`.
-- `amount` documents the cap of 13 integer digits.
+- Los tipos traen `attributes.account_cross_checked` en `Validation`: vale `true` cuando la cuenta consultada en Banxico es
+  del propio cliente. Con `false`, un `valid` confirma que la transferencia existe, pero no que se pagó a la
+  cuenta esperada. También traen `meta.async_reason` en el acuse `202`.
+- `validateTransfer()` y `validateOcr()` documentan que la API responde `202` en `processing` cuando la
+  consulta a Banxico pasa de 45 segundos; el veredicto se recoge con `get()`.
+- `amount` documenta el tope de 13 dígitos enteros.
 
 ## [0.5.3] - 2026-11-08
 
-### Changed
+### Cambiado
 
-- An authenticated operation checks the shape of the API key before it sends the request. If the key is
-  not `veriko_` followed by 64 lowercase hexadecimal characters, it throws `ConfigurationError` and does
-  not reach the network. The error message does not include the key.
+- Una operación autenticada comprueba la forma de la clave de API antes de enviar la petición. Si la clave
+  no es `veriko_` seguida de 64 caracteres hexadecimales en minúscula, lanza `ConfigurationError` y no sale
+  a la red. El mensaje del error no incluye la clave.
 
 ## [0.5.2] - 2026-11-08
 
-### Changed
+### Cambiado
 
-- `sendDate` is optional in `validateTransfer()`, `validations.validate()` and `ValidationRequest`, as in
-  the `1.168.2` public contract. If it is missing or unusable, the API tries candidate dates against
-  Banxico; it rejects with `422` (`send_date_required`) only when it has nothing to guess it from.
+- `sendDate` es opcional en `validateTransfer()`, `validations.validate()` y `ValidationRequest`.
+  Si falta o no es utilizable, la API prueba fechas candidatas contra
+  Banxico; sólo rechaza con `422` (`send_date_required`) cuando no tiene datos para adivinarla.
 
 ## [0.5.1] - 2026-11-06
 
-### Added
+### Añadido
 
-- Background CEP exports, for ranges that are not worth downloading in a single request:
-  `finance.createCepExport()` requests the ZIP of a range and returns the export in `queued`;
-  `finance.listCepExports()` lists the recent ones; `finance.getCepExport()` reads its state, which is
-  terminal in `ready`, `failed` or `expired`; and `finance.downloadCepExport()` downloads the ZIP when it
-  is `ready`. The types are `FinanceCepExport` and `FinanceCepExportParams`.
-- `WebhookEndpoint.previous_secret_expires_at`: until when the signature with the previous secret is
-  accepted after `webhooks.regenerateSecret()`.
-- `Validation.error_message` and `WebhookDelivery.error_message`: the readable reason when the
-  validation was not confirmed.
-
-### Changed
-
-- `DashboardSummary`: `comenzar_milestones_completed` is now `onboarding_milestones_completed`.
+- Exportaciones de CEP en segundo plano, para rangos que no conviene descargar en una sola petición:
+  `finance.createCepExport()` pide el ZIP de un rango y devuelve la exportación en `queued`;
+  `finance.listCepExports()` lista las recientes; `finance.getCepExport()` consulta su estado, que es
+  terminal en `ready`, `failed` o `expired`; y `finance.downloadCepExport()` descarga el ZIP cuando está
+  en `ready`. Los tipos son `FinanceCepExport` y `FinanceCepExportParams`.
+- `WebhookEndpoint.previous_secret_expires_at`: hasta cuándo se acepta la firma con el secreto anterior
+  después de `webhooks.regenerateSecret()`.
+- `Validation.error_message` y `WebhookDelivery.error_message`: el motivo legible cuando la validación no
+  se confirmó.
 
 ## [0.5.0] - 2026-10-27
 
-### Changed
+### Cambiado
 
-- `account.myProfile()` follows the `1.111.0` public contract. `UserProfile` no longer includes `role`,
-  and `permissions` lists the effective permissions with keys such as `validations.records.read`
-  instead of `resource:action` pairs. If your integration read `role`, use `roles`.
+- `account.myProfile()` sigue el contrato público de la API. `UserProfile` ya no incluye `role`, y
+  `permissions` lista los permisos efectivos con claves como `validations.records.read` en lugar de
+  pares `resource:action`. Si tu integración leía `role`, usa `roles`.
 
-### Added
+### Añadido
 
-- `UserProfile.platform_access`: `true` when the account can enter the administration panel.
-- `UserProfile.roles`: the current roles of the account, each with `key`, `scope_type` (`platform` or
-  `organization`) and `scope_id`.
+- `UserProfile.platform_access`: `true` cuando la cuenta puede entrar al panel de administración.
+- `UserProfile.roles`: los roles vigentes de la cuenta, cada uno con `key`, `scope_type` (`platform` u
+  `organization`) y `scope_id`.
 
 ## [0.4.14] - 2026-10-15
 
-### Added
+### Añadido
 
-- `beneficiaries.create()` returns `CreatedBeneficiary`, with `reactivated`: `true` when the
-  registration reactivated an archived account with the same number (the API answers `200` with
-  `meta.reactivated`) and `false` on a new registration.
+- `beneficiaries.create()` devuelve `CreatedBeneficiary`, con `reactivated`: `true` cuando el alta reactivó una
+  cuenta archivada con el mismo número (la API responde `200` con `meta.reactivated`) y `false` en un alta
+  nueva.
 
 ## [0.4.13] - 2026-10-15
 
-### Added
+### Añadido
 
-- `catalog.speiCalendar()` (`GET /v1/public/spei-calendar/{year}`): the SPEI non-business-day calendar of
-  a year. It returns `SpeiCalendar`, with `non_business_days` and `source` in `attributes` and the years
-  with a calendar in `coveredYears`. It accepts `ifNoneMatch`, and its `ETag` is in `etag`. It consumes
-  no quota. A year with no calendar throws `NotFoundError` with `spei_calendar_year_not_covered`.
-- `validations.validateOcr()` and `validations.enqueueOcr()` accept `senderBank` and `receiverBank`:
-  the 4 or 5 digit SPEI code replaces the bank read from the receipt before Banxico is queried.
-- `validations.list()`, `validations.stats()` and `validations.export()` accept `banks`, up to 50 SPEI
-  codes as a list or comma-separated; it filters by sender or receiver bank.
-- `webhooks.deliveries()`, `webhooks.iterDeliveries()` and `webhooks.exportDeliveries()` accept
-  `responseStatus`, `validationId`, `q`, `from`, `to`, `minAttempt` and `minResponseTimeMs`. `status`,
-  `eventType` and `responseStatus` take a list, and the endpoint takes a list of up to 20. New type
-  `DeliveryFilters`.
+- `catalog.speiCalendar()` (`GET /v1/public/spei-calendar/{year}`): el calendario de días inhábiles
+  SPEI de un año. Devuelve `SpeiCalendar`, con `non_business_days` y `source` en `attributes` y los
+  años con calendario en `coveredYears`. Admite `ifNoneMatch`, y su `ETag` queda en `etag`. No
+  consume cuota. Un año sin calendario se lanza como `NotFoundError` con
+  `spei_calendar_year_not_covered`.
+- `validations.validateOcr()` y `validations.enqueueOcr()` aceptan `senderBank` y `receiverBank`:
+  la clave SPEI de 4 o 5 dígitos sustituye al banco leído del comprobante antes de consultar a
+  Banxico.
+- `validations.list()`, `validations.stats()` y `validations.export()` aceptan `banks`, hasta 50
+  claves SPEI en lista o separadas por comas; filtra por banco emisor o receptor.
+- `webhooks.deliveries()`, `webhooks.iterDeliveries()` y `webhooks.exportDeliveries()` aceptan
+  `responseStatus`, `validationId`, `q`, `from`, `to`, `minAttempt` y `minResponseTimeMs`.
+  `status`, `eventType` y `responseStatus` admiten una lista, y el endpoint una lista de hasta 20.
+  Nuevo tipo `DeliveryFilters`.
 
 ## [0.4.12] - 2026-10-02
 
-### Added
+### Añadido
 
-- `validations.recheck()` (`POST /v1/validations/{id}/recheck`): queries Banxico again for the payment
-  status of a `valid` validation created at most 72 hours ago, without consuming quota. It returns
-  `RecheckResult` with the validation and with `checkedAt`, `changed` and `previousStatus`. If Banxico
-  reports the return, the validation changes to `returned`. It does not retry on its own.
-- `validations.preparePurge()` and `validations.executePurge()`: the permanent purge of a validation, in
-  two steps. They return `PurgePreparation` and `PurgeResult`. `executePurge()` does not retry on its
-  own. The `Validation` types add `purged_at`.
-- `candidateAccounts` in `validateTransfer()`, `validations.validate()`, `validations.validateOcr()`,
-  `validations.enqueue()` and `validations.enqueueOcr()`: from 2 to 3 accounts in a single validation
-  and with a single quota unit. The `Validation` types add `candidate_match`, with the position and the
-  last 4 digits of the account that matched.
-- `retainImage` in `validations.validateOcr()` and `validations.enqueueOcr()`, and `image_retained` in
-  the `Validation` types: with `retainImage: false` the platform does not keep the receipt file.
-- The `validation.returned` event in `WEBHOOK_EVENTS`, which notifies when a `valid` validation changes
-  to `returned` afterwards, and `payment_status` (`PaymentStatus`) in `evento.data.attributes`.
+- `validations.recheck()` (`POST /v1/validations/{id}/recheck`): vuelve a consultar a Banxico el
+  estado de pago de una validación `valid` creada hace 72 horas como máximo, sin consumir cuota.
+  Devuelve `RecheckResult` con la validación y con `checkedAt`, `changed` y `previousStatus`. Si
+  Banxico reporta la devolución, la validación pasa a `returned`. No se reintenta sola.
+- `validations.preparePurge()` y `validations.executePurge()`: el borrado definitivo de una
+  validación, en dos pasos. Devuelven `PurgePreparation` y `PurgeResult`. `executePurge()` no se
+  reintenta sola. Los tipos de `Validation` añaden `purged_at`.
+- `candidateAccounts` en `validateTransfer()`, `validations.validate()`, `validations.validateOcr()`,
+  `validations.enqueue()` y `validations.enqueueOcr()`: de 2 a 3 cuentas en una sola validación y con
+  una sola unidad de cuota. Los tipos de `Validation` añaden `candidate_match`, con la posición y los
+  últimos 4 dígitos de la cuenta que coincidió.
+- `retainImage` en `validations.validateOcr()` y `validations.enqueueOcr()`, y `image_retained` en los
+  tipos de `Validation`: con `retainImage: false` la plataforma no conserva el archivo del
+  comprobante.
+- El evento `validation.returned` en `WEBHOOK_EVENTS`, que avisa cuando una validación `valid` pasa
+  después a `returned`, y `payment_status` (`PaymentStatus`) en `event.data.attributes`.
 
-### Changed
+### Cambiado
 
-- `beneficiaryAccount` is no longer required when `candidateAccounts` is sent. With neither, the SDK
-  throws `InvalidRequestError` with `cuenta_required`, and with both, with
-  `cuenta_y_candidatas_excluyentes`. In both cases it does not call the API.
+- `beneficiaryAccount` deja de ser obligatoria cuando se envía `candidateAccounts`. Sin ninguna de
+  las dos, el SDK lanza `InvalidRequestError` con `account_required`, y con las dos, con
+  `account_and_candidates_mutually_exclusive`. En los dos casos no llama a la API.
 
 ## [0.4.11] - 2026-10-01
 
-### Added
+### Añadido
 
-- `clientRef` in `validateTransfer()`, `validations.validate()`, `validations.validateOcr()`,
-  `validations.enqueue()` and `validations.enqueueOcr()`: a reference of your own, from 1 to 64
-  characters, that returns in `attributes.client_ref`.
-- The exact-match `clientRef` filter in `validations.list()`, `validations.iter()`,
-  `validations.stats()` and `validations.export()`.
-- The `Validation` types add `client_ref`, `duplicate_of` and `account_conflict`.
-- `verifyWebhookTimestamped()` checks the `X-Webhook-Signature-Timestamped` header
-  (`t=<seconds>,v1=<hex>`): it compares in constant time the HMAC-SHA256 of `<t>.<body>` with each `v1`
-  and rejects the delivery when `t` is further from the clock than `toleranceSeconds`, 300 by default.
-  `timestampedSignatureFromHeaders()` finds the header under any capitalization. `verifyWebhook()` does
-  not change.
-- `parseWebhook()` delivers the `client_ref` in `evento.data.attributes` when the validation webhook
-  carries it.
+- `clientRef` en `validateTransfer()`, `validations.validate()`, `validations.validateOcr()`,
+  `validations.enqueue()` y `validations.enqueueOcr()`: una referencia propia de 1 a 64 caracteres
+  que vuelve en `attributes.client_ref`.
+- El filtro `clientRef`, de coincidencia exacta, en `validations.list()`, `validations.iter()`,
+  `validations.stats()` y `validations.export()`.
+- Los tipos de `Validation` añaden `client_ref`, `duplicate_of` y `account_conflict`.
+- `verifyWebhookTimestamped()` comprueba la cabecera `X-Webhook-Signature-Timestamped`
+  (`t=<segundos>,v1=<hex>`): compara en tiempo constante el HMAC-SHA256 de `<t>.<cuerpo>` con cada
+  `v1` y rechaza la entrega cuando `t` se aleja del reloj más de `toleranceSeconds`, 300 por
+  omisión. `timestampedSignatureFromHeaders()` encuentra la cabecera en cualquiera de sus grafías.
+  `verifyWebhook()` no cambia.
+- `parseWebhook()` entrega el `client_ref` en `event.data.attributes` cuando el webhook de
+  validación lo trae.
 
-### Changed
+### Cambiado
 
-- `beneficiaryAccount` is required in `validateTransfer()`, `validations.validate()` and
-  `validations.enqueue()`. Without it, the SDK throws `InvalidRequestError` with `cuenta_required` and
-  does not call the API.
+- `beneficiaryAccount` es obligatoria en `validateTransfer()`, `validations.validate()` y
+  `validations.enqueue()`. Sin ella, el SDK lanza `InvalidRequestError` con `account_required` y no
+  llama a la API.
 
 ## [0.4.10] - 2026-09-29
 
-### Changed
+### Cambiado
 
-- The type descriptions document the per-field codes with which the validation `422` rejects a request
-  whose data contradicts itself, before Banxico is queried: `clabe_receptor_mismatch`,
-  `tarjeta_receptor_mismatch` and `clave_longitud_invalida`. They arrive in `errors[].code` of
-  `InvalidRequestError`. No `preflight_failed` rejection on that route consumes quota, whether the data
-  contradicts itself or a field is malformed.
+- Los tipos documentan los códigos por campo con que el `422` de la validación rechaza, antes de
+  consultar a Banxico, una petición cuyos datos se contradicen. Llegan en `errors[].code` de
+  `InvalidRequestError`. Ningún rechazo `preflight_failed` de esa ruta consume cuota, sea por datos
+  que se contradicen o por un campo mal formado.
 
 ## [0.4.9] - 2026-09-28
 
-### Added
+### Añadido
 
-- The types of `usage.summary()` and `billing.getSubscription()` add `quota_kind` (`cycle` or `trial`)
-  and `renews`: an account that has not yet activated the free plan consumes trial validations, which do
-  not refill. `account.myProfile()` adds `plan_name` to the subscription.
+- Los tipos de `usage.summary()` y `billing.getSubscription()` añaden `quota_kind` (`cycle` o
+  `trial`) y `renews`: una cuenta que aún no activa el plan gratuito consume validaciones de
+  prueba, que no se reponen. `account.myProfile()` añade `plan_name` a la suscripción.
 
 ## [0.4.8] - 2026-09-27
 
-### Changed
+### Cambiado
 
-- `validations.validateOcr()` and `validations.enqueueOcr()` document the receipt as a PDF of 1 to 3
-  pages.
-- `validations.image()` accepts a PDF receipt and names it with the `.pdf` extension.
+- `validations.validateOcr()` y `validations.enqueueOcr()` documentan el comprobante en PDF, de 1 a
+  3 páginas.
+- `validations.image()` acepta un comprobante en PDF y lo nombra con la extensión `.pdf`.
 
 ## [0.4.7] - 2026-09-26
 
-### Added
+### Añadido
 
-- The validation webhook carries `data.attributes.banxico_confirmed` when Banxico has already confirmed
-  the payment: amount, date, tracking key, both banks and the masked beneficiary account.
+- El webhook de validación trae `data.attributes.banxico_confirmed` cuando
+  Banxico ya confirmó el pago: monto, fecha, clave de rastreo, ambos bancos y
+  la cuenta del beneficiario enmascarada.
 
 ## [0.4.6] - 2026-09-24
 
-### Changed
+### Cambiado
 
-- The types follow version 1.60.0 of the public spec. The `429` responses declare `meta.retry_after`,
-  with the same value as the `Retry-After` header.
-- The type descriptions document the validation and filter error codes: `invalid_bank_code`,
-  `intra_bank_no_cep`, `invalid_field_type`, `invalid_filter` and `webhook_description_too_long`.
-
-## [0.4.5] - 2026-09-22
-
-No API changes. It updates documentation and metadata.
-
-## [0.4.4] - 2026-09-20
-
-No surface changes.
-
-## [0.4.3] - 2026-09-20
-
-No surface changes.
+- Las respuestas `429` declaran `meta.retry_after`, con el mismo valor que la cabecera
+  `Retry-After`.
+- Los tipos documentan los códigos de error de validación y de filtros: `invalid_bank_code`, `intra_bank_no_cep`, `invalid_field_type`,
+  `invalid_filter` y `webhook_description_too_long`.
 
 ## [0.4.0] - 2026-09-19
 
-### Added
+### Añadido
 
-- The 18 M2M operations that were missing: account profile and retry policy, dashboard summary, public
-  plans, insights, finance and subscription. The public plans are requested without an `Authorization`
-  header.
-- The surface test compares the full 66 operations of the public spec and exercises routes against
-  sanitized recordings on a local HTTP server.
+- Las 18 operaciones M2M que faltaban: perfil y política de reintentos de cuenta,
+  resumen del panel, planes públicos, insights, finanzas y suscripción. Los planes
+  públicos se solicitan sin cabecera `Authorization`.
 
-### Changed
+### Cambiado
 
-- `validateAccount()` is no longer part of the SDK: its operation is no longer public M2M. In `0.x`
-  this removal is incompatible.
-- The monthly, counterparty, bank and accounting reports use `csv` by default, as the public contract
-  does. `preview` is requested explicitly.
+- `validateAccount()` deja de formar parte del SDK: su operación ya no es M2M
+  pública. En `0.x` esta retirada es incompatible.
+- Los reportes mensuales, por contraparte, por banco y contables usan `csv` por
+  omisión, igual que el contrato público. `preview` se solicita explícitamente.
 
 ## [0.3.0] - 2026-09-18
 
-The surface goes from 27 operations to 49: the `beneficiaries` and `usage` families are added. With
-them, the SDK covers all the machine-to-machine operations of its five families.
+La superficie pasa de 27 operaciones a 49: se suman las familias `beneficiaries` y
+`usage`. Con ellas, el SDK cubre todas las operaciones de máquina a máquina de sus
+cinco familias.
 
-### Added
+### Añadido
 
-- `client.beneficiaries`: register, list, change and archive beneficiary accounts; resolve an account
-  in your own list (`lookup`); export as CSV and XLSX; and the bulk import as a cycle (`importTemplate`,
-  `importStart`, `importStatus`, `importPreview`, `iterImportPreview`, `importEditRow`,
-  `importRemoveRow`, `importCommit`, `importCancel` and `importWait`).
-- `client.usage`: plan quota (`summary`), monthly history (`history`), breakdown by operation
-  (`breakdown`), rate limits (`limits`), heat map (`heatmap`), API metrics (`apiUsage`) and its export
-  (`export`).
-- The types of the responses and the arguments of both families, taken from the spec.
-- `isImportSettled()` and `isImportTerminal()`: the condition `importWait()` waits for (`preview_ready`
-  or a final state).
-- `multipart/form-data` file upload in the transport, with no runtime dependencies, and repeated query
-  parameters for the `buckets` filter of the preview.
-- `test/operations.test.ts` covers the 49 operations, with their multipart bodies.
+- `client.beneficiaries`: registrar, listar, cambiar y archivar cuentas beneficiarias;
+  resolución de una cuenta en la lista propia (`lookup`); exportación en CSV y XLSX; y la
+  importación masiva como ciclo (`importTemplate`, `importStart`, `importStatus`,
+  `importPreview`, `iterImportPreview`, `importEditRow`, `importRemoveRow`,
+  `importCommit`, `importCancel` e `importWait`).
+- `client.usage`: cuota del plan (`summary`), historial mensual (`history`), desglose por
+  operación (`breakdown`), límites de tasa (`limits`), mapa de calor (`heatmap`),
+  métricas de la API (`apiUsage`) y su exportación (`export`).
+- Los tipos de las respuestas y de los argumentos de las dos familias.
+- `isImportSettled()` e `isImportTerminal()`: la condición que espera `importWait()`
+  (`preview_ready` o un estado final).
+- Subida de archivos `multipart/form-data` en el transporte, sin dependencias de runtime, y
+  parámetros de consulta repetidos para el filtro `buckets` de la vista previa.
 
-### Changed
+### Cambiado
 
-- `TimeoutError` exposes `resourceId`, the resource that was awaited, because `waitFor()` and
-  `importWait()` now throw it. `validationId` stays available as an alias.
+- `TimeoutError` expone `resourceId`, el recurso que se esperaba, porque ahora lo lanzan
+  `waitFor()` y `importWait()`. `validationId` sigue disponible como alias.
 
 ## [0.2.0] - 2026-09-18
 
-The surface goes from 3 operations to 27: the `validations`, `webhooks` and `catalog` families.
+La superficie pasa de 3 operaciones a 27: las familias `validations`, `webhooks`
+y `catalog`.
 
-### Added
+### Añadido
 
-- `client.validations`: validation by image (`validateOcr`), asynchronous mode (`enqueue`,
-  `enqueueOcr`) with `ETag` polling (`waitFor`), paginated listing (`list`, `iter`), statistics, export
-  as CSV and XLSX, receipt image, retry attempts, change of the retry policy, cancellation, removal
-  from the history and sending the receipt to Telegram.
-- `client.webhooks`: register, list, change and remove endpoints; test event; secret rotation; paginated
-  delivery history (`deliveries`, `iterDeliveries`) and its export.
-- `client.catalog`: SPEI bank catalog, issuing bank of a card and Banxico service status with its time
-  series.
-- `Page<T>` and the iterators `iter()` and `iterDeliveries()`, which are `AsyncIterable` and request the
-  next page only when the previous one runs out.
-- `isSettled()`: tells a settled verdict from a terminal one that can still change because retries are in
-  progress. It is what `waitFor()` waits for.
-- `TimeoutError`, which `waitFor()` throws when it runs out of time.
-- The types of the responses and the arguments of the three families, taken from the spec, and
-  `operations` re-exported next to `components` and `paths`.
-- `OcrValidationRequest`, written by hand for the same `anyOf` that affects `ValidationRequest`, with
-  its test in `test/spec.test.ts`.
-- `test/operations.test.ts`: checks every operation against the spec (method, route, parameters, headers
-  and body fields), requires it to be machine-to-machine (it accepts the API key or is public) and
-  checks that the spec families carry no such operation without a method.
-- The example `examples/async-and-webhooks.mjs`.
+- `client.validations`: validación por imagen (`validateOcr`), modo asíncrono
+  (`enqueue`, `enqueueOcr`) con sondeo por `ETag` (`waitFor`), listado con
+  paginación (`list`, `iter`), estadísticas, exportación en CSV y XLSX, imagen
+  del comprobante, intentos de reintento, cambio de la política de reintentos,
+  cancelación, retirada del historial y envío del comprobante a Telegram.
+- `client.webhooks`: registrar, listar, cambiar y retirar endpoints; evento de
+  prueba; rotación del secreto; historial de entregas con paginación
+  (`deliveries`, `iterDeliveries`) y su exportación.
+- `client.catalog`: catálogo de bancos SPEI, banco emisor de una tarjeta y
+  estado del servicio de Banxico con su serie temporal.
+- `Page<T>` y los iteradores `iter()` e `iterDeliveries()`, que son
+  `AsyncIterable` y piden la página siguiente sólo cuando la anterior se agota.
+- `isSettled()`: distingue un veredicto firme de uno terminal que todavía puede
+  cambiar porque hay reintentos en marcha. Es lo que espera `waitFor()`.
+- `TimeoutError`, que `waitFor()` lanza al agotar su tiempo.
+- Los tipos de las respuestas y de los argumentos de las tres familias, y `operations`
+  reexportado junto a `components` y `paths`.
 
-### Changed
+### Cambiado
 
-- `validateTransfer()`, `getValidation()` and `getCep()` stay on the client root and behave the same:
-  they now delegate to the matching family.
-- `getValidation()` accepts `ifNoneMatch`, and the validation it returns carries the `etag` of the
-  response.
-- `CepDocument` extends `DownloadedFile`, the type of any file the API returns.
-- A successful response that is not JSON, or that carries no `data`, is thrown as `ApiError`. Before, it
-  was a `SyntaxError` or a `ConfigurationError`.
-- `VERSION` is compared with `package.json` in the tests.
+- `validateTransfer()`, `getValidation()` y `getCep()` siguen en la raíz del
+  cliente y se comportan igual: ahora delegan en la familia correspondiente.
+- `getValidation()` admite `ifNoneMatch`, y la validación que devuelve trae el
+  `etag` de la respuesta.
+- `CepDocument` extiende `DownloadedFile`, el tipo de cualquier archivo que
+  devuelve la API.
+- Una respuesta correcta que no es JSON, o que no trae `data`, se lanza como
+  `ApiError`. Antes era un `SyntaxError` o un `ConfigurationError`.
 
 ## [0.1.0] - 2026-09-18
 
-First version of the official JavaScript and TypeScript SDK.
+Primera versión del SDK oficial de JavaScript y TypeScript.
 
-### Added
+### Añadido
 
-- `Veriko.validateTransfer()`: validates a SPEI transfer against the Banxico CEP (`POST /v1/validate`),
-  with the retry policy of the API (`retryPolicy`) and the `Idempotency-Key` header.
-- `Veriko.getValidation()`: reads a validation by its identifier, with the state of the retry cycle.
-- `Veriko.getCep()`: downloads the official receipt as XML or PDF.
-- `verifyWebhook()` and `parseWebhook()`: HMAC-SHA256 verification of the signature of a delivery, with
-  constant-time comparison.
-- Automatic retries of `5xx`, `408` and `429`, with exponential backoff and respect for the
-  `Retry-After` of the response.
-- An error hierarchy by HTTP status, with the `code` of the API, the full `errors` array and the
-  `requestId`.
-- Types generated from the public OpenAPI spec (`spec/openapi.yaml`, a copy of
-  `docs.veriko.mx/openapi.yaml`), versioned in `src/generated/openapi.ts`, and re-exported as
-  `components` and `paths`.
-- Dual ESM and CommonJS distribution, with no runtime dependencies. Node 18 or later.
-- Examples for Node (`examples/validate.mjs`) and for an Express webhook
-  (`examples/express-webhook.mjs`).
+- `Veriko.validateTransfer()`: valida una transferencia SPEI contra el CEP de
+  Banxico (`POST /v1/validate`), con la política de reintentos de la API
+  (`retryPolicy`) y la cabecera `Idempotency-Key`.
+- `Veriko.getValidation()`: lee una validación por su identificador, con el
+  estado del ciclo de reintentos.
+- `Veriko.getCep()`: descarga el comprobante oficial en XML o en PDF.
+- `verifyWebhook()` y `parseWebhook()`: verificación HMAC-SHA256 de la firma de
+  una entrega, con comparación en tiempo constante.
+- Reintentos automáticos de los `5xx`, el `408` y el `429`, con espera
+  exponencial y respeto del `Retry-After` de la respuesta.
+- Jerarquía de errores por estado HTTP, con el `code` de la API, el arreglo
+  completo de `errors` y el `requestId`.
+- Tipos del spec público de OpenAPI, reexportados como `components` y `paths`.
+- Distribución dual ESM y CommonJS, sin dependencias de runtime. Node 18 o
+  superior.

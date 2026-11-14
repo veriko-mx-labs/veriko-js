@@ -1,21 +1,21 @@
-# Contributing
+# Contribuir
 
-Issues and pull requests are welcome.
+Los issues y los pull requests son bienvenidos.
 
-## Report a bug or request a change
+## Reportar un error o pedir un cambio
 
-Open an issue with the [bug report](https://github.com/veriko-mx-labs/veriko-js/issues/new?template=bug_report.yml) or [feature request](https://github.com/veriko-mx-labs/veriko-js/issues/new?template=feature_request.yml) form. Search the open issues first.
+Abre un issue con el formulario de [reporte de error](https://github.com/veriko-mx-labs/veriko-js/issues/new?template=bug_report.yml) o de [solicitud de cambio](https://github.com/veriko-mx-labs/veriko-js/issues/new?template=feature_request.yml). Busca primero entre los issues abiertos.
 
-A bug report needs the versions you use, the steps that reproduce it and, when the API answered with an error, its `request_id` (`error.requestId` on the thrown error). Remove API keys, receipts, account numbers and customer data from anything you paste.
+Un reporte de error necesita las versiones que usas, los pasos que lo reproducen y, cuando la API respondió con un error, su `request_id` (`error.requestId` en el error lanzado). Quita las claves de API, los comprobantes, los números de cuenta y los datos de clientes de todo lo que pegues.
 
-Do not open a public issue for a security vulnerability. Follow [SECURITY.md](SECURITY.md).
+No abras un issue público por una vulnerabilidad de seguridad. Sigue [SECURITY.md](SECURITY.md).
 
-## Propose a change
+## Proponer un cambio
 
-1. For anything larger than a fix, open an issue first so the change can be agreed before you write it.
-2. Fork the repository and create a branch from `main`.
-3. Make the change. Add or update the tests in `test/`.
-4. Run the checks of this repository:
+1. Para algo más grande que una corrección, abre antes un issue y acuerda el cambio antes de escribirlo.
+2. Haz un fork del repositorio y crea una rama desde `main`.
+3. Haz el cambio. Agrega o actualiza las pruebas en `test/`.
+4. Corre las comprobaciones de este repositorio:
 
    ```bash
    npm ci
@@ -28,17 +28,17 @@ Do not open a public issue for a security vulnerability. Follow [SECURITY.md](SE
    npm run test:examples
    ```
 
-   `npm run format` fixes the formatting. The tests never reach the API. Use Node.js 18 or later.
+   `npm run format` corrige el formato. Las pruebas nunca llegan a la API. Usa Node.js 18 o superior.
 
-5. Update README.md and CHANGELOG.md when the behavior that users see changes.
-6. Open a pull request against `main` and fill in the template.
+5. Actualiza README.md y CHANGELOG.md cuando cambie el comportamiento que ven los usuarios.
+6. Abre un pull request contra `main` y llena la plantilla.
 
-Write commit messages in English, in the imperative, and keep one change in each commit.
+Escribe los mensajes de commit en español, en imperativo, y deja un solo cambio en cada commit.
 
-`src/generated/openapi.ts` is generated from `spec/openapi.yaml`. Do not edit it by hand: run `npm run gen:types`, and `npm run check:types-fresh` fails when the file is out of date.
+`src/generated/openapi.ts` se genera desde `spec/openapi.yaml`. No lo edites a mano: corre `npm run gen:types`, y `npm run check:types-fresh` falla cuando el archivo está desactualizado.
 
-The package has no runtime dependencies. Do not add one without opening an issue first.
+El paquete no tiene dependencias en tiempo de ejecución. No agregues una sin abrir antes un issue.
 
-## The API contract
+## El contrato de la API
 
-The API contract is the public spec at <https://docs.veriko.mx/openapi.yaml>. `spec/openapi.yaml` is a copy that a scheduled workflow syncs. Do not edit it by hand. When the API behaves differently from the spec, open an issue.
+El contrato de la API es el spec público en <https://docs.veriko.mx/openapi.yaml>. `spec/openapi.yaml` es una copia que sincroniza un workflow programado. No la edites a mano. Cuando la API se comporte distinto del spec, abre un issue.

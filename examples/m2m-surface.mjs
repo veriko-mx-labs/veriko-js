@@ -1,8 +1,8 @@
 /**
- * Operations of the public M2M surface.
+ * Operaciones de la superficie M2M pública.
  *
- * Run with VERIKO_API_KEY for the account calls. The plans are public and do
- * not send the key even when it is set.
+ * Corre con VERIKO_API_KEY para las llamadas de la cuenta. Los planes son públicos y no envían la
+ * clave aunque esté definida.
  */
 import { writeFile } from 'node:fs/promises';
 
@@ -14,7 +14,7 @@ const plans = await client.plans.listPublic();
 console.log(plans);
 
 if (!process.env.VERIKO_API_KEY) {
-  console.log('Set VERIKO_API_KEY to read the account, insights and finance.');
+  console.log('Define VERIKO_API_KEY para leer la cuenta, los insights y las finanzas.');
   process.exit(0);
 }
 
