@@ -17,15 +17,15 @@ export interface paths {
          *     the authenticated user:
          *
          *     - Their profile: identifier, email, name, status, timezone and
-         *      language.
+         *       language.
          *     - Their API key data: the prefix and the last 4 characters, never the
-         *      key.
+         *       key.
          *     - Their subscription, with the plan, the status and the end of the
-         *      current period.
+         *       current period.
          *     - Two-factor authentication (2FA) state.
          *     - Its authorization: the effective permissions as a flat list of
-         *      keys such as `validations.records.read`, whether it can enter the
-         *      administration panel and the roles it holds, each with its scope.
+         *       keys such as `validations.records.read`, whether it can enter the
+         *       administration panel and the roles it holds, each with its scope.
          *     - The notifications summary: unread, push delivery and Telegram link.
          *
          *     The profile fields that only make sense in an interactive session — the
@@ -59,78 +59,31 @@ export interface paths {
         put?: never;
         /**
          * Manually validate a SPEI transfer
-         * @description Validates a SPEI transfer against the **Banxico** CEP from the fields
-         *     you send.
+         * @description Validates a SPEI transfer manually to obtain its CEP from
+         *     **Banxico**.
          *
          *     The following data is required:
          *
          *     - Date.
          *     - Amount.
-         *     - Tracking key / Numeric reference.
+         *     - Tracking key or numeric reference.
          *     - Sending bank.
          *     - Receiving bank.
-         *     - Beneficiary account, or a list of candidate accounts.
+         *     - Beneficiary account or candidates.
          *
-         *     The beneficiary account (`beneficiary_account`) is required on this operation, unless `candidate_accounts` is sent. When both are missing, the request is rejected with `422 preflight_failed` and the field error `account_required`: the service does not look it up among the saved beneficiaries.
+         *     `beneficiary_account` is required, unless `candidate_accounts` is
+         *     sent; sending both is rejected and, with no match, it responds with
+         *     an HTTP status `422`.
          *
-         *     When it is not known which of several accounts the payment went to, `candidate_accounts` replaces `beneficiary_account`: from 2 accounts up to the maximum the service accepts (3 by default) in a single validation and with a single quota unit. The query goes through the candidates in the order sent and adopts the first one that matches the transfer; that account comes back in full in `normalized_data.beneficiary_account` and its position in `candidate_match`. If none matches, the response is an HTTP status `422` with the reason in `code`. The two forms cannot be sent together (`422 account_and_candidates_mutually_exclusive`) and a list that does not comply is rejected with `422 candidate_accounts_invalid`, both before any quota is consumed.
+         *     With `?async=1` it responds with an HTTP status `202`; the verdict
+         *     is collected from `GET /v1/validations/{id}`.
          *
-         *     The final verdict (terminal state) can be one of the following:
-         *
-         *     - `valid`: The transfer CEP was found and validated.
-         *     - `not_found`: The transfer CEP was NOT found.
-         *     - `cep_unavailable`: Banxico recognized the transfer, but the CEP is not
-         *      currently available.
-         *     - `returned`: the transfer was settled and the beneficiary institution
-         *      later sent it back. The CEP, when there is one, is still delivered.
-         *     - `error`: Internal service error.
-         *
-         *     A `not_found`, `cep_unavailable`, or `error` verdict is not necessarily
-         *     final: the CEP may take time to be published. In that case, **automatic
-         *     retries** can be used by sending `retry_policy` in the request body,
-         *     according to {% concept slug="retry-policy" %}the retry policy{% /concept
-         *     %}.
-         *
-         *     {% callout type="info" %}
-         *     **Asynchronous mode:**\
-         *     With `?async=1` in the URL, the operation runs in the background and
-         *     returns an immediate HTTP status `202` with the validation ID in the
-         *     body.\
-         *     \
-         *     The verdict is collected by polling `GET /v1/validations/{id}` until a
-         *     terminal state. The use of `ETag` to avoid downloading the same content
-         *     twice is covered in {% concept slug="async-validations" %}asynchronous
-         *     operations{% /concept %}.
+         *     {% callout type="warning" %}
+         *     Each call consumes plan quota, charged when the request is accepted.
          *
          *     {% /callout %}
          *
-         *     {% callout type="info" %}
-         *     **Response time:**\
-         *     Without `?async=1`, the response carries the verdict when the Banxico query finishes within 45 seconds. If it takes longer, the operation continues in the background and the response is an HTTP status `202` with the same shape as in asynchronous mode, with the `processing` status and `async_reason: sync_deadline` in `meta`.\
-         *     \
-         *     The verdict is collected the same way as in asynchronous mode, and the validation consumes a single quota unit in both cases.
-         *
-         *     {% /callout %}
-         *
-         *     {% callout type="info" %}
-         *     **Idempotency:**\
-         *     The `Idempotency-Key` header is optional and prevents duplicate
-         *     validations when a request is repeated. `5xx`, `429`, `408`, `401` and
-         *     `403` responses are not stored: neither a server failure, nor a rate or
-         *     quota limit, nor a timeout, nor a rejected credential makes the
-         *     idempotency key unusable, and a retry with the same key runs for real.
-         *     The other `4xx` responses (`400`, `404`, `409`, `422`) are stored and
-         *     replayed with `Idempotent-Replayed: true`.\
-         *     Reusing the header with a different body produces HTTP status `422`
-         *     (with `idempotency_key_reused` in the body).\
-         *     Reusing it while the previous operation is still in progress produces
-         *     HTTP status `409` (with `idempotency_key_in_progress` in the body).
-         *
-         *     {% /callout %}
-         *
-         *     **Each call consumes plan quota**, deducted when the request is
-         *     accepted. If the quota is exhausted, the endpoint returns HTTP status
-         *     `429` without attempting the validation.
+         *     The accounting is in {% concept slug="quotas-and-plans" %}quotas and plans{% /concept %}.
          */
         post: operations["validateDirect"];
         delete?: never;
@@ -150,78 +103,28 @@ export interface paths {
         put?: never;
         /**
          * Validate a SPEI transfer (OCR)
-         * @description Validates a SPEI transfer from its receipt, as an image or a PDF. It extracts the data from the receipt through optical character recognition (OCR) and validates it against **Banxico** to obtain the transaction's CEP.
+         * @description Validates a SPEI transfer from its receipt (image or PDF) and
+         *     obtains its CEP with optical character recognition (OCR) and
+         *     **Banxico**.
          *
-         *     The receipt is sent as `image` or as `image_url`. When sent as a URL, the target host must serve it over a secure protocol (SSL/HTTPS).
+         *     The final verdict can be:
          *
-         *     {% callout type="info" %}
-         *     **Receipt as a PDF:**\
-         *     A PDF of 1 to 3 pages is accepted, with the same `12 MB` maximum as an image.
-         *     It is rejected when it is encrypted, when it was modified after being issued, or when it carries active or hidden content.\
-         *     When the PDF is the Banxico CEP, its data is read from its text without OCR, and `banxico_result._cep_upload` shows
-         *     whether its seal and original string match those of the official CEP. That comparison does not change the verdict.\
-         *     A PDF with more than one receipt is rejected with `pdf_multiple_receipts`.
+         *     - `valid`: CEP found and validated.
+         *     - `not_found`: CEP not found.
+         *     - `cep_unavailable`: CEP unavailable.
+         *     - `returned`: Settled and returned.
+         *     - `error`: Internal error.
          *
-         *     {% /callout %}
-         *
-         *     {% callout type="info" %}
-         *     The `beneficiary_account` field sends the receiving account of the transfer explicitly, which is especially useful when the image does not carry that data or carries it incomplete.\
-         *     A saved beneficiary (with `POST /v1/beneficiaries`) does not replace this field: it only completes the digits of the account that the image does show. When the image carries too few digits, the validation is rejected with `account_unresolvable`, because the saved accounts are not tried one by one.\
-         *     \
-         *     When it is not known which of several accounts received the payment, `candidate_accounts` tries them in a single validation (from 2 accounts up to the maximum the service accepts, 3 by default; a single quota unit, also with `?async=1`) and replaces `beneficiary_account`: sending both is rejected with `422 account_and_candidates_mutually_exclusive`, and a list that does not comply, with `422 candidate_accounts_invalid`, both before any quota is consumed. The list takes priority over the account read from the image; the winner comes back in full in `normalized_data.beneficiary_account` and its position in `candidate_match`. If none matches, the response is an HTTP status `422` with the reason in `code`.
-         *
-         *     {% /callout %}
-         *
-         *     {% callout type="info" %}
-         *     **Receipt retention:**\
-         *     By default the receipt file is kept and served with `GET /v1/validations/{id}/image`. With `retain_image=false`, it is deleted when the validation reaches a terminal status in which it is no longer needed, and the verdict and the extracted data are kept. The validation publishes `image_retained=false` and the image responds with an HTTP status `410` (with `image_not_retained` in the body).\
-         *     \
-         *     A value that is not a boolean responds with an HTTP status `422` (with `invalid_retain_image` in the body), before any quota is consumed. To delete a validation and everything it left behind afterward, there is `POST /v1/validations/{id}/purge/prepare`, described in {% concept slug="data-retention" %}the retention of receipts and data{% /concept %}.
-         *
-         *     {% /callout %}
-         *
-         *     The final verdict is the same as in manual validation:
-         *
-         *     - `valid`: The transaction's CEP was found and validated.
-         *     - `not_found`: The transaction's CEP was NOT found.
-         *     - `cep_unavailable`: Banxico recognized the transaction but the CEP is not available for now.
-         *     - `returned`: the transaction was settled and the beneficiary institution later sent it back. The CEP, when there is one, is still delivered.
-         *     - `error`: Internal service error.
-         *
-         *     {% callout type="info" %}
-         *     **Asynchronous mode:**\
-         *     With `?async=1` in the URL, the receipt is checked before the job is accepted and the response is an immediate HTTP status `202` with the validation ID in the body.\
-         *     \
-         *     The verdict is collected by polling `GET /v1/validations/{id}` until a terminal status, as {% concept slug="async-validations" %}asynchronous operations{% /concept %} describes.
-         *
-         *     {% /callout %}
-         *
-         *     {% callout type="info" %}
-         *     **Response time:**\
-         *     Without `?async=1`, the response carries the verdict when the Banxico query finishes within 45 seconds. If it takes longer, the operation continues in the background and the response is an HTTP status `202` with the same shape as in asynchronous mode, with the `processing` status and `async_reason: sync_deadline` in `meta`.\
-         *     \
-         *     The verdict is collected the same way as in asynchronous mode, and the validation consumes a single quota unit in both cases.
-         *
-         *     {% /callout %}
-         *
-         *     {% callout type="info" %}
-         *     **Idempotency:**\
-         *     The `Idempotency-Key` header is optional and prevents duplicating a validation when a request is repeated. `5xx`, `429`, `408`, `401` and `403` responses are not stored: neither a server failure, nor a rate or quota limit, nor a timeout, nor a rejected credential leaves the idempotency key unusable, and a retry with the same key runs for real. The other `4xx` responses (`400`, `404`, `409`, `422`) are stored and replayed with `Idempotent-Replayed: true`.\
-         *     Reusing the header with a different body causes an HTTP status `422` (with `idempotency_key_reused` in the body).\
-         *     Reusing the header while the previous operation is still in flight causes an HTTP status `409` (with `idempotency_key_in_progress` in the body).
-         *
-         *     {% /callout %}
+         *     With `?async=1` it responds with an HTTP status `202`; the verdict
+         *     is collected from `GET /v1/validations/{id}`.
          *
          *     {% callout type="warning" %}
-         *     **Charging policy (quota):**\
-         *     — Synchronous mode: the validation is charged against the quota when the request is accepted, before the file is checked. That is, an invalid file consumes a validation.\
-         *     — Asynchronous mode: the file is checked first, so an invalid file consumes nothing.\
-         *     \
-         *     A CEP in PDF that is read without OCR counts as one validation, the same as one read through OCR.\
-         *     \
-         *     Quota is refunded only when the validation ends in `error` because of a platform failure. Later automatic retries do not consume an additional validation, and the accounting is in {% concept slug="quotas-and-plans" %}quotas and plans{% /concept %}.
+         *     In synchronous mode, quota is charged when the request is accepted:
+         *     an invalid file consumes a validation.
          *
          *     {% /callout %}
+         *
+         *     The accounting is in {% concept slug="quotas-and-plans" %}quotas and plans{% /concept %}.
          */
         post: operations["validateOcr"];
         delete?: never;
@@ -319,20 +222,20 @@ export interface paths {
         };
         /**
          * Get a single validation
-         * @description Returns the complete record of a validation, with its verdict, the normalized data and the state of its retries.
+         * @description Returns the complete record of a validation, with its verdict,
+         *     normalized data, and retry state; the path to the verdict is in {% concept slug="validation-flow" %}the
+         *     validation flow{% /concept %}.
          *
-         *     The path from request to verdict is described in {% concept slug="validation-flow" %}the validation flow{% /concept %}.
-         *
-         *     {% callout type="info" %}
-         *     **While the validation has not finished:**\
-         *     In a response with HTTP status `200` for a validation in `queued` or `processing`, `Retry-After` and `meta.next_poll_after_seconds` say when to poll again.\
-         *     If the `ETag` sent in `If-None-Match` is still current, it responds with an HTTP status `304` and no body, as {% concept slug="conditional-caching" %}conditional caching{% /concept %} describes.
-         *
-         *     {% /callout %}
+         *     A purged validation is left as a tombstone: it keeps the verdict, the
+         *     dates, and the amount, and carries `purged_at`, without `request_data`,
+         *     `ocr_result`, `banxico_result`, or files.
          *
          *     {% callout type="info" %}
-         *     **Purged validations:**\
-         *     A validation purged with `POST /v1/validations/{id}/purge/execute` responds with an HTTP status `200` and is left as a tombstone: it keeps the verdict, the dates, and the amount, and carries `purged_at`. It no longer has `request_data`, `ocr_result`, `banxico_result`, or files.
+         *     **Validations in progress:**\
+         *     In `queued` or `processing`, the response with HTTP status `200` carries\
+         *     `Retry-After` and `meta.next_poll_after_seconds`, which say when to poll\
+         *     again; with a current `ETag`, it responds with an HTTP status `304` and\
+         *     no body, as {% concept slug="conditional-caching" %}conditional caching{% /concept %} describes.
          *
          *     {% /callout %}
          */
@@ -417,7 +320,7 @@ export interface paths {
          *
          *     - Image: delivered with `inline` disposition.
          *     - PDF: always delivered as an attachment (`attachment`) and with `Content-Security-Policy: sandbox`,
-         *      so a browser does not open it within the same origin.
+         *       so a browser does not open it within the same origin.
          *
          *     If the validation has no image available, it responds with an HTTP status `404` (with `image_not_available` in the body).
          *
@@ -649,6 +552,10 @@ export interface paths {
          *     {% /callout %}
          *
          *     What is deleted, the tombstone, and the limitations are in {% concept slug="data-retention" %}the retention of receipts and data{% /concept %}.
+         *
+         *     A validation that is still in progress cannot be purged yet: it
+         *     responds with an HTTP `409` status (`purge_validation_in_progress`,
+         *     with the status in `meta.status`).
          */
         post: operations["executeValidationPurge"];
         delete?: never;
@@ -809,7 +716,7 @@ export interface paths {
          *     - CLABE (18 digits): `bank_code` is optional, derived from the prefix.
          *     - Card (16 digits): `bank_code` is optional, derived from the BIN.
          *     - Phone/DiMo (10 digits): `bank_code` is **mandatory** in the body, since
-         *      the number alone does not identify the banking institution.
+         *       the number alone does not identify the banking institution.
          *
          *     If the account did not exist before, it is registered and the response
          *     carries HTTP status `201`.
@@ -845,12 +752,12 @@ export interface paths {
          *
          *     - `label` only: it is stored, leaving the account untouched.
          *     - A new `account_number`: `account_type`, `bank_code` and
-         *      `bank_name` are derived again. If the new number is a
-         *      phone, the body must carry `bank_code`.
+         *       `bank_name` are derived again. If the new number is a
+         *       phone, the body must carry `bank_code`.
          *     - `bank_code` only: it applies solely to a phone-type beneficiary. On a
-         *      CLABE or a card the bank is derived from the number, so the value sent
-         *      is discarded without an error; if it was the only field, the response
-         *      is `no_valid_fields`.
+         *       CLABE or a card the bank is derived from the number, so the value sent
+         *       is discarded without an error; if it was the only field, the response
+         *       is `no_valid_fields`.
          *
          *     A body with no editable field responds with HTTP status `422`, with
          *     `no_valid_fields` in the body.
@@ -987,20 +894,20 @@ export interface paths {
          *     and how much the server does:
          *
          *     - `template`: the file follows the canonical headers, obtained from
-         *      `/v1/beneficiaries/imports/template`. The bank is derived from the CLABE
-         *      prefix or the card BIN.
+         *       `/v1/beneficiaries/imports/template`. The bank is derived from the CLABE
+         *       prefix or the card BIN.
          *     - `free`: any format. Accounts are extracted from the content, with a
-         *      language model stepping in when the file has no recognisable structure.
+         *       language model stepping in when the file has no recognisable structure.
          *
          *     **The import persists nothing on its own.** It waits for an explicit
          *     confirmation. The full sequence is four steps:
          *
          *     1. This call (`POST /v1/beneficiaries/imports`) returns the job identifier.
          *     2. `GET /v1/beneficiaries/imports/{id}` reports progress until
-         *      `preview_ready` or `failed`.
+         *        `preview_ready` or `failed`.
          *     3. `GET /v1/beneficiaries/imports/{id}/preview` shows the extracted rows,
-         *      and `PATCH /v1/beneficiaries/imports/{id}/rows/{row_id}` corrects the
-         *      ones that need it.
+         *        and `PATCH /v1/beneficiaries/imports/{id}/rows/{row_id}` corrects the
+         *        ones that need it.
          *     4. `POST /v1/beneficiaries/imports/{id}/commit` persists the result.
          *
          *     The polling in step 2 and its cadence are described in
@@ -1160,15 +1067,15 @@ export interface paths {
          *     `completed` or `failed`. Commit rules:
          *
          *     - `valid` and `correctable` rows are persisted, with an alias suffix if
-         *      there was an alias collision. The exception is a phone number without a
-         *      valid bank (`bank_code_required_for_phone` or `invalid_bank_code`): it
-         *      is fixed by choosing the bank in the preview, and if it still has no
-         *      bank when you confirm it is not saved, becomes `fatal` with that same
-         *      code and counts in `skipped_count`.
+         *       there was an alias collision. The exception is a phone number without a
+         *       valid bank (`bank_code_required_for_phone` or `invalid_bank_code`): it
+         *       is fixed by choosing the bank in the preview, and if it still has no
+         *       bank when you confirm it is not saved, becomes `fatal` with that same
+         *       code and counts in `skipped_count`.
          *     - `fatal` and `duplicate_account` rows are skipped, except a
-         *      `duplicate_account` whose account is archived, which is reactivated.
+         *       `duplicate_account` whose account is archived, which is reactivated.
          *     - Previously archived accounts with the same number are reactivated
-         *      instead of duplicated.
+         *       instead of duplicated.
          */
         post: operations["commitBeneficiaryImport"];
         delete?: never;
@@ -1327,13 +1234,13 @@ export interface paths {
          *
          *     - `operational`: All checks pass and latency is normal.
          *     - `degraded`: Partial issues — high latency or intermittent errors. A
-         *      preventive warning that does not affect queries (for example, a
-         *      certificate close to expiry) does not produce `degraded`.
+         *       preventive warning that does not affect queries (for example, a
+         *       certificate close to expiry) does not produce `degraded`.
          *     - `down`: The service is unreachable for now.
          *     - `unknown`: There is no current health data: no check has run yet,
-         *      or the last one is more than three times `check_interval_seconds`
-         *      old because the automated check stopped running. In that case
-         *      `last_verified_at` keeps the date of that last check.
+         *       or the last one is more than three times `check_interval_seconds`
+         *       old because the automated check stopped running. In that case
+         *       `last_verified_at` keeps the date of that last check.
          *
          *     The response is cached 60 seconds on the client with `Cache-Control`,
          *     and that window is set at deploy time. Any authenticated user can query
@@ -1425,40 +1332,22 @@ export interface paths {
         put?: never;
         /**
          * Create a webhook endpoint
-         * @description Registers an HTTPS endpoint that will receive the subscribed events as
-         *     webhooks. The URL must resolve to a public address: `localhost` and
-         *     private ranges are rejected.
+         * @description Registers an HTTPS endpoint for the subscribed events. The URL must
+         *     be public: `localhost` and private ranges are rejected.
          *
-         *     Each endpoint can subscribe to different events, among them:
-         *
-         *     - `validation.*` events: they report each verdict of a validation and each step of its automatic retries (e.g. `validation.completed`, `validation.error`, and so on).
-         *     - `validation.returned` event: it fires when a validation that had already come out `valid` later moves to `returned` because Banxico reported the return; it is not emitted when the validation is created, where the event is `validation.completed`. To receive it, subscribe to it in addition to `validation.completed`.
-         *     - `billing.*` events: they produce no delivery until something moves in the user's subscription (e.g. `billing.subscription_canceled`, `billing.payment_succeeded`, usage quotas, and so on).
+         *     It subscribes to `validation.*` events (verdicts and retries),
+         *     `validation.returned` (a `valid` that later moves to `returned`, in
+         *     addition to `validation.completed`), and `billing.*` events (only when
+         *     the subscription moves).
          *
          *     Once the cap of registered endpoints is reached, creation responds with
-         *     HTTP status `422` (with `webhook_limit_reached` in the body) and the
-         *     limit value in the `meta.limit` field.
-         *
-         *     {% callout type="info" %}
-         *     **Testing the endpoint and the connection:**\
-         *     `POST /v1/webhooks/{id}/test` sends a synthetic delivery to the newly
-         *     created endpoint; it is worth confirming that the receiver answers with
-         *     an HTTP `2xx` status before directing real traffic to it.
-         *
-         *     {% /callout %}
+         *     an HTTP status `422` (with `webhook_limit_reached` in the body).
          *
          *     {% callout type="warning" %}
          *     **Signing secret:**\
-         *     The signing `secret` is returned **only in this response** and cannot be
-         *     retrieved afterwards. A lost secret is replaced with
-         *     `POST /v1/webhooks/{id}/regenerate-secret`, which returns the new one and
-         *     invalidates the previous one immediately — the endpoint does not have to
-         *     be registered again.\
-         *     That secret verifies every delivery: the HMAC-SHA256 of the received body
-         *     must match the `X-Webhook-Signature: sha256=<hex>` header.\
-         *     Every delivery also carries `X-Webhook-Signature-Timestamped: t=<seconds>,v1=<hex>`, where `v1` is the HMAC-SHA256 of `<t>.<body>`. That signature includes the attempt time, and the recommended tolerance window is 5 minutes against `t`, not against the `timestamp` of the body: retries arrive up to about 8.6 hours after the event.\
-         *     \
-         *     Signing, and further detail, are described in {% concept slug="webhooks-architecture" %}the webhooks architecture{% /concept %}.
+         *     The `secret` verifies the `X-Webhook-Signature-Timestamped` signature
+         *     on every delivery; it is returned only in this response and cannot be
+         *     retrieved afterwards. Detail is in {% concept slug="webhooks-architecture" %}the webhooks architecture{% /concept %}.
          *
          *     {% /callout %}
          */
@@ -2262,6 +2151,9 @@ export interface paths {
          *     If an export of the same range is already in progress, it returns that one instead of creating another. Each account can have **2** exports in progress at a time (`429`, with `export_limit_reached`) and the platform allows **5** in total (`503`, with `exports_busy`).
          *
          *     The operation supports `Idempotency-Key`.
+         *
+         *     If queueing fails, it responds with an HTTP `503` status
+         *     (`dispatch_failed`).
          */
         post: operations["createFinanceCepExport"];
         delete?: never;
@@ -2355,7 +2247,355 @@ export interface paths {
         trace?: never;
     };
 }
-export type webhooks = Record<string, never>;
+export interface webhooks {
+    "validation.completed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive the validation.completed event
+         * @description Emitted when a validation ends with a Banxico verdict. `data.attributes.status` says which one: `valid`, `not_found`, `cep_unavailable`, `invalid` or `returned`. An operation that already arrives returned is delivered here with `status: returned`; the `validation.returned` event is the later transition.
+         *
+         *     With a `valid` verdict, compare `banxico_confirmed.amount` and `banxico_confirmed.beneficiaryAccount` with your order before releasing merchandise or service: an image can show an amount different from the one Banxico confirmed.
+         *
+         *     Each delivery is a `POST` request with a JSON body sent to the endpoint registered with `POST /v1/webhooks` when the event occurs and the endpoint is subscribed to it. This operation describes what your server receives, not an operation you can call.
+         *
+         *     Respond `2xx` as soon as you receive and validate the body, and process it afterwards: the receiver has 10 seconds in total, 5 of them to connect. A `5xx`, a network error or a timeout is retried up to 5 times, at 1 minute, 5 minutes, 30 minutes, 2 hours and 6 hours after the previous attempt. `408` and `429` are also retried; any other `4xx` is not. After 3 consecutive failures the endpoint moves to `auto_disabled`.
+         *
+         *     Verify the signature before reading the content and deduplicate by `X-Veriko-Delivery-Id`. The detail is in {% concept slug="webhooks-architecture" %}the webhooks architecture{% /concept %}.
+         */
+        post: operations["receiveValidationCompletedWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "validation.failed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive the validation.failed event
+         * @description Emitted when a validation ends in `failed` because the request or its data did not pass verification. `data.attributes.error_code` and `error_message` say why, with the same code and text as `GET /v1/validations/{id}`.
+         *
+         *     Each delivery is a `POST` request with a JSON body sent to the endpoint registered with `POST /v1/webhooks` when the event occurs and the endpoint is subscribed to it. This operation describes what your server receives, not an operation you can call.
+         *
+         *     Respond `2xx` as soon as you receive and validate the body, and process it afterwards: the receiver has 10 seconds in total, 5 of them to connect. A `5xx`, a network error or a timeout is retried up to 5 times, at 1 minute, 5 minutes, 30 minutes, 2 hours and 6 hours after the previous attempt. `408` and `429` are also retried; any other `4xx` is not. After 3 consecutive failures the endpoint moves to `auto_disabled`.
+         *
+         *     Verify the signature before reading the content and deduplicate by `X-Veriko-Delivery-Id`. The detail is in {% concept slug="webhooks-architecture" %}the webhooks architecture{% /concept %}.
+         */
+        post: operations["receiveValidationFailedWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "validation.error": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive the validation.error event
+         * @description Emitted when the processing of a validation ends in `error`: the service or Banxico failed, not the request. There are two body shapes:
+         *
+         *     - The full validation resource, as in the other `validation.*` events, with `error_code` and `error_message`.
+         *     - A summary shape, with only `data.validation_id`, `data.error_code` and `data.error_message`, when processing ran out because of `max_retries_exceeded`, `network` or `captcha`.
+         *
+         *     Tell them apart by the presence of `data.attributes`. In both, `GET /v1/validations/{id}` gives the detail.
+         *
+         *     Each delivery is a `POST` request with a JSON body sent to the endpoint registered with `POST /v1/webhooks` when the event occurs and the endpoint is subscribed to it. This operation describes what your server receives, not an operation you can call.
+         *
+         *     Respond `2xx` as soon as you receive and validate the body, and process it afterwards: the receiver has 10 seconds in total, 5 of them to connect. A `5xx`, a network error or a timeout is retried up to 5 times, at 1 minute, 5 minutes, 30 minutes, 2 hours and 6 hours after the previous attempt. `408` and `429` are also retried; any other `4xx` is not. After 3 consecutive failures the endpoint moves to `auto_disabled`.
+         *
+         *     Verify the signature before reading the content and deduplicate by `X-Veriko-Delivery-Id`. The detail is in {% concept slug="webhooks-architecture" %}the webhooks architecture{% /concept %}.
+         */
+        post: operations["receiveValidationErrorWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "validation.retry.scheduled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive the validation.retry.scheduled event
+         * @description Emitted when a validation opens its automatic retry cycle, or when one is requested. `data.attributes.retry_state.next_attempt_at` says when the next attempt will be; while the cycle stays open, `terminal_state` is `pending`.
+         *
+         *     Each delivery is a `POST` request with a JSON body sent to the endpoint registered with `POST /v1/webhooks` when the event occurs and the endpoint is subscribed to it. This operation describes what your server receives, not an operation you can call.
+         *
+         *     Respond `2xx` as soon as you receive and validate the body, and process it afterwards: the receiver has 10 seconds in total, 5 of them to connect. A `5xx`, a network error or a timeout is retried up to 5 times, at 1 minute, 5 minutes, 30 minutes, 2 hours and 6 hours after the previous attempt. `408` and `429` are also retried; any other `4xx` is not. After 3 consecutive failures the endpoint moves to `auto_disabled`.
+         *
+         *     Verify the signature before reading the content and deduplicate by `X-Veriko-Delivery-Id`. The detail is in {% concept slug="webhooks-architecture" %}the webhooks architecture{% /concept %}.
+         */
+        post: operations["receiveValidationRetryScheduledWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "validation.retry.resolved": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive the validation.retry.resolved event
+         * @description Emitted when an automatic retry obtains the `valid` verdict and the cycle ends. `data.attributes.retry_state.terminal_state` is `resolved`, and `resolved_at` says when it happened.
+         *
+         *     Each delivery is a `POST` request with a JSON body sent to the endpoint registered with `POST /v1/webhooks` when the event occurs and the endpoint is subscribed to it. This operation describes what your server receives, not an operation you can call.
+         *
+         *     Respond `2xx` as soon as you receive and validate the body, and process it afterwards: the receiver has 10 seconds in total, 5 of them to connect. A `5xx`, a network error or a timeout is retried up to 5 times, at 1 minute, 5 minutes, 30 minutes, 2 hours and 6 hours after the previous attempt. `408` and `429` are also retried; any other `4xx` is not. After 3 consecutive failures the endpoint moves to `auto_disabled`.
+         *
+         *     Verify the signature before reading the content and deduplicate by `X-Veriko-Delivery-Id`. The detail is in {% concept slug="webhooks-architecture" %}the webhooks architecture{% /concept %}.
+         */
+        post: operations["receiveValidationRetryResolvedWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "validation.retry.exhausted": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive the validation.retry.exhausted event
+         * @description Emitted when the automatic retries run out without a confirmed verdict. `data.attributes.retry_state.terminal_state` is `exhausted`, and `exhausted_at` says when it happened. The validation keeps the last result it had.
+         *
+         *     Each delivery is a `POST` request with a JSON body sent to the endpoint registered with `POST /v1/webhooks` when the event occurs and the endpoint is subscribed to it. This operation describes what your server receives, not an operation you can call.
+         *
+         *     Respond `2xx` as soon as you receive and validate the body, and process it afterwards: the receiver has 10 seconds in total, 5 of them to connect. A `5xx`, a network error or a timeout is retried up to 5 times, at 1 minute, 5 minutes, 30 minutes, 2 hours and 6 hours after the previous attempt. `408` and `429` are also retried; any other `4xx` is not. After 3 consecutive failures the endpoint moves to `auto_disabled`.
+         *
+         *     Verify the signature before reading the content and deduplicate by `X-Veriko-Delivery-Id`. The detail is in {% concept slug="webhooks-architecture" %}the webhooks architecture{% /concept %}.
+         */
+        post: operations["receiveValidationRetryExhaustedWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "validation.returned": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive the validation.returned event
+         * @description Emitted once per validation when one that had come out `valid` later moves to `returned` because Banxico reported the reversal of the payment. It happens in a follow-up check, which is requested with `POST /v1/validations/{id}/recheck` or which the service runs by itself during the first 72 hours.
+         *
+         *     It carries the same as `validation.completed` and adds `data.attributes.payment_status`, the payment status that gave the return away. It is not emitted when the validation is created: an operation that already arrives returned is delivered with `validation.completed`. To receive it, subscribe the endpoint to this event in addition to `validation.completed`.
+         *
+         *     Each delivery is a `POST` request with a JSON body sent to the endpoint registered with `POST /v1/webhooks` when the event occurs and the endpoint is subscribed to it. This operation describes what your server receives, not an operation you can call.
+         *
+         *     Respond `2xx` as soon as you receive and validate the body, and process it afterwards: the receiver has 10 seconds in total, 5 of them to connect. A `5xx`, a network error or a timeout is retried up to 5 times, at 1 minute, 5 minutes, 30 minutes, 2 hours and 6 hours after the previous attempt. `408` and `429` are also retried; any other `4xx` is not. After 3 consecutive failures the endpoint moves to `auto_disabled`.
+         *
+         *     Verify the signature before reading the content and deduplicate by `X-Veriko-Delivery-Id`. The detail is in {% concept slug="webhooks-architecture" %}the webhooks architecture{% /concept %}.
+         */
+        post: operations["receiveValidationReturnedWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "billing.payment_succeeded": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive the billing.payment_succeeded event
+         * @description Emitted when the payment of an invoice of the user's subscription is confirmed. The payment processor identifiers (`invoice_id`) are stable and immutable: use them as an idempotency key. It produces no deliveries while billing is not enabled.
+         *
+         *     Each delivery is a `POST` request with a JSON body sent to the endpoint registered with `POST /v1/webhooks` when the event occurs and the endpoint is subscribed to it. This operation describes what your server receives, not an operation you can call.
+         *
+         *     Respond `2xx` as soon as you receive and validate the body, and process it afterwards: the receiver has 10 seconds in total, 5 of them to connect. A `5xx`, a network error or a timeout is retried up to 5 times, at 1 minute, 5 minutes, 30 minutes, 2 hours and 6 hours after the previous attempt. `408` and `429` are also retried; any other `4xx` is not. After 3 consecutive failures the endpoint moves to `auto_disabled`.
+         *
+         *     Verify the signature before reading the content and deduplicate by `X-Veriko-Delivery-Id`. The detail is in {% concept slug="webhooks-architecture" %}the webhooks architecture{% /concept %}.
+         */
+        post: operations["receiveBillingPaymentSucceededWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "billing.payment_failed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive the billing.payment_failed event
+         * @description Emitted when the charge of an invoice fails. Use it to tell the user, through your own channel, to update their payment method before `due_date`. It produces no deliveries while billing is not enabled.
+         *
+         *     Each delivery is a `POST` request with a JSON body sent to the endpoint registered with `POST /v1/webhooks` when the event occurs and the endpoint is subscribed to it. This operation describes what your server receives, not an operation you can call.
+         *
+         *     Respond `2xx` as soon as you receive and validate the body, and process it afterwards: the receiver has 10 seconds in total, 5 of them to connect. A `5xx`, a network error or a timeout is retried up to 5 times, at 1 minute, 5 minutes, 30 minutes, 2 hours and 6 hours after the previous attempt. `408` and `429` are also retried; any other `4xx` is not. After 3 consecutive failures the endpoint moves to `auto_disabled`.
+         *
+         *     Verify the signature before reading the content and deduplicate by `X-Veriko-Delivery-Id`. The detail is in {% concept slug="webhooks-architecture" %}the webhooks architecture{% /concept %}.
+         */
+        post: operations["receiveBillingPaymentFailedWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "billing.trial_will_end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive the billing.trial_will_end event
+         * @description Emitted about 3 days before the trial period of a subscription ends, so you can warn the user before the first charge. It produces no deliveries while billing is not enabled.
+         *
+         *     Each delivery is a `POST` request with a JSON body sent to the endpoint registered with `POST /v1/webhooks` when the event occurs and the endpoint is subscribed to it. This operation describes what your server receives, not an operation you can call.
+         *
+         *     Respond `2xx` as soon as you receive and validate the body, and process it afterwards: the receiver has 10 seconds in total, 5 of them to connect. A `5xx`, a network error or a timeout is retried up to 5 times, at 1 minute, 5 minutes, 30 minutes, 2 hours and 6 hours after the previous attempt. `408` and `429` are also retried; any other `4xx` is not. After 3 consecutive failures the endpoint moves to `auto_disabled`.
+         *
+         *     Verify the signature before reading the content and deduplicate by `X-Veriko-Delivery-Id`. The detail is in {% concept slug="webhooks-architecture" %}the webhooks architecture{% /concept %}.
+         */
+        post: operations["receiveBillingTrialWillEndWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "billing.subscription_canceled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive the billing.subscription_canceled event
+         * @description Emitted when a subscription ends up canceled, after the cancellation was recorded. `cancel_at_period_end` says whether it had been scheduled for the end of the current period. It produces no deliveries while billing is not enabled.
+         *
+         *     Each delivery is a `POST` request with a JSON body sent to the endpoint registered with `POST /v1/webhooks` when the event occurs and the endpoint is subscribed to it. This operation describes what your server receives, not an operation you can call.
+         *
+         *     Respond `2xx` as soon as you receive and validate the body, and process it afterwards: the receiver has 10 seconds in total, 5 of them to connect. A `5xx`, a network error or a timeout is retried up to 5 times, at 1 minute, 5 minutes, 30 minutes, 2 hours and 6 hours after the previous attempt. `408` and `429` are also retried; any other `4xx` is not. After 3 consecutive failures the endpoint moves to `auto_disabled`.
+         *
+         *     Verify the signature before reading the content and deduplicate by `X-Veriko-Delivery-Id`. The detail is in {% concept slug="webhooks-architecture" %}the webhooks architecture{% /concept %}.
+         */
+        post: operations["receiveBillingSubscriptionCanceledWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "billing.invoice_upcoming": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive the billing.invoice_upcoming event
+         * @description Emitted as a notice ahead of a charge. It is informational: the invoice does not exist yet at the payment processor, but the amount and the expected date (`next_payment_attempt`) are already known. It produces no deliveries while billing is not enabled.
+         *
+         *     Each delivery is a `POST` request with a JSON body sent to the endpoint registered with `POST /v1/webhooks` when the event occurs and the endpoint is subscribed to it. This operation describes what your server receives, not an operation you can call.
+         *
+         *     Respond `2xx` as soon as you receive and validate the body, and process it afterwards: the receiver has 10 seconds in total, 5 of them to connect. A `5xx`, a network error or a timeout is retried up to 5 times, at 1 minute, 5 minutes, 30 minutes, 2 hours and 6 hours after the previous attempt. `408` and `429` are also retried; any other `4xx` is not. After 3 consecutive failures the endpoint moves to `auto_disabled`.
+         *
+         *     Verify the signature before reading the content and deduplicate by `X-Veriko-Delivery-Id`. The detail is in {% concept slug="webhooks-architecture" %}the webhooks architecture{% /concept %}.
+         */
+        post: operations["receiveBillingInvoiceUpcomingWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    test: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive the test delivery
+         * @description Sent when you call `POST /v1/webhooks/{id}/test`, whatever events the endpoint is subscribed to. It serves to check that the receiver is reachable and verifies the signature. The test delivery is not retried and does not count towards automatic deactivation; `X-Veriko-Event` is `test`.
+         *
+         *     Each delivery is a `POST` request with a JSON body sent to the endpoint registered with `POST /v1/webhooks` when the event occurs and the endpoint is subscribed to it. This operation describes what your server receives, not an operation you can call.
+         *
+         *     Respond `2xx` as soon as you receive and validate the body, and process it afterwards: the receiver has 10 seconds in total, 5 of them to connect. The test delivery is not retried, whatever the response.
+         *
+         *     Verify the signature before reading the content and deduplicate by `X-Veriko-Delivery-Id`. The detail is in {% concept slug="webhooks-architecture" %}the webhooks architecture{% /concept %}.
+         */
+        post: operations["receiveTestWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+}
 export interface components {
     schemas: {
         /** @description A single error: the stable code the client branches on, the human-readable message — that one translated —, the HTTP status, and, when the failure is about one field, the pointer naming it. */
@@ -2763,14 +3003,11 @@ export interface components {
              */
             outcomes?: ("not_found" | "cep_unavailable" | "error")[];
         };
-        /**
-         * @description Body for `POST /v1/validate` for a manual SPEI validation; requires `tracking_key` or `numeric_reference`, and exactly one of the two ways to give the account: `beneficiary_account` or `candidate_accounts`. `send_date` is conditionally optional: when missing or unusable, the service tries candidate dates (date retries, RN-VALID-013).
-         *     The Spanish names (`send_date`, `amount`, `tracking_key`, `numeric_reference`, `sender_bank`, `receiver_bank`, `beneficiary_account`, `candidate_accounts`, `recipient_is_bank`) are still accepted as aliases and satisfy the same requirements: the server folds them to their English canonical name before validating. Send only one of the two names per field: when both arrive with different values, the response is 422 `alias_conflict`.
-         */
+        /** @description Body for `POST /v1/validate` for a manual SPEI validation; requires `tracking_key` or `numeric_reference`, and exactly one of the two ways to give the account: `beneficiary_account` or `candidate_accounts`. `send_date` is conditionally optional: when missing or unusable, the service tries candidate dates (date retries, RN-VALID-013). */
         ValidationRequest: ({
             /**
              * Format: date
-             * @description Sending date of the transfer in ISO 8601 format (YYYY-MM-DD). Banxico locates the CEP with it, and it can differ from the operation day the CEP prints (`banxico_result.operationDate`). It is conditionally optional: when not sent, or when the one sent is not usable (a future date beyond the next business day, or one inconsistent with the tracking-key date), the service tries candidate dates (date retries, RN-VALID-013): up to 8 attempts per issuer from an anchor —the payment date when present, otherwise the validation creation date—, 5 business days back and 2 forward (16 when the tracking key contradicts the declared issuer, R8); the date the payment was found with is sealed in `banxico_result._fecha` with `reason: reintento_fecha`. When there is nothing to guess from, the request is rejected with `422 preflight_failed` (`send_date_required`).
+             * @description Sending date of the transfer, in ISO 8601 format, `YYYY-MM-DD`. Banxico locates the CEP with it. It is conditionally optional: when missing or unusable, the service tries other dates. With nothing to guess from, the request is rejected with `422`.
              * @example 2025-03-15
              */
             send_date?: string;
@@ -2781,12 +3018,12 @@ export interface components {
              */
             amount: number;
             /**
-             * @description Transfer tracking key, between 1 and 30 characters. Accepts letters, numbers, spaces, and the punctuation marks Banxico allows (such as hyphens, slashes, periods, commas, `#`, `@`, or `_`), but not `<`, `>`, or the backslash. It is trimmed and stripped of zero-width invisible characters before validation, so the same copy-pasted key compares equal everywhere in the platform. Required when `numeric_reference` is not sent. If both are sent, the Banxico query uses only the key.
+             * @description Transfer tracking key, from 1 to 30 characters. Accepts letters, numbers, spaces, and the punctuation Banxico allows, but not `<`, `>`, or `\`. Required when `numeric_reference` is not sent. When both are sent, Banxico is queried by the key alone.
              * @example MXBA20250315001234
              */
             tracking_key?: string;
             /**
-             * @description Numeric transfer reference, between 1 and 7 digits. Accepts only numbers and spaces. Required when `tracking_key` is not sent. When `tracking_key` is sent, the query uses only the key, and a malformed reference is not rejected: it is ignored and a warning is left.
+             * @description Numeric transfer reference, from 1 to 7 digits. Accepts only numbers and spaces. Required when `tracking_key` is not sent. When `tracking_key` is sent, the query uses only the key; a malformed reference is ignored and a warning is left.
              * @example 1234567
              */
             numeric_reference?: string;
@@ -2801,16 +3038,15 @@ export interface components {
              */
             receiver_bank?: string;
             /**
-             * @description Receiving bank account for the transfer. It is required when `candidate_accounts` is not sent: when both are missing, the response is an HTTP status `422` (with `preflight_failed` and the field error `account_required`); when both are sent, a `422` with `account_and_candidates_mutually_exclusive`. It can be a CLABE (18 digits), a card (16 digits) or a DiMo phone (10 digits), and the type is identified by the length of its digits. Spaces and hyphens separating groups ("0121 8000 4412 345678") are stripped automatically before the length is counted. For a DiMo phone, if the receiving bank cannot be resolved through the `receiver_bank` field, through the registered beneficiaries or through the account directory, the response is an HTTP status `422` (with `bank_code_unresolvable_for_phone` in the body).
+             * @description Receiving account for the transfer. Accepts a CLABE (18 digits), a card (16 digits), or a DiMo phone (10 digits). It cannot be sent together with `candidate_accounts`: sending both returns `422`.
              * @example 012180004412345678
              */
             beneficiary_account?: string;
             /**
-             * @description Accounts among which the receiving one is, for when it is not known which. It replaces `beneficiary_account`: sending both responds with an HTTP status `422` (with `account_and_candidates_mutually_exclusive` in the body).
-             *
-             *     It accepts from 2 up to the platform's current maximum, 3 by default and never more than 10; the `422` for an excess reports the maximum in `meta.max`. Each account is a CLABE (18 digits), a card (16) or a DiMo phone (10), with a valid check digit and no repeats. A list that does not comply responds with a `422` with `candidate_accounts_invalid`, and points out in `field_errors` the position that failed. Both errors happen before any quota is consumed.
-             *
-             *     It consumes a single quota unit, however many accounts it carries. The query goes through the candidates in the order sent and adopts the first one that matches the transfer. The winner is published in full in `normalized_data.beneficiary_account`, and `candidate_match` reports its position. If none matches, the response is an HTTP status `422` with the reason in `code` (`account_unresolvable_after_probes` when there is no more precise diagnosis).
+             * @description Accounts among which the receiving one is, when it is not known. It
+             *     replaces `beneficiary_account`: sending both returns `422`. Between 2
+             *     and 10 accounts, CLABE (18 digits), card (16) or DiMo phone (10),
+             *     with a valid check digit and no repeats.
              * @example [
              *       "012180004412345678",
              *       "002010077777777771"
@@ -2818,7 +3054,7 @@ export interface components {
              */
             candidate_accounts?: string[];
             /**
-             * @description `true` when the transfer beneficiary is the receiving institution itself («Pago a Banco» in the Banxico CEP) —credit card, loan, or services paid to the institution itself— rather than one of its account holders. `false` for a transfer to an account holder (the default). Optional: omitted means `false`. `0` and `1` are also accepted.
+             * @description `true` when the transfer beneficiary is the receiving institution itself («Pago a Banco» in the Banxico CEP): payment of a card, a loan, or services to the institution. `false` for a transfer to an account holder. It is the default. `0` and `1` are also accepted.
              * @default false
              * @example false
              */
@@ -2826,11 +3062,36 @@ export interface components {
             /** @description **Automatic retry** policy for this validation. If omitted, the general policy configured for the user is applied. Retries do NOT consume validation quota. */
             retry_policy?: components["schemas"]["RetryPolicy"];
             /**
-             * @description Reference of your own that is returned as sent in the validation, in the validation webhooks, and as an exact filter of `GET /v1/validations`. Text of 1 to 64 characters, without line breaks or emoji; it is trimmed before being stored. A value that does not comply is rejected with an HTTP status `422` (with `invalid_client_ref` in the body). It must not contain personal data.
+             * @description Reference of your own that is returned as sent in the validation, in its webhooks, and as an exact filter of `GET /v1/validations`. Text of 1 to 64 characters, without line breaks or emoji; it is trimmed before being stored. A value that does not comply is rejected with `422` (`invalid_client_ref`). It must not contain personal data.
              * @example orden-4812
              */
             client_ref?: string;
         } & (unknown | unknown)) | unknown | unknown;
+        /** @description Where the request that created the validation came from: the dashboard, the Android app, the direct API, an official SDK (with its language), the official MCP server or the Telegram bot. It is derived from the authentication method and the client's `User-Agent`; it is informational and does not change the result or billing. */
+        ValidationOrigin: {
+            /**
+             * @description Origin channel — `panel`: web dashboard; `app`: Android app; `api`: direct API with a key; `sdk`: official SDK; `mcp`: official MCP server; `telegram`: Telegram bot.
+             * @example sdk
+             * @enum {string}
+             */
+            channel: "panel" | "app" | "api" | "sdk" | "mcp" | "telegram";
+            /**
+             * @description Official SDK language when `channel` is `sdk`; `null` for the other channels.
+             * @example python
+             * @enum {string|null}
+             */
+            client: "javascript" | "python" | "php" | "go" | "ruby" | "java" | "dotnet" | null;
+            /**
+             * @description Version of the SDK, the MCP server or the app, as sent by the client; `null` when not sent.
+             * @example 0.8.0
+             */
+            client_version: string | null;
+            /**
+             * @description Display label in the response language: `Panel`, `Android app`, `API`, `SDK (Python)`, `MCP` or `Telegram`.
+             * @example SDK (Python)
+             */
+            label: string;
+        };
         /** @description Account detected in the receipt. */
         DetectedAccount: {
             /** @description Digits of the detected account. */
@@ -2910,6 +3171,8 @@ export interface components {
                  * @enum {string}
                  */
                 validation_type?: "direct" | "ocr";
+                /** @description Where the validation came from. `null` for validations created before the origin was recorded. */
+                origin?: components["schemas"]["ValidationOrigin"] | null;
                 /**
                  * @description `true` when the result comes from a playground simulation. The simulation runs without Banxico calls, quota consumption, persistence, webhooks, or notifications.
                  * @example false
@@ -2922,7 +3185,7 @@ export interface components {
                  */
                 status?: "queued" | "processing" | "valid" | "not_found" | "cep_unavailable" | "invalid" | "returned" | "failed" | "error";
                 /**
-                 * @description Verdict reported by Banxico. It can be `valid`, `not_found`, `cep_unavailable`, `invalid`, `returned`, or `error`. It remains `pending` while no Banxico verdict exists. `returned` means the transfer settled and the beneficiary institution later sent it back — the CEP, when there is one, is still delivered. A `valid` is not final: it is the verdict of the moment of the query, and it moves to `returned` when Banxico reports the return in a follow-up check, which is requested with `POST /v1/validations/{id}/recheck` or which the service runs by itself during the first 72 hours (the `validation.returned` webhook is emitted). It becomes `error` only when the request reached Banxico and the service failed; `error_code` identifies the cause.
+                 * @description Verdict reported by Banxico. Values: `valid`, `not_found`, `cep_unavailable`, `invalid`, `returned`, or `error`; `pending` with no verdict. `returned`: settled and sent back. `valid` is not final: it moves to `returned` when Banxico reports the return on recheck (`POST /v1/validations/{id}/recheck`, or automatic for 72 hours; `validation.returned` is emitted). `error` when the request reached Banxico and the service failed; `error_code` identifies the cause.
                  * @example valid
                  */
                 banxico_status?: string | null;
@@ -2931,10 +3194,7 @@ export interface components {
                  * @example 1320
                  */
                 processing_time_ms?: number | null;
-                /**
-                 * @description Copy of the original request fields. `send_date`/`send_date` keeps the sending date exactly as sent, even when Banxico found the payment with another one (`banxico_result._fecha`).
-                 *     Each field is emitted twice: with its Spanish name (deprecated) and with its canonical English name. Read the English one: the Spanish names will be removed in a future version (sunset date to be set). Migration guide: https://docs.veriko.mx/es/how-to/migrate-to-english-field-names
-                 */
+                /** @description Copy of the original request fields. `send_date` keeps the sending date exactly as sent, even when Banxico found the payment with another date. Each field is emitted twice: with its Spanish name, deprecated, and with its canonical English name; read the English one, because the Spanish names will be removed in a future version. */
                 request_data?: {
                     /**
                      * Format: date
@@ -3014,19 +3274,22 @@ export interface components {
                 image_retained?: boolean;
                 /**
                  * Format: date-time
-                 * @description Date and time, in ISO 8601 UTC, when the validation was purged with `POST /v1/validations/{id}/purge/execute`. It only appears on a purged validation, which is left as a tombstone.
-                 *
-                 *     A tombstone keeps `id`, `validation_type`, `status`, `banxico_status`, the dates, `processing_time_ms`, `error_code`, and the amount in `normalized_data.amount`. It does not keep the file, the CEP, `request_data`, `ocr_result`, or `banxico_result`, and its derived resources respond with an HTTP status `410` (with `validation_purged` in the body).
+                 * @description Date and time, in ISO 8601 UTC, when the validation was
+                 *     purged. It only appears on a purged validation, which is left
+                 *     as a tombstone: it keeps the verdict, dates, and
+                 *     `normalized_data.amount`, and loses the file, the CEP, `request_data`, `ocr_result`, and
+                 *     `banxico_result`; its resources respond with an HTTP status
+                 *     `410` (with `validation_purged` in the body).
                  * @example 2026-10-02T09:30:00Z
                  */
                 purged_at?: string;
                 /**
-                 * @description Fields extracted from the receipt, only when `validation_type` is `ocr`. They are what was read from the image or PDF, not what Banxico confirmed: the confirmed data is in `banxico_result`.
-                 *
-                 *     `extraction_source` is `cep_pdf` when the receipt was the Banxico CEP as a PDF and its data was read
-                 *     from its text, without OCR. `receipts_detected` is the number of receipts found in a PDF.
-                 *
-                 *     Each field is emitted twice: with its Spanish name (deprecated) and with its canonical English name. Read the English one: the Spanish names will be removed in a future version (sunset date to be set). Migration guide: https://docs.veriko.mx/es/how-to/migrate-to-english-field-names
+                 * @description Fields extracted from the receipt, only when `validation_type`
+                 *     is `ocr`. They are what was read, not what Banxico confirmed:
+                 *     the confirmed data is in `banxico_result`. Each field is
+                 *     emitted twice: with its Spanish name, deprecated, and with its
+                 *     canonical English name; read the English one, because the
+                 *     Spanish names will be removed in the future.
                  */
                 ocr_result?: ({
                     /** @description Receipt type (`cep`, `estado_cuenta`, `transferencia`, `ilegible`…). */
@@ -3112,11 +3375,7 @@ export interface components {
                  * @example 0.94
                  */
                 ocr_confidence?: number | null;
-                /**
-                 * @description Fields normalized after OCR (when `validation_type` is `ocr`), or the winning account in `beneficiary_account` when a direct validation sent `candidate_accounts`. A tombstone keeps only the amount here.
-                 *     Each field is emitted twice: with its Spanish name (deprecated) and with its canonical English name. Read the English one: the Spanish names will be removed in a future version (sunset date to be set). Migration guide: https://docs.veriko.mx/es/how-to/migrate-to-english-field-names
-                 *     `_ocr_correction` (internal key, not duplicated) appears here when a correction of what was read is confirmed by the payment status query, and also in `banxico_result` when the CEP was also obtained.
-                 */
+                /** @description Fields normalized after OCR extraction, or the winning account in `beneficiary_account` when a direct validation sent `candidate_accounts`. A tombstone keeps only the amount here. Each field is emitted twice: with its Spanish name, deprecated, and with its canonical English name; read the English one, because the Spanish names will be removed in the future. */
                 normalized_data?: ({
                     /** @description Receipt type (`cep`, `estado_cuenta`, `transferencia`, `ilegible`…). */
                     receipt_type?: string;
@@ -3169,9 +3428,13 @@ export interface components {
                 /** @description Normalization warnings present. They can explain an unexpected `not_found` result. */
                 normalization_warnings?: string[] | null;
                 /**
-                 * @description Earlier validation that had already confirmed this same transfer in the same account. It only appears when a `valid` or `returned`, non-withdrawn validation with the same tracking key exists; it never points to a validation of another account. It appears the same way in a single validation, in a batch row and in the validation's webhooks.
-                 *
-                 *     It is the structured form of the warning that is also added to `normalization_warnings`. The validation is charged all the same. If the earlier receipt describes exactly this transfer (amount, date, sending bank, receiving bank and beneficiary account), its result is returned without querying Banxico again: a return (`returned`) always, and a `valid` only if Banxico confirmed it less than an hour ago; after that it is queried again, because the payment may have been returned since. When the result is reused, `normalization_warnings` says so.
+                 * @description Earlier validation that confirmed this transfer in the
+                 *     same account, never another account. It appears only with a
+                 *     `valid` or `returned` validation with the same tracking key.
+                 *     When the earlier receipt matches this transfer, its result
+                 *     is reused without re-querying Banxico: a return (`returned`)
+                 *     always; a `valid` only when confirmed under an hour ago.
+                 *     `normalization_warnings` notes the reuse.
                  */
                 duplicate_of?: {
                     /**
@@ -3188,9 +3451,12 @@ export interface components {
                     created_at: string;
                 };
                 /**
-                 * @description Conflict between the account sent and the one shown in the image. It only appears on `ocr` validations, when `beneficiary_account` was sent and the image shows another full account of the same length, valid and with enough confidence, or a masked account whose visible trailing digits (3 or more) are not the end of the account sent.
-                 *
-                 *     The account sent prevails and is the one queried at Banxico: the field does not change the verdict. If the payment went to the account in the image, a `not_found` is the expected outcome. It carries only the last 4 digits of each account, and the conflict is also added to `normalization_warnings`. With a masked account, `read_last4` carries the trailing digits the receipt itself shows (3 or 4), never more.
+                 * @description Conflict between the sent account and the image account. It
+                 *     only appears on `ocr` validations, when `beneficiary_account`
+                 *     was sent and the image shows another account. The sent account
+                 *     prevails and is the one queried at Banxico; the field does not
+                 *     change the verdict. It carries only the last 4 digits, and the
+                 *     conflict is added to `normalization_warnings`.
                  */
                 account_conflict?: {
                     /**
@@ -3205,9 +3471,12 @@ export interface components {
                     read_last4: string;
                 };
                 /**
-                 * @description Which of the `candidate_accounts` sent won. It only appears when the request carried that list and one of the accounts matched the transfer.
-                 *
-                 *     The full account is in `normalized_data.beneficiary_account`; this object says which position of the list it is, so it can be correlated with the integrator's own entity without comparing accounts. It does not change the verdict.
+                 * @description Which of the `candidate_accounts` sent won. It only appears
+                 *     when the request carried that list and one of the accounts
+                 *     matched the transfer. The full account is in
+                 *     `normalized_data.beneficiary_account`; this object says which
+                 *     position of the list it is, so it can be correlated without
+                 *     comparing accounts. It does not change the verdict.
                  */
                 candidate_match?: {
                     /**
@@ -3222,47 +3491,31 @@ export interface components {
                     account_last4: string;
                 };
                 /**
-                 * @description `true` when the beneficiary account used for the Banxico query is one of the client's own accounts: exactly the account sent in `beneficiary_account`, one of the `candidate_accounts`, or the account of one of the client's active beneficiaries. `false` when the platform resolved it another way, for example a full account read from the receipt that matches no beneficiary, or the one deduced from the visible digits of a masked account.
-                 *
-                 *     On `direct` validations it is always `true`. On `ocr` validations it appears as soon as the account is resolved, and it is absent if the account was never resolved.
-                 *
-                 *     With `false`, a `valid` confirms that the transfer exists at Banxico, but not that it was paid to the account where the integrator expects the money: the integrator must compare `banxico_result.beneficiaryAccount` with that account before releasing the order. To get `true`, send `beneficiary_account` or register the account as a beneficiary. It does not change the verdict.
+                 * @description `true` when the account queried at Banxico is the client's:
+                 *     the account sent in `beneficiary_account`, one of the
+                 *     `candidate_accounts`, or a beneficiary's account. With
+                 *     `false`, a `valid` confirms the transfer exists, but not that
+                 *     it was paid to the expected account: compare
+                 *     `banxico_result.beneficiaryAccount` with that account before
+                 *     releasing it. It does not change the verdict.
                  * @example true
                  */
                 account_cross_checked?: boolean;
                 /** @description Whether the beneficiary account is masked in the receipt, be it a CLABE, a card or a phone number. It is included only when it is `true`, and only when `validation_type` is `ocr`. */
                 is_masked?: boolean | null;
                 /**
-                 * @description Data returned by the Banxico CEP. The typed properties below are the 20 declared by the official SPEI complement schema.
+                 * @description Data returned by Banxico, with `_payment_status`; `null` when
+                 *     Banxico returned no data.
                  *
-                 *     `_ocr_correction` records corrected fields, their original reading (`requested`), the queried value (`used`) and confirmation (`confirmed_by`). `status_query` indicates a hypothesis confirmed by the payment status query; `cep` indicates that the receipt was also obtained. A status query alone does not verify a transfer.
-                 *     It also appears in `normalized_data` when the correction was already confirmed by the payment status query.
+                 *     `_send_date`: date Banxico found the payment with when not the sent
+                 *     one. `used`, `requested` and `reason` are the found date, the
+                 *     queried date and the motive. Values of `reason`:
+                 *     `clave_embedded_date`: another date in the key; `cutoff_18h`:
+                 *     near the 18:00 cutoff; `dia_operacion`: operation date on the
+                 *     receipt; `future_date`: next business day on the receipt;
+                 *     `date_retry`: no usable date.
                  *
-                 *     `_cep_upload` appears when the uploaded receipt was the CEP as a PDF and Banxico confirmed the payment.
-                 *     `authenticated` is `true` when its seal and original string match those of the official CEP;
-                 *     with `false`, `differing_fields` lists the fields that differ and `normalization_warnings` reports it.
-                 *     The verdict is still Banxico's.
-                 *
-                 *     `_payment_status` is the official payment status, as Banxico gave it the last time it was asked:
-                 *     `code` (`liquidado`, `en_proceso`, `cancelado`, `rechazado`, `en_proceso_devolucion`, `devuelto`, or `desconocido`),
-                 *     `label`, `settled`, `reversed`, and `checked_at` (ISO 8601 UTC).
-                 *     Its absence means it could not be determined, never that the payment is settled.
-                 *     It is updated on every follow-up check, and with `devuelto` or `en_proceso_devolucion` the validation moves to `returned`.
-                 *
-                 *     `_fecha` appears when Banxico did not find the payment with the date sent and did find it with another, or when no usable date was sent and the date retries found it with a candidate.
-                 *     `used` is the date it was found with, `requested` is the date first queried, and `reason` is why `used` was tried.
-                 *     Values of `reason`:
-                 *     `clave_embedded_date`: The tracking key embeds another date, at most one SPEI business day from the one sent;
-                 *     `cutoff_18h`: The key embeds no date and the receipt shows a time close to the 18:00 cutoff,
-                 *     so the next day was tried;
-                 *     `dia_operacion`: The key embeds the date sent, because the receipt carries the operation date,
-                 *     and an earlier day was tried back to the previous business day;
-                 *     `future_date`: The receipt shows the next business day (banks print it when the payment was made on a non-business day or after hours),
-                 *     so the earlier days were tried back to today;
-                 *     `reintento_fecha`: No usable date was sent (or the one sent did not work); up to 8 candidates were tried
-                 *     from the anchor —the payment date when present, otherwise the validation creation date—, 5 business days back
-                 *     and 2 forward, and `requested` is the anchor.
-                 *     The verdict is still Banxico's, and `request_data.send_date` keeps the date sent, when one was sent.
+                 *     Twins: `_send_date` and `tracking_key_status`.
                  */
                 banxico_result?: ({
                     /**
@@ -3336,9 +3589,12 @@ export interface components {
                  */
                 error_message?: string | null;
                 /**
-                 * @description Stable code of the terminal error, when there is one.
-                 *
-                 *     After `not_found`, diagnosis may indicate `not_found_identity` (date, criterion or banks), `not_found_account` (account), `not_found_amount` (amount), `not_found_account_and_amount` (both) or `not_found_account_or_amount` (payment found, field not isolated). A diagnosis does not change the verdict or prove payment. Without a conclusive response, the field remains `null`.
+                 * @description Stable code of the terminal error, when there is one. After
+                 *     `not_found`, diagnosis may pinpoint the failing field:
+                 *     identity, account, amount, both, or the payment without
+                 *     isolating the field. A diagnosis does not change the verdict
+                 *     or prove payment. Without a conclusive response, the field
+                 *     remains `null`.
                  */
                 error_code?: components["schemas"]["ValidationErrorCode"] | null;
                 /**
@@ -3440,10 +3696,7 @@ export interface components {
                 playground?: boolean;
             };
         };
-        /**
-         * @description Body for `POST /v1/validate-ocr` with the receipt in `image` or `image_url`; requires at least one of the two fields. `beneficiary_account` and `candidate_accounts` cannot be sent together.
-         *     The Spanish names (`beneficiary_account`, `candidate_accounts`, `sender_bank`, `receiver_bank`, `recipient_is_bank`) are still accepted as aliases and satisfy the same requirements: the server folds them to their English canonical name before validating. Send only one of the two names per field: when both arrive with different values, the response is 422 `alias_conflict`.
-         */
+        /** @description Body for `POST /v1/validate-ocr` with the receipt in `image` or `image_url`; requires at least one of the two fields. `beneficiary_account` and `candidate_accounts` cannot be sent together. */
         OcrValidationRequest: {
             /**
              * Format: byte
@@ -3453,21 +3706,20 @@ export interface components {
             image?: string;
             /**
              * Format: uri
-             * @description Public HTTPS URL of the receipt. The file is fetched when the request arrives and follows the same format and size limits as `image`: JPEG, PNG, WebP, or a PDF of 1 to 3 pages, up to `12 MB`. An `http` URL returns HTTP status `422` (with `invalid_url_scheme` in the body), and a redirect to `http` is not followed.
+             * @description Public HTTPS URL of the receipt. It follows the same format and size limits as `image`: JPEG, PNG, WebP, or a PDF of 1 to 3 pages, up to `12 MB`. An `http` URL returns HTTP status `422` (with `invalid_url_scheme` in the body), and a redirect to `http` is not followed.
              * @example https://storage.example.com/receipts/comprobante-2025-03.jpg
              */
             image_url?: string;
             /**
-             * @description Receiving account for the transfer (useful when it is missing or incomplete in the image). Required for DiMo phone; optional if the image shows the full account or its last digits, which are completed with the saved beneficiaries (they do not replace this field). Accepts CLABE (18 digits), card (16 digits) or DiMo phone (10 digits). It cannot be sent together with `candidate_accounts`: sending both responds with an HTTP status `422` (with `account_and_candidates_mutually_exclusive` in the body).
+             * @description Receiving account for the transfer. Accepts a CLABE (18 digits), a card (16 digits), or a DiMo phone (10 digits). It cannot be sent together with `candidate_accounts`: sending both returns `422`.
              * @example 012180004412345678
              */
             beneficiary_account?: string;
             /**
-             * @description Accounts among which the receiving one is, for when the image does not show it and it is not known which. It replaces `beneficiary_account`: sending both responds with an HTTP status `422` (with `account_and_candidates_mutually_exclusive` in the body). It takes priority over the account read from the image.
-             *
-             *     It accepts from 2 up to the platform's current maximum, 3 by default and never more than 10; the `422` for an excess reports the maximum in `meta.max`. Each account is a CLABE (18 digits), a card (16) or a DiMo phone (10), with a valid check digit and no repeats. A list that does not comply responds with a `422` with `candidate_accounts_invalid`, and points out in `field_errors` the position that failed. Both errors happen before any quota is consumed.
-             *
-             *     It consumes a single quota unit, however many accounts it carries, also with `?async=1`. The query goes through the candidates in the order sent and adopts the first one that matches the transfer. The winner is published in full in `normalized_data.beneficiary_account`, and `candidate_match` reports its position. If none matches, the response is an HTTP status `422` with the reason in `code` (`account_unresolvable_after_probes` when there is no more precise diagnosis).
+             * @description Accounts among which the receiving one is, when it is not known. It
+             *     replaces `beneficiary_account`: sending both returns `422`. Between 2
+             *     and 10 accounts, CLABE (18 digits), card (16) or DiMo phone (10),
+             *     with a valid check digit and no repeats.
              * @example [
              *       "012180004412345678",
              *       "002010077777777771"
@@ -3475,17 +3727,17 @@ export interface components {
              */
             candidate_accounts?: string[];
             /**
-             * @description **SPEI name or code** of the sending bank (a 4- or 5-digit code, e.g. `40012`, or a name, e.g. `BANCO NACIONAL DE MEXICO`), to correct the one read from the receipt. It replaces the one read before querying Banxico. If it cannot be resolved, the response is an HTTP status `422` (with `sender_bank_unresolvable` in the body).
+             * @description **SPEI name or code** of the sending bank, to correct the one read from the receipt. It accepts a code of 4 or 5 digits, e.g. `40012`, or the name, e.g. `BANCO NACIONAL DE MEXICO`. When it cannot be resolved, the response is `422`.
              * @example 40012
              */
             sender_bank?: string;
             /**
-             * @description **SPEI name or code** of the receiving bank (a 4- or 5-digit code, e.g. `40002`, or a name, e.g. `BBVA MEXICO`), to correct the one read from the receipt. It replaces the one read before querying Banxico. If it cannot be resolved, the response is an HTTP status `422` (with `receiver_bank_unresolvable` in the body).
+             * @description **SPEI name or code** of the receiving bank, to correct the one read from the receipt. It accepts a code of 4 or 5 digits, e.g. `40002`, or the name, e.g. `BBVA MEXICO`. When it cannot be resolved, the response is `422`.
              * @example 40002
              */
             receiver_bank?: string;
             /**
-             * @description `true` when the transfer beneficiary is the receiving institution itself («Pago a Banco» in the Banxico CEP) —credit card, loan, or services paid to the institution itself— rather than one of its account holders. `false` for a transfer to an account holder (the default). Optional: omitted means `false`. `0` and `1` are also accepted.
+             * @description `true` when the transfer beneficiary is the receiving institution itself («Pago a Banco» in the Banxico CEP): payment of a card, a loan, or services to the institution. `false` for a transfer to an account holder. It is the default. `0` and `1` are also accepted.
              * @default false
              * @example false
              */
@@ -3493,16 +3745,18 @@ export interface components {
             /** @description Automatic retry policy for this validation. If omitted, the policy configured at `PUT /v1/users/me/retry-policy` is used. Retries do not consume validation quota. */
             retry_policy?: components["schemas"]["RetryPolicy"];
             /**
-             * @description Reference of your own that is returned as sent in the validation, in the validation webhooks, and as an exact filter of `GET /v1/validations`. Text of 1 to 64 characters, without line breaks or emoji; it is trimmed before being stored. A value that does not comply is rejected with an HTTP status `422` (with `invalid_client_ref` in the body). It must not contain personal data.
+             * @description Reference of your own that is returned as sent in the validation, in its webhooks, and as an exact filter of `GET /v1/validations`. Text of 1 to 64 characters, without line breaks or emoji; it is trimmed before being stored. A value that does not comply is rejected with `422` (`invalid_client_ref`). It must not contain personal data.
              * @example orden-4812
              */
             client_ref?: string;
             /**
-             * @description `true` when the platform keeps the receipt file after validating it, which is the usual case. With `false`, the file is deleted as soon as the validation reaches a terminal status in which it is no longer needed; the verdict and the extracted data are kept.
-             *
-             *     With `false`, the validation publishes `image_retained=false` and `GET /v1/validations/{id}/image` responds with an HTTP status `410` (with `image_not_retained` in the body). It applies the same with `?async=1`.
-             *
-             *     The file exists while the validation is being processed. If it came in as a CEP in PDF and has automatic retries active, the deletion waits for that cycle to close, because each retry compares the PDF's seal again. A value that is not a boolean responds with an HTTP status `422` (with `invalid_retain_image` in the body), before any quota is consumed.
+             * @description `true` when the platform keeps the receipt file after validation.
+             *     It is the default. With `false`, the file is deleted when the
+             *     validation ends; the verdict and the extracted data are kept. With
+             *     `false`, the validation publishes `image_retained=false` and `GET
+             *     /v1/validations/{id}/image` responds `410` (`image_not_retained`).
+             *     It also applies with `?async=1`. A non-boolean value is rejected
+             *     with `422` (`invalid_retain_image`).
              * @default true
              * @example false
              */
@@ -3587,6 +3841,8 @@ export interface components {
                  * @enum {string}
                  */
                 validation_type?: "direct" | "ocr";
+                /** @description Where the validation came from. `null` for validations created before the origin was recorded. */
+                origin?: components["schemas"]["ValidationOrigin"] | null;
                 /** @description `true` when the validation belongs to the playground. */
                 is_playground?: boolean;
                 created_at?: components["schemas"]["TimestampUTC"];
@@ -6608,6 +6864,510 @@ export interface components {
                 quota?: components["schemas"]["BillingSubscriptionQuotaMeta"];
             };
         };
+        /**
+         * @description Attributes of the validation carried by the `validation.*` events. It is a deliberate selection of what `GET /v1/validations/{id}` returns: what is needed to decide what to do without fetching the validation, with no personal data and no retry policy.
+         *
+         *     Optional fields only appear when the validation has them. `retry_state` travels only in the three `validation.retry.*` events and `payment_status` only in `validation.returned`.
+         */
+        WebhookValidationEventAttributes: {
+            /**
+             * @description Validation mode: `direct` (fields entered by hand) or `ocr` (reading of the receipt image).
+             * @example direct
+             * @enum {string}
+             */
+            validation_type: "direct" | "ocr";
+            /**
+             * @description Validation state at the time of the event. The values are those of `status` in `GET /v1/validations/{id}`.
+             * @example valid
+             * @enum {string}
+             */
+            status: "queued" | "processing" | "valid" | "not_found" | "cep_unavailable" | "invalid" | "returned" | "failed" | "error";
+            /**
+             * @description Verdict reported by Banxico (`valid`, `not_found`, `cep_unavailable`, `invalid`, `returned` or `error`), or `pending` while there is none.
+             * @example valid
+             */
+            banxico_status: string | null;
+            /**
+             * @description Milliseconds spent processing the validation.
+             * @example 1320
+             */
+            processing_time_ms: number | null;
+            created_at: components["schemas"]["TimestampUTC"];
+            /** @description Completion date of the validation; `null` while it has not finished. */
+            completed_at: components["schemas"]["TimestampUTC"] | null;
+            /**
+             * @description OCR reading score, from 0 to 1. Only on `ocr` validations. The reading itself estimates it and Banxico does not confirm it, so it is not meant to decide whether to release a payment.
+             * @example 0.94
+             */
+            ocr_confidence?: number | null;
+            /** @description Stable code of why the validation was not confirmed, the same one `GET /v1/validations/{id}` returns. It only appears when the validation has one. */
+            error_code?: components["schemas"]["ValidationErrorCode"];
+            /**
+             * @description Human-readable text that accompanies `error_code`. It only appears when the validation has one.
+             * @example Banxico no respondió tras tres intentos.
+             */
+            error_message?: string;
+            /**
+             * @description Reference of your own sent when the validation was created, returned as sent. It only appears when the request included it.
+             * @example orden-4812
+             */
+            client_ref?: string;
+            /** @description Which of the `candidate_accounts` sent won. It only appears when the request carried that list and an account matched; the full account does not travel in the event. */
+            candidate_match?: {
+                /**
+                 * @description Position, from 0, of the winning account in the list sent.
+                 * @example 1
+                 */
+                index: number;
+                /**
+                 * @description Last 4 digits of the winning account.
+                 * @example 7771
+                 */
+                account_last4: string;
+            };
+            /**
+             * @description `true` when the account used for the Banxico query is one of the client's own accounts (the one sent, one of the candidates or one of its beneficiaries). With `false`, compare `banxico_confirmed.beneficiaryAccount` with your account before releasing the order.
+             * @example true
+             */
+            account_cross_checked?: boolean;
+            /** @description Earlier validation of the same transfer (same account and same tracking key) that had already confirmed it. Use it to avoid releasing two orders for one payment. Without a duplicate, it is not sent. */
+            duplicate_of?: {
+                /**
+                 * Format: uuid
+                 * @description Identifier of the earlier validation.
+                 * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+                 */
+                id: string;
+                created_at: components["schemas"]["TimestampUTC"];
+            };
+            /** @description State of the automatic retry cycle. It only travels in `validation.retry.scheduled`, `validation.retry.resolved` and `validation.retry.exhausted`; it does not include the configured policy. */
+            retry_state?: {
+                /**
+                 * @description `true` when the validation has retries configured.
+                 * @example true
+                 */
+                enabled?: boolean;
+                /**
+                 * @description Retries completed so far.
+                 * @example 2
+                 */
+                attempts_completed?: number;
+                /** @description Date of the next retry; `null` when none is scheduled. */
+                next_attempt_at?: components["schemas"]["TimestampUTC"] | null;
+                /** @description Date when a retry produced `valid`; `null` until that happens. */
+                resolved_at?: components["schemas"]["TimestampUTC"] | null;
+                /** @description Date when the attempts ran out; `null` until that happens. */
+                exhausted_at?: components["schemas"]["TimestampUTC"] | null;
+                /** @description Date the cycle was cancelled; `null` until that happens. */
+                cancelled_at?: components["schemas"]["TimestampUTC"] | null;
+                /**
+                 * @description Cycle state: `pending`, `resolved`, `exhausted` or `cancelled`; `null` when there is no cycle.
+                 * @example pending
+                 * @enum {string|null}
+                 */
+                terminal_state?: "pending" | "resolved" | "exhausted" | "cancelled" | null;
+            };
+            /**
+             * @description What Banxico determined was actually paid, not what the image showed. It only appears when the CEP is confirmed: with `banxico_status` `valid`, or `returned` if the receipt was downloaded before the reversal. It carries no names or tax IDs, and the beneficiary account is masked to its last 4 digits.
+             *
+             *     Compare `amount` and `beneficiaryAccount` with your order before releasing merchandise or service.
+             */
+            banxico_confirmed?: {
+                /**
+                 * @description Transfer amount, in pesos.
+                 * @example 1000.5
+                 */
+                amount?: number | null;
+                /**
+                 * @description Operation date, as Banxico reports it.
+                 * @example 21-07-2026
+                 */
+                operationDate?: string | null;
+                /**
+                 * @description Operation time, as Banxico reports it.
+                 * @example 13:45:02
+                 */
+                processingTime?: string | null;
+                /**
+                 * @description Tracking key of the transfer.
+                 * @example MBAN01002607211345ABCDEF
+                 */
+                trackingKey?: string | null;
+                /**
+                 * @description Sending bank.
+                 * @example BBVA
+                 */
+                senderBank?: string | null;
+                /**
+                 * @description Receiving bank.
+                 * @example AZTECA
+                 */
+                receiverBank?: string | null;
+                /**
+                 * @description Beneficiary account, masked to its last 4 digits.
+                 * @example ••••5678
+                 */
+                beneficiaryAccount?: string | null;
+            };
+            /** @description Payment status that gave the return away. It only travels in `validation.returned`. */
+            payment_status?: {
+                /**
+                 * @description Official payment status according to Banxico. In this event it can only be `devuelto` or `en_proceso_devolucion`.
+                 * @example devuelto
+                 * @enum {string}
+                 */
+                code?: "devuelto" | "en_proceso_devolucion";
+                /**
+                 * @description Human-readable text of the status.
+                 * @example Devuelto
+                 */
+                label?: string;
+                /**
+                 * @description `false` in this event: the transfer no longer counts as settled.
+                 * @example false
+                 */
+                settled?: boolean;
+                /**
+                 * @description `true` in this event: the transfer was returned or is being returned.
+                 * @example true
+                 */
+                reversed?: boolean;
+                checked_at?: components["schemas"]["TimestampUTC"];
+            };
+        };
+        /** @description Links of the validation. The CEP ones only appear when it exists. */
+        WebhookValidationEventLinks: {
+            /**
+             * @description Path of the validation details.
+             * @example /v1/validations/3fa85f64-5717-4562-b3fc-2c963f66afa6
+             */
+            self: string;
+            /**
+             * @description Path of the CEP in XML. It only appears when the CEP exists.
+             * @example /v1/validations/3fa85f64-5717-4562-b3fc-2c963f66afa6/cep?format=xml
+             */
+            cep_xml?: string;
+            /**
+             * @description Path of the CEP in PDF. It only appears when the CEP exists.
+             * @example /v1/validations/3fa85f64-5717-4562-b3fc-2c963f66afa6/cep?format=pdf
+             */
+            cep_pdf?: string;
+        };
+        /**
+         * @description Body of the deliveries of the seven validation events: `validation.completed`, `validation.failed`, `validation.error`, `validation.returned` and the three `validation.retry.*`.
+         *
+         *     It follows the shape of a JSON:API resource of the API (`data.type`, `data.id`, `data.attributes`, `data.links`), with the `meta.datetime` of the responses.
+         */
+        WebhookValidationEvent: {
+            /**
+             * @description Event type. It matches the `X-Veriko-Event` header.
+             * @example validation.completed
+             * @enum {string}
+             */
+            event: "validation.completed" | "validation.failed" | "validation.error" | "validation.returned" | "validation.retry.scheduled" | "validation.retry.resolved" | "validation.retry.exhausted";
+            timestamp: components["schemas"]["TimestampUTC"];
+            data: components["schemas"]["JsonApiResourceBase"] & {
+                /**
+                 * @description Resource type. Always `validation`.
+                 * @example validation
+                 * @enum {string}
+                 */
+                type: "validation";
+                /**
+                 * Format: uuid
+                 * @description Validation identifier.
+                 * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+                 */
+                id: string;
+                attributes: components["schemas"]["WebhookValidationEventAttributes"];
+                links: components["schemas"]["WebhookValidationEventLinks"];
+            };
+            /** @description Date format descriptor, the same `meta.datetime` the API responses carry. */
+            meta: {
+                datetime?: {
+                    /**
+                     * @description Time zone of every date in the event.
+                     * @example UTC
+                     * @enum {string}
+                     */
+                    timezone?: "UTC";
+                    /**
+                     * @description Format of the dates in the event.
+                     * @example ISO 8601
+                     * @enum {string}
+                     */
+                    format?: "ISO 8601";
+                };
+            };
+        };
+        /** @description Summary shape of `validation.error`, emitted when the processing of a validation ends in `max_retries_exceeded`, `network` or `captcha`. It does not carry the full resource: only the affected validation and the reason. Fetch `GET /v1/validations/{id}` for the detail. */
+        WebhookValidationErrorSummaryEvent: {
+            /**
+             * @description Event type. It matches the `X-Veriko-Event` header.
+             * @example validation.error
+             * @enum {string}
+             */
+            event: "validation.error";
+            timestamp: components["schemas"]["TimestampUTC"];
+            /** @description Affected validation and reason for the error. */
+            data: {
+                /**
+                 * Format: uuid
+                 * @description Validation identifier.
+                 * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+                 */
+                validation_id: string;
+                error_code: components["schemas"]["ValidationErrorCode"];
+                /**
+                 * @description Human-readable error text, truncated when long.
+                 * @example Banxico no respondió tras tres intentos.
+                 */
+                error_message: string;
+                /** @description Always `null`: the rows of a bulk import do not emit this event. */
+                batch_id?: null;
+            };
+        };
+        /** @description Body of `billing.payment_succeeded`: emitted when the payment of an invoice is confirmed. It is not a copy of what the payment processor sends: it is a shape of its own, stable even if the processor changes version. It only produces deliveries while billing is enabled. */
+        WebhookBillingPaymentSucceededEvent: {
+            /**
+             * @description Event type. It matches the `X-Veriko-Event` header.
+             * @example billing.payment_succeeded
+             * @enum {string}
+             */
+            event: "billing.payment_succeeded";
+            timestamp: components["schemas"]["TimestampUTC"];
+            /** @description Data of the confirmed payment. */
+            data: {
+                /**
+                 * @description Invoice identifier at the payment processor. It works as an idempotency key on your side.
+                 * @example in_1QxAbC2eZvKYlo2C
+                 */
+                invoice_id: string;
+                /**
+                 * Format: uuid
+                 * @description Identifier of the user who owns the endpoint.
+                 * @example 550e8400-e29b-41d4-a716-446655440000
+                 */
+                user_id: string;
+                /**
+                 * @description Plan identifier, for example `pro`; `null` when it could not be determined.
+                 * @example pro
+                 */
+                plan_slug?: string | null;
+                /**
+                 * @description Amount paid, in the smallest unit of the currency (cents).
+                 * @example 49900
+                 */
+                amount_paid_minor: number;
+                /**
+                 * @description Currency of the amount, in ISO 4217.
+                 * @example MXN
+                 */
+                currency: string;
+                /** @description Start of the billed period. */
+                period_start?: components["schemas"]["TimestampUTC"] | null;
+                /** @description End of the billed period. */
+                period_end?: components["schemas"]["TimestampUTC"] | null;
+                /** @description Moment the payment was confirmed. */
+                paid_at?: components["schemas"]["TimestampUTC"] | null;
+            };
+        };
+        /** @description Body of `billing.payment_failed`: emitted when the charge of an invoice fails. `due_date` lets you work out the window to tell the user to update their card. It is not a copy of what the payment processor sends: it is a shape of its own, stable even if the processor changes version. It only produces deliveries while billing is enabled. */
+        WebhookBillingPaymentFailedEvent: {
+            /**
+             * @description Event type. It matches the `X-Veriko-Event` header.
+             * @example billing.payment_failed
+             * @enum {string}
+             */
+            event: "billing.payment_failed";
+            timestamp: components["schemas"]["TimestampUTC"];
+            /** @description Data of the failed charge. */
+            data: {
+                /**
+                 * @description Invoice identifier at the payment processor. It works as an idempotency key on your side.
+                 * @example in_1QxAbC2eZvKYlo2C
+                 */
+                invoice_id: string;
+                /**
+                 * Format: uuid
+                 * @description Identifier of the user who owns the endpoint.
+                 * @example 550e8400-e29b-41d4-a716-446655440000
+                 */
+                user_id: string;
+                /**
+                 * @description Plan identifier, for example `pro`; `null` when it could not be determined.
+                 * @example pro
+                 */
+                plan_slug?: string | null;
+                /**
+                 * @description Amount due, in the smallest unit of the currency (cents).
+                 * @example 49900
+                 */
+                amount_due_minor: number;
+                /**
+                 * @description Currency of the amount, in ISO 4217.
+                 * @example MXN
+                 */
+                currency: string;
+                /** @description Due date of the invoice. */
+                due_date?: components["schemas"]["TimestampUTC"] | null;
+                /** @description Start of the billed period. */
+                period_start?: components["schemas"]["TimestampUTC"] | null;
+                /** @description End of the billed period. */
+                period_end?: components["schemas"]["TimestampUTC"] | null;
+            };
+        };
+        /** @description Body of `billing.trial_will_end`: emitted about 3 days before the trial period of a subscription ends. It is not a copy of what the payment processor sends: it is a shape of its own, stable even if the processor changes version. It only produces deliveries while billing is enabled. */
+        WebhookBillingTrialWillEndEvent: {
+            /**
+             * @description Event type. It matches the `X-Veriko-Event` header.
+             * @example billing.trial_will_end
+             * @enum {string}
+             */
+            event: "billing.trial_will_end";
+            timestamp: components["schemas"]["TimestampUTC"];
+            /** @description Data of the subscription on trial. */
+            data: {
+                /**
+                 * @description Subscription identifier at the payment processor.
+                 * @example sub_1QxAbC2eZvKYlo2C
+                 */
+                subscription_id: string;
+                /**
+                 * Format: uuid
+                 * @description Identifier of the user who owns the endpoint.
+                 * @example 550e8400-e29b-41d4-a716-446655440000
+                 */
+                user_id: string;
+                /**
+                 * @description Plan identifier, for example `pro`; `null` when it could not be determined.
+                 * @example pro
+                 */
+                plan_slug?: string | null;
+                /** @description Date the trial ends. */
+                trial_end?: components["schemas"]["TimestampUTC"] | null;
+                /**
+                 * @description Currency of the amount, in ISO 4217.
+                 * @example MXN
+                 */
+                currency: string;
+                /**
+                 * @description Billing interval of the subscription: `month`, `year` or `once`.
+                 * @example month
+                 */
+                billing_interval: string;
+            };
+        };
+        /** @description Body of `billing.subscription_canceled`: emitted when a subscription ends up canceled. It is not a copy of what the payment processor sends: it is a shape of its own, stable even if the processor changes version. It only produces deliveries while billing is enabled. */
+        WebhookBillingSubscriptionCanceledEvent: {
+            /**
+             * @description Event type. It matches the `X-Veriko-Event` header.
+             * @example billing.subscription_canceled
+             * @enum {string}
+             */
+            event: "billing.subscription_canceled";
+            timestamp: components["schemas"]["TimestampUTC"];
+            /** @description Data of the canceled subscription. */
+            data: {
+                /**
+                 * @description Subscription identifier at the payment processor.
+                 * @example sub_1QxAbC2eZvKYlo2C
+                 */
+                subscription_id: string;
+                /**
+                 * Format: uuid
+                 * @description Identifier of the user who owns the endpoint.
+                 * @example 550e8400-e29b-41d4-a716-446655440000
+                 */
+                user_id: string;
+                /**
+                 * @description Plan identifier, for example `pro`; `null` when it could not be determined.
+                 * @example pro
+                 */
+                plan_slug?: string | null;
+                /** @description Moment of the cancellation. */
+                canceled_at?: components["schemas"]["TimestampUTC"] | null;
+                /** @description End of the current period. */
+                current_period_end?: components["schemas"]["TimestampUTC"] | null;
+                /**
+                 * @description `true` if the cancellation was scheduled for the end of the current period.
+                 * @example false
+                 */
+                cancel_at_period_end: boolean;
+            };
+        };
+        /** @description Body of `billing.invoice_upcoming`: informational notice ahead of the charge. The invoice does not exist yet at the payment processor, so it carries no `invoice_id`. It is not a copy of what the payment processor sends: it is a shape of its own, stable even if the processor changes version. It only produces deliveries while billing is enabled. */
+        WebhookBillingInvoiceUpcomingEvent: {
+            /**
+             * @description Event type. It matches the `X-Veriko-Event` header.
+             * @example billing.invoice_upcoming
+             * @enum {string}
+             */
+            event: "billing.invoice_upcoming";
+            timestamp: components["schemas"]["TimestampUTC"];
+            /** @description Data of the upcoming charge. */
+            data: {
+                /**
+                 * @description Subscription identifier at the payment processor. `null` when the upcoming invoice is not tied to one.
+                 * @example sub_1QxAbC2eZvKYlo2C
+                 */
+                subscription_id: string | null;
+                /**
+                 * Format: uuid
+                 * @description Identifier of the user who owns the endpoint.
+                 * @example 550e8400-e29b-41d4-a716-446655440000
+                 */
+                user_id: string;
+                /**
+                 * @description Plan identifier, for example `pro`; `null` when it could not be determined.
+                 * @example pro
+                 */
+                plan_slug?: string | null;
+                /**
+                 * @description Amount to be charged, in the smallest unit of the currency (cents).
+                 * @example 49900
+                 */
+                amount_due_minor: number;
+                /**
+                 * @description Currency of the amount, in ISO 4217.
+                 * @example MXN
+                 */
+                currency: string;
+                /** @description Expected date of the next charge attempt. */
+                next_payment_attempt?: components["schemas"]["TimestampUTC"] | null;
+            };
+        };
+        /** @description Body of the test delivery that `POST /v1/webhooks/{id}/test` sends. It does not count towards automatic deactivation and is not retried. */
+        WebhookTestEvent: {
+            /**
+             * @description Event type. It matches the `X-Veriko-Event` header.
+             * @example test
+             * @enum {string}
+             */
+            event: "test";
+            timestamp: components["schemas"]["TimestampUTC"];
+            data: components["schemas"]["JsonApiResourceBase"] & {
+                /**
+                 * @description Resource type. Always `test`.
+                 * @example test
+                 * @enum {string}
+                 */
+                type: "test";
+                /**
+                 * @description Test identifier, with a `test_` prefix. It changes on every send.
+                 * @example test_a1b2c3d4e5f60718
+                 */
+                id: string;
+                /** @description Test data. */
+                attributes: {
+                    /**
+                     * @description Fixed text that identifies the delivery as a test.
+                     * @example Este es un webhook de prueba de Veriko.
+                     */
+                    message: string;
+                };
+            };
+        };
     };
     responses: {
         /**
@@ -6770,6 +7530,22 @@ export interface components {
                 ETag?: string;
                 /** @description Absolute path (host-relative) of the queued validation. Equivalent to `/v1/validations/{data.id}`. */
                 Location?: string;
+                /** @description Only present when the request included the `Idempotency-Key` header. `false` marks a fresh response; `true` marks a response reused from the idempotency cache, which remains valid for 24 hours per account, endpoint, and key. */
+                "Idempotent-Replayed"?: "true" | "false";
+                /** @description Date when this operation was marked as deprecated (November 11, 2026, RFC 8594). Spanish field names stop being accepted on March 1, 2027 (see the `Sunset` header). */
+                Deprecation?: string;
+                /** @description Date when Spanish field names stop being accepted (March 1, 2027). */
+                Sunset?: string;
+                /** @description Migration guide to English field names. */
+                Link?: string;
+                /** @description Monthly validation cap of the account plan. Emitted when quota is enabled. */
+                "X-Quota-Limit"?: number;
+                /** @description Validations consumed in the current cycle. */
+                "X-Quota-Used"?: number;
+                /** @description Validations remaining in the current cycle. */
+                "X-Quota-Remaining"?: number;
+                /** @description End of the current cycle in ISO 8601 UTC, when the quota renews. */
+                "X-Quota-Reset"?: string;
                 [name: string]: unknown;
             };
             content: {
@@ -6777,7 +7553,7 @@ export interface components {
             };
         };
         /**
-         * @description A request with the same `Idempotency-Key` is still being processed. The client must retry after the number of seconds indicated by the `Retry-After` header. In-flight rows older than `idempotency.in_flight_timeout_seconds` (300 by default) are automatically treated as zombies and cleaned up on the next attempt.
+         * @description A request with the same `Idempotency-Key` is still being processed. The client must retry after the number of seconds indicated by the `Retry-After` header.
          * @example {
          *       "errors": [
          *         {
@@ -6872,6 +7648,18 @@ export interface components {
         ValidationId: string;
         /** @description **ETag** received in a previous response, sent as is (weak `W/"…"` on a validation, strong on the public catalogs). If the resource has not changed, the server responds `304 Not Modified` (no body) and avoids sending the data again. */
         IfNoneMatchHeader: string;
+        /** @description Classic delivery signature: `sha256=` followed by the HMAC-SHA256, in hexadecimal, of the body exactly as received, computed with the endpoint secret. Compare it in constant time. */
+        WebhookSignatureHeader: string;
+        /** @description Delivery signature that includes the attempt time: `t=<Unix seconds>,v1=<hex>`, where `v1` is the HMAC-SHA256 of `<t>.<body>` with the endpoint secret. Each retry carries its own `t`; the recommended tolerance window is 5 minutes against `t`, not against the `timestamp` field of the body. */
+        WebhookSignatureTimestampedHeader: string;
+        /** @description Only during the 24 hours after the secret is regenerated: the same timestamped signature, with the same `t`, computed with the previous secret. It lets the receiver keep verifying deliveries while it adopts the new secret; outside that window it is not sent. */
+        WebhookSignatureOldHeader: string;
+        /** @description Event type that originated the delivery, for example `validation.completed`. It is the same value as the `event` field of the body. */
+        WebhookEventHeader: string;
+        /** @description Delivery identifier, the same one `GET /v1/webhooks/{id}/deliveries` shows. It stays stable across the retries of one delivery: use it to discard duplicates. */
+        WebhookDeliveryIdHeader: string;
+        /** @description Send time of this attempt, in ISO 8601 UTC with a `Z` suffix. It is not signed: to discard an old delivery that someone replays, use `t` from the timestamped signature. */
+        WebhookTimestampHeader: string;
     };
     requestBodies: never;
     headers: never;
@@ -6906,6 +7694,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
         };
     };
     validateDirect: {
@@ -6932,6 +7721,20 @@ export interface operations {
                 headers: {
                     /** @description Only present when the request included the `Idempotency-Key` header. `false` marks a fresh response; `true` marks a response reused from the idempotency cache, which remains valid for 24 hours per account, endpoint, and key. */
                     "Idempotent-Replayed"?: "true" | "false";
+                    /** @description Date when this operation was marked as deprecated (11 November 2026, RFC 8594). Spanish field names stop being accepted on 1 March 2027 (see the `Sunset` header). */
+                    Deprecation?: string;
+                    /** @description Date when Spanish field names stop being accepted (1 March 2027). */
+                    Sunset?: string;
+                    /** @description Migration guide to English field names. */
+                    Link?: string;
+                    /** @description Monthly validation cap of the account plan. Emitted when quota is enabled. */
+                    "X-Quota-Limit"?: number;
+                    /** @description Validations consumed in the current cycle. */
+                    "X-Quota-Used"?: number;
+                    /** @description Validations remaining in the current cycle. */
+                    "X-Quota-Remaining"?: number;
+                    /** @description End of the current cycle in ISO 8601 UTC, when the quota renews. */
+                    "X-Quota-Reset"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6953,7 +7756,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             409: components["responses"]["IdempotencyKeyInProgress"];
             413: components["responses"]["PayloadTooLarge"];
-            /** @description Request validation failed. Typical codes: `tracking_key_or_reference_required`, `required` (amount; `send_date` only when there is nothing to guess it from, with `send_date_required` in the body), `invalid_date`, `invalid_amount`, `invalid_account_format`, `invalid_account_length`, `invalid_clabe_checksum`, `invalid_card_luhn`, `invalid_bank_code` (`sender_bank`/`receiver_bank` not recognized), `intra_bank_no_cep` (sender and receiver are the same bank), `invalid_field_type` (a field that must be text arrived as an array or object — e.g. `sender_bank`, `receiver_bank`, or `numeric_reference`), `invalid_recipient_is_bank`, `alias_conflict` (the Spanish and English names of the same field with different values), `retry_policy_invalid`, `retry_pending_cap_exceeded`, `account_and_candidates_mutually_exclusive` (`beneficiary_account` and `candidate_accounts` together), `candidate_accounts_invalid` (the list does not hold from 2 up to the current maximum of valid, distinct accounts) and `account_unresolvable_after_probes` (no candidate matched the transfer). Also emitted when an `Idempotency-Key` is reused with a different body (`idempotency_key_reused`). When the submitted data contradicts itself, the request is rejected before Banxico is queried with `preflight_failed` and per-field detail in `errors` (`clabe_receiver_mismatch` and `card_receiver_mismatch`: the account belongs to a bank other than `receiver_bank`; `account_invalid_luhn`; `tracking_key_date_mismatch`; `tracking_key_invalid_length`). It is also rejected with `preflight_failed` when `beneficiary_account` is missing (`account_required`), and when `send_date` is missing with nothing to guess it from (`send_date_required`): with `candidate_accounts`, because the account probe needs the date, or alongside any other preflight error. Outside those cases a request without `send_date` is not rejected: the service tries candidate dates (RN-VALID-013). Each field's own errors also arrive with their `code`: from the account (`account_invalid_checksum`, `account_invalid_format`, `account_invalid_length`, `account_unknown_bin`, `account_unknown_prefix`), from the amount (`amount_invalid`, `amount_invalid_precision`, `amount_required`), from the date (`send_date_future`, `send_date_invalid`), from the banks (`receiver_bank_unresolvable`, `sender_bank_unresolvable`) and from the tracking key (`clave_rastreo_looks_like_referencia`, `fecha_before_cep_era`, `tracking_required`). No `preflight_failed` rejection on this route consumes quota, whether the data contradicts itself, a field is malformed or the account is absent. */
+            /** @description The request data is invalid. It responds with an HTTP status `422` (with `code` in the body). Codes for this operation: `account_and_candidates_mutually_exclusive`, `candidate_accounts_invalid`, `alias_conflict`; the rest are in {% concept slug="errors-taxonomy" %}the error taxonomy{% /concept %}. No `preflight_failed` rejection consumes quota. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -7047,6 +7850,20 @@ export interface operations {
                 headers: {
                     /** @description Present only when the client sent `Idempotency-Key`. `false` for fresh responses; `true` when replayed from cache. */
                     "Idempotent-Replayed"?: "true" | "false";
+                    /** @description Date when this operation was marked as deprecated (11 November 2026, RFC 8594). Spanish field names stop being accepted on 1 March 2027 (see the `Sunset` header). */
+                    Deprecation?: string;
+                    /** @description Date when Spanish field names stop being accepted (1 March 2027). */
+                    Sunset?: string;
+                    /** @description Migration guide to English field names. */
+                    Link?: string;
+                    /** @description Monthly validation cap of the account plan. Emitted when quota is enabled. */
+                    "X-Quota-Limit"?: number;
+                    /** @description Validations consumed in the current cycle. */
+                    "X-Quota-Used"?: number;
+                    /** @description Validations remaining in the current cycle. */
+                    "X-Quota-Remaining"?: number;
+                    /** @description End of the current cycle in ISO 8601 UTC, when the quota renews. */
+                    "X-Quota-Reset"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7068,7 +7885,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             409: components["responses"]["IdempotencyKeyInProgress"];
             413: components["responses"]["PayloadTooLarge"];
-            /** @description The image or request data is invalid. Possible codes: `image_or_image_url_required`, `invalid_image`, `invalid_image_format`, `image_too_large`, `invalid_url`, `invalid_url_scheme`, `url_ssrf_blocked`, `invalid_clabe_checksum`, `image_too_small`, `image_mime_mismatch`, `image_dimensions_too_large`, `image_decompression_bomb`, `image_polyglot_detected`, `image_url_unreachable`, `image_url_too_large`, `image_url_too_many_redirects`. With a PDF: `pdf_invalid_structure`, `pdf_encrypted`, `pdf_active_content`, `pdf_hidden_content`, `pdf_modified_after_issue`, `pdf_too_many_pages`, `pdf_unsupported_image`, `pdf_text_layer_too_large`, and `pdf_multiple_receipts`. With a `retain_image` that is not a boolean: `invalid_retain_image`. With `candidate_accounts`: `account_and_candidates_mutually_exclusive`, `candidate_accounts_invalid` and, when no candidate matches, `account_unresolvable_after_probes`. When the receipt account is ambiguous among candidates or is masked and cannot be resolved, the error is `cuenta_ambiguous`, `cuenta_ambiguous_in_whitelist`, `masked_account_no_suffix` or `masked_account_unresolvable`. `alias_conflict` (the Spanish and English names of the same field with different values). In asynchronous mode, a generic image failure is reported as `image_invalid`. Reusing `Idempotency-Key` with a different body produces `idempotency_key_reused`. */
+            /** @description The image or request data is invalid. It responds with an HTTP status `422` (with `code` in the body). Codes for this operation: `account_and_candidates_mutually_exclusive`, `candidate_accounts_invalid`, `alias_conflict`, `invalid_retain_image`; the rest are in {% concept slug="errors-taxonomy" %}the error taxonomy{% /concept %}. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -7147,7 +7964,7 @@ export interface operations {
                  */
                 to?: string;
                 /**
-                 * @description Case-insensitive text search over the submitted, normalized, and Banxico response data. `%` and `_` are treated as literal characters, and the 100-character limit is counted per character (not per byte), so an accented letter is never split in half. If the text, once spaces and hyphens are removed, is made up only of digits, that separator-free form is also matched against the beneficiary account.
+                 * @description Filter — Case-insensitive text search over the submitted, normalized, and Banxico response data. `%` and `_` are treated as literal characters, and the 100-character limit is counted per character, not per byte. When the text, once spaces and hyphens are removed, is made up only of digits, that separator-free form is also matched against the beneficiary account.
                  * @example scotiabank
                  */
                 search?: string;
@@ -7182,7 +7999,7 @@ export interface operations {
                  */
                 banks?: string;
                 /**
-                 * @description Inclusive minimum amount, as a number. The server also tolerates sending it as text with a thousands separator or a currency symbol ("1,000.50", "$500") and normalizes it with the same algorithm used across the platform, but the contract is a number: a typed client should send it that way. A non-empty value that isn't recognized as a number returns HTTP status `422` with `invalid_filter`, instead of being silently ignored. Applied independently of `amount_max`.
+                 * @description Filter — Inclusive minimum amount, as a number. The server also tolerates sending it as text with a thousands separator or a currency symbol ("1,000.50", "$500") and normalizes it with its algorithm, but the contract is a number. A value that isn't recognized as a number returns HTTP status `422` with `invalid_filter`. Applied independently of `amount_max`.
                  * @example 1000.5
                  */
                 amount_min?: number;
@@ -7206,6 +8023,12 @@ export interface operations {
             /** @description Paginated list of validations with pagination metadata. */
             200: {
                 headers: {
+                    /** @description Date when this operation was marked as deprecated (11 November 2026, RFC 8594). Spanish field names stop being accepted on 1 March 2027 (see the `Sunset` header). */
+                    Deprecation?: string;
+                    /** @description Date when Spanish field names stop being accepted (1 March 2027). */
+                    Sunset?: string;
+                    /** @description Migration guide to English field names. */
+                    Link?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -7236,6 +8059,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     validationStats: {
@@ -7339,6 +8163,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     exportValidations: {
@@ -7453,6 +8278,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     getValidation: {
@@ -7477,11 +8303,25 @@ export interface operations {
                     ETag?: string;
                     /** @description Seconds to wait before the next poll. Only present in `queued` and `processing` states. */
                     "Retry-After"?: number;
+                    /** @description Date when this operation was marked as deprecated (11 November 2026, RFC 8594). Spanish field names stop being accepted on 1 March 2027 (see the `Sunset` header). */
+                    Deprecation?: string;
+                    /** @description Date when Spanish field names stop being accepted (1 March 2027). */
+                    Sunset?: string;
+                    /** @description Migration guide to English field names. */
+                    Link?: string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["SuccessEnvelope"] & {
-                        data?: components["schemas"]["Validation"];
+                        data?: components["schemas"]["Validation"] & {
+                            attributes?: {
+                                /**
+                                 * @description Name of the user who owns the validation. Only present when the validation belongs to a user account.
+                                 * @example María López
+                                 */
+                                user_name?: string;
+                            };
+                        };
                     };
                 };
             };
@@ -7556,6 +8396,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     deleteValidation: {
@@ -7647,6 +8488,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     downloadCep: {
@@ -7784,12 +8626,16 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     sendCepToTelegram: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional client-generated key (Stripe-style) that guarantees the request is processed **exactly once** within a 24-hour TTL. The scope is `(user_id, endpoint, key)`. Retries with the same key and the same body return the byte-for-byte cached response with the `Idempotent-Replayed: true` header, without consuming rate-limit quota, without re-firing webhooks, and without creating a new `validations` row. Same key with a different body → 422 `idempotency_key_reused`. Same key with an in-flight request → 409 `idempotency_key_in_progress`. `5xx`, `429`, `408`, `401` and `403` responses are not cached (retries with the same key are processed for real); the other `4xx` responses (`400`, `404`, `409`, `422`) are cached and replayed. Format: 1–255 characters, alphanumeric + `_` + `-`. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKeyHeader"];
+            };
             path: {
                 /** @description Validation UUID. */
                 id: components["parameters"]["ValidationId"];
@@ -7801,6 +8647,8 @@ export interface operations {
             /** @description CEP delivery was accepted and is pending delivery to the linked Telegram chat. */
             202: {
                 headers: {
+                    /** @description Only present when the request included the `Idempotency-Key` header. `false` marks a fresh response; `true` marks a response reused from the idempotency cache, which remains valid for 24 hours per account, endpoint, and key. */
+                    "Idempotent-Replayed"?: "true" | "false";
                     [name: string]: unknown;
                 };
                 content: {
@@ -7933,6 +8781,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
             /**
              * @description Delivery could not be started (`dispatch_failed`).
              * @example {
@@ -8083,6 +8932,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     listValidationRetryAttempts: {
@@ -8179,6 +9029,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     updateValidationRetryPolicy: {
@@ -8283,6 +9134,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     cancelValidationRetries: {
@@ -8423,6 +9275,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     recheckValidation: {
@@ -8442,11 +9295,25 @@ export interface operations {
                 headers: {
                     /** @description Weak ETag of the validation after the query. It follows the `W/"{etag_version}-{status}"` format and rises on every query, even when the verdict does not change. */
                     ETag?: string;
+                    /** @description Date when this operation was marked as deprecated (11 November 2026, RFC 8594). Spanish field names stop being accepted on 1 March 2027 (see the `Sunset` header). */
+                    Deprecation?: string;
+                    /** @description Date when Spanish field names stop being accepted (1 March 2027). */
+                    Sunset?: string;
+                    /** @description Migration guide to English field names. */
+                    Link?: string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["SuccessEnvelope"] & {
-                        data?: components["schemas"]["Validation"];
+                        data?: components["schemas"]["Validation"] & {
+                            attributes?: {
+                                /**
+                                 * @description Name of the user who owns the validation. Only present when the validation belongs to a user account.
+                                 * @example María López
+                                 */
+                                user_name?: string;
+                            };
+                        };
                         meta?: {
                             recheck?: components["schemas"]["ValidationRecheckMeta"];
                         };
@@ -8843,6 +9710,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     lookupBin: {
@@ -8964,7 +9832,8 @@ export interface operations {
              *         {
              *           "status": "404",
              *           "code": "spei_calendar_year_not_covered",
-             *           "detail": "We do not have the calendar for 2030. The available years run from 2024 to 2026."
+             *           "detail": "We do not have the calendar for 2030.",
+             *           "hint": "Request a year from 2024 to 2026."
              *         }
              *       ],
              *       "meta": {
@@ -8989,7 +9858,8 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "spei_calendar_year_not_covered",
-                     *           "detail": "No tenemos el calendario de 2030. Los años disponibles van de 2024 a 2026."
+                     *           "detail": "No tenemos el calendario de 2030.",
+                     *           "hint": "Pide un año de 2024 a 2026."
                      *         }
                      *       ],
                      *       "meta": {
@@ -9018,7 +9888,7 @@ export interface operations {
              *         {
              *           "status": "422",
              *           "code": "spei_calendar_year_invalid",
-             *           "detail": "The year must have four digits, for example 2026."
+             *           "detail": "The year does not have four digits."
              *         }
              *       ]
              *     }
@@ -9034,7 +9904,7 @@ export interface operations {
                      *         {
                      *           "status": "422",
                      *           "code": "spei_calendar_year_invalid",
-                     *           "detail": "El año debe tener cuatro dígitos, por ejemplo 2026."
+                     *           "detail": "El año no tiene cuatro dígitos."
                      *         }
                      *       ],
                      *       "meta": {
@@ -9090,6 +9960,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
         };
     };
     listBeneficiaries: {
@@ -9118,6 +9989,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
         };
     };
     createBeneficiary: {
@@ -9195,6 +10067,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     updateBeneficiary: {
@@ -9302,6 +10175,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     deleteBeneficiary: {
@@ -9362,6 +10236,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     validateAccount: {
@@ -9429,6 +10304,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
         };
     };
     lookupBeneficiaryAccount: {
@@ -9500,6 +10376,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     downloadBeneficiaryImportTemplate: {
@@ -9566,6 +10443,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     createBeneficiaryImport: {
@@ -9642,6 +10520,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     getBeneficiaryImport: {
@@ -9704,6 +10583,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     cancelBeneficiaryImport: {
@@ -9764,6 +10644,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     getBeneficiaryImportPreview: {
@@ -9847,6 +10728,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     deleteBeneficiaryImportRow: {
@@ -9888,6 +10770,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     patchBeneficiaryImportRow: {
@@ -10014,6 +10897,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     commitBeneficiaryImport: {
@@ -10093,6 +10977,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     exportApiUsage: {
@@ -10137,6 +11022,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
         };
     };
     getApiUsage: {
@@ -10160,6 +11046,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
         };
     };
     getDashboardSummary: {
@@ -10180,6 +11067,12 @@ export interface operations {
             /** @description Dashboard summary for the authenticated user. */
             200: {
                 headers: {
+                    /** @description Date when this operation was marked as deprecated (11 November 2026, RFC 8594). Spanish field names stop being accepted on 1 March 2027 (see the `Sunset` header). */
+                    Deprecation?: string;
+                    /** @description Date when Spanish field names stop being accepted (1 March 2027). */
+                    Sunset?: string;
+                    /** @description Migration guide to English field names. */
+                    Link?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -10189,6 +11082,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
         };
     };
     getMyRetryPolicy: {
@@ -10210,6 +11104,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
         };
     };
     updateMyRetryPolicy: {
@@ -10266,6 +11161,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     banxicoPublicStatus: {
@@ -10291,6 +11187,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
         };
     };
     banxicoPublicTimeseries: {
@@ -10327,6 +11224,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
         };
     };
     listWebhooks: {
@@ -10390,7 +11288,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             413: components["responses"]["PayloadTooLarge"];
-            /** @description The URL, the event list, or `description` failed validation, or the account has reached its endpoint cap. `webhook_url_invalid_type` and `webhook_description_invalid_type` fire when the field arrives as a type other than a string; `webhook_description_too_long` when `description` exceeds 255 characters. Every field-level error carries `source.pointer`. */
+            /** @description The URL, the event list, or `description` failed validation, or the account has reached its endpoint cap. It responds with an HTTP status `422` (with `code` in the body); the code inventory is in {% concept slug="errors-taxonomy" %}the error taxonomy{% /concept %}. Every field-level error carries `source.pointer`. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -11164,6 +12062,7 @@ export interface operations {
                     "application/json": components["schemas"]["PlanComparisonResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     getUsageSummary: {
@@ -11192,6 +12091,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
         };
     };
     getUsageHistory: {
@@ -11220,6 +12120,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
         };
     };
     getUsageBreakdown: {
@@ -11282,6 +12183,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
         };
     };
     getUsageLimits: {
@@ -11304,6 +12206,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
         };
     };
     getUsageHeatmap: {
@@ -11332,6 +12235,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
         };
     };
     getUserInsightsOverview: {
@@ -11360,6 +12264,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
         };
     };
     getUserInsightsTrends: {
@@ -11401,6 +12306,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
         };
     };
     getUserInsightsTopBanks: {
@@ -11440,6 +12346,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
         };
     };
     getUserInsightsTopBeneficiaries: {
@@ -11474,6 +12381,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
         };
     };
     getFinanceSummary: {
@@ -11501,6 +12409,12 @@ export interface operations {
                 headers: {
                     /** @description Private cache directive with stale-while-revalidate. */
                     "Cache-Control"?: string;
+                    /** @description Date when this operation was marked as deprecated (11 November 2026, RFC 8594). Spanish field names stop being accepted on 1 March 2027 (see the `Sunset` header). */
+                    Deprecation?: string;
+                    /** @description Date when Spanish field names stop being accepted (1 March 2027). */
+                    Sunset?: string;
+                    /** @description Migration guide to English field names. */
+                    Link?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -11526,6 +12440,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     getFinanceStatement: {
@@ -11592,6 +12507,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
             /** @description `pdf_render_failed`, `xlsx_render_failed` or `csv_stream_failed`: retry with another format. */
             500: {
                 headers: {
@@ -11668,8 +12584,9 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
             /**
-             * @description `pdf_render_failed`: PDF renderer crashed (OOM/font). Try CSV or XLSX.
+             * @description `pdf_render_failed`: the PDF could not be generated. Retry or request CSV or XLSX.
              * @example {
              *       "errors": [
              *         {
@@ -11769,8 +12686,9 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
             /**
-             * @description `pdf_render_failed`: PDF renderer crashed. Try CSV or XLSX.
+             * @description `pdf_render_failed`: the PDF could not be generated. Retry or request CSV or XLSX.
              * @example {
              *       "errors": [
              *         {
@@ -11870,8 +12788,9 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
             /**
-             * @description `pdf_render_failed`: PDF renderer crashed. Try CSV or XLSX.
+             * @description `pdf_render_failed`: the PDF could not be generated. Retry or request CSV or XLSX.
              * @example {
              *       "errors": [
              *         {
@@ -11976,8 +12895,9 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
             /**
-             * @description `pdf_render_failed`: PDF renderer crashed. Try CSV or XLSX.
+             * @description `pdf_render_failed`: the PDF could not be generated. Retry or request CSV or XLSX.
              * @example {
              *       "errors": [
              *         {
@@ -12108,6 +13028,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     listFinanceCepExports: {
@@ -12130,6 +13051,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
         };
     };
     createFinanceCepExport: {
@@ -12159,6 +13081,8 @@ export interface operations {
                 headers: {
                     /** @description Path of the export, to check its state. */
                     Location?: string;
+                    /** @description Only present when the request included the `Idempotency-Key` header. `false` marks a fresh response; `true` marks a response reused from the idempotency cache, which remains valid for 24 hours per account, endpoint, and key. */
+                    "Idempotent-Replayed"?: "true" | "false";
                     [name: string]: unknown;
                 };
                 content: {
@@ -12282,6 +13206,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     downloadFinanceCepExport: {
@@ -12343,6 +13268,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            429: components["responses"]["RateLimited"];
         };
     };
     billingGetSubscription: {
@@ -12364,6 +13290,1180 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    receiveValidationCompletedWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Classic delivery signature: `sha256=` followed by the HMAC-SHA256, in hexadecimal, of the body exactly as received, computed with the endpoint secret. Compare it in constant time. */
+                "X-Webhook-Signature": components["parameters"]["WebhookSignatureHeader"];
+                /** @description Delivery signature that includes the attempt time: `t=<Unix seconds>,v1=<hex>`, where `v1` is the HMAC-SHA256 of `<t>.<body>` with the endpoint secret. Each retry carries its own `t`; the recommended tolerance window is 5 minutes against `t`, not against the `timestamp` field of the body. */
+                "X-Webhook-Signature-Timestamped": components["parameters"]["WebhookSignatureTimestampedHeader"];
+                /** @description Only during the 24 hours after the secret is regenerated: the same timestamped signature, with the same `t`, computed with the previous secret. It lets the receiver keep verifying deliveries while it adopts the new secret; outside that window it is not sent. */
+                "X-Webhook-Signature-Old"?: components["parameters"]["WebhookSignatureOldHeader"];
+                /** @description Event type that originated the delivery, for example `validation.completed`. It is the same value as the `event` field of the body. */
+                "X-Veriko-Event": components["parameters"]["WebhookEventHeader"];
+                /** @description Delivery identifier, the same one `GET /v1/webhooks/{id}/deliveries` shows. It stays stable across the retries of one delivery: use it to discard duplicates. */
+                "X-Veriko-Delivery-Id": components["parameters"]["WebhookDeliveryIdHeader"];
+                /** @description Send time of this attempt, in ISO 8601 UTC with a `Z` suffix. It is not signed: to discard an old delivery that someone replays, use `t` from the timestamped signature. */
+                "X-Veriko-Timestamp": components["parameters"]["WebhookTimestampHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "event": "validation.completed",
+                 *       "timestamp": "2026-07-21T05:00:05Z",
+                 *       "data": {
+                 *         "type": "validation",
+                 *         "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                 *         "attributes": {
+                 *           "validation_type": "direct",
+                 *           "status": "valid",
+                 *           "banxico_status": "valid",
+                 *           "processing_time_ms": 1320,
+                 *           "created_at": "2026-07-21T05:00:00Z",
+                 *           "completed_at": "2026-07-21T05:00:05Z",
+                 *           "client_ref": "orden-4812",
+                 *           "banxico_confirmed": {
+                 *             "amount": 1000.5,
+                 *             "operationDate": "21-07-2026",
+                 *             "processingTime": "13:45:02",
+                 *             "trackingKey": "MBAN01002607211345ABCDEF",
+                 *             "senderBank": "BBVA",
+                 *             "receiverBank": "AZTECA",
+                 *             "beneficiaryAccount": "••••5678"
+                 *           }
+                 *         },
+                 *         "links": {
+                 *           "self": "/v1/validations/3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                 *           "cep_xml": "/v1/validations/3fa85f64-5717-4562-b3fc-2c963f66afa6/cep?format=xml",
+                 *           "cep_pdf": "/v1/validations/3fa85f64-5717-4562-b3fc-2c963f66afa6/cep?format=pdf"
+                 *         }
+                 *       },
+                 *       "meta": {
+                 *         "datetime": {
+                 *           "timezone": "UTC",
+                 *           "format": "ISO 8601"
+                 *         }
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["WebhookValidationEvent"] & {
+                    /** @constant */
+                    event?: "validation.completed";
+                };
+            };
+        };
+        responses: {
+            /** @description Receiver temporarily saturated. The delivery is retried on the retry schedule. */
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver rate limiting. The delivery is retried on the retry schedule. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Delivery accepted. Any `2xx` status counts it as received and it is not retried; the body of your response is kept truncated to 2,048 bytes in the delivery history. */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Any other `4xx` signals a misconfigured receiver, and repeating the request does not fix it: the delivery is not retried and counts as a failure. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver error, network down or timeout. The delivery is retried on the retry schedule. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    receiveValidationFailedWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Classic delivery signature: `sha256=` followed by the HMAC-SHA256, in hexadecimal, of the body exactly as received, computed with the endpoint secret. Compare it in constant time. */
+                "X-Webhook-Signature": components["parameters"]["WebhookSignatureHeader"];
+                /** @description Delivery signature that includes the attempt time: `t=<Unix seconds>,v1=<hex>`, where `v1` is the HMAC-SHA256 of `<t>.<body>` with the endpoint secret. Each retry carries its own `t`; the recommended tolerance window is 5 minutes against `t`, not against the `timestamp` field of the body. */
+                "X-Webhook-Signature-Timestamped": components["parameters"]["WebhookSignatureTimestampedHeader"];
+                /** @description Only during the 24 hours after the secret is regenerated: the same timestamped signature, with the same `t`, computed with the previous secret. It lets the receiver keep verifying deliveries while it adopts the new secret; outside that window it is not sent. */
+                "X-Webhook-Signature-Old"?: components["parameters"]["WebhookSignatureOldHeader"];
+                /** @description Event type that originated the delivery, for example `validation.completed`. It is the same value as the `event` field of the body. */
+                "X-Veriko-Event": components["parameters"]["WebhookEventHeader"];
+                /** @description Delivery identifier, the same one `GET /v1/webhooks/{id}/deliveries` shows. It stays stable across the retries of one delivery: use it to discard duplicates. */
+                "X-Veriko-Delivery-Id": components["parameters"]["WebhookDeliveryIdHeader"];
+                /** @description Send time of this attempt, in ISO 8601 UTC with a `Z` suffix. It is not signed: to discard an old delivery that someone replays, use `t` from the timestamped signature. */
+                "X-Veriko-Timestamp": components["parameters"]["WebhookTimestampHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "event": "validation.failed",
+                 *       "timestamp": "2026-07-21T05:00:05Z",
+                 *       "data": {
+                 *         "type": "validation",
+                 *         "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                 *         "attributes": {
+                 *           "validation_type": "direct",
+                 *           "status": "failed",
+                 *           "banxico_status": "pending",
+                 *           "processing_time_ms": 1320,
+                 *           "created_at": "2026-07-21T05:00:00Z",
+                 *           "completed_at": "2026-07-21T05:00:05Z",
+                 *           "client_ref": "orden-4812",
+                 *           "error_code": "not_found_identity",
+                 *           "error_message": "No se encontró la operación con la fecha, el criterio y los bancos enviados."
+                 *         },
+                 *         "links": {
+                 *           "self": "/v1/validations/3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                 *         }
+                 *       },
+                 *       "meta": {
+                 *         "datetime": {
+                 *           "timezone": "UTC",
+                 *           "format": "ISO 8601"
+                 *         }
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["WebhookValidationEvent"] & {
+                    /** @constant */
+                    event?: "validation.failed";
+                };
+            };
+        };
+        responses: {
+            /** @description Receiver temporarily saturated. The delivery is retried on the retry schedule. */
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver rate limiting. The delivery is retried on the retry schedule. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Delivery accepted. Any `2xx` status counts it as received and it is not retried; the body of your response is kept truncated to 2,048 bytes in the delivery history. */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Any other `4xx` signals a misconfigured receiver, and repeating the request does not fix it: the delivery is not retried and counts as a failure. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver error, network down or timeout. The delivery is retried on the retry schedule. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    receiveValidationErrorWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Classic delivery signature: `sha256=` followed by the HMAC-SHA256, in hexadecimal, of the body exactly as received, computed with the endpoint secret. Compare it in constant time. */
+                "X-Webhook-Signature": components["parameters"]["WebhookSignatureHeader"];
+                /** @description Delivery signature that includes the attempt time: `t=<Unix seconds>,v1=<hex>`, where `v1` is the HMAC-SHA256 of `<t>.<body>` with the endpoint secret. Each retry carries its own `t`; the recommended tolerance window is 5 minutes against `t`, not against the `timestamp` field of the body. */
+                "X-Webhook-Signature-Timestamped": components["parameters"]["WebhookSignatureTimestampedHeader"];
+                /** @description Only during the 24 hours after the secret is regenerated: the same timestamped signature, with the same `t`, computed with the previous secret. It lets the receiver keep verifying deliveries while it adopts the new secret; outside that window it is not sent. */
+                "X-Webhook-Signature-Old"?: components["parameters"]["WebhookSignatureOldHeader"];
+                /** @description Event type that originated the delivery, for example `validation.completed`. It is the same value as the `event` field of the body. */
+                "X-Veriko-Event": components["parameters"]["WebhookEventHeader"];
+                /** @description Delivery identifier, the same one `GET /v1/webhooks/{id}/deliveries` shows. It stays stable across the retries of one delivery: use it to discard duplicates. */
+                "X-Veriko-Delivery-Id": components["parameters"]["WebhookDeliveryIdHeader"];
+                /** @description Send time of this attempt, in ISO 8601 UTC with a `Z` suffix. It is not signed: to discard an old delivery that someone replays, use `t` from the timestamped signature. */
+                "X-Veriko-Timestamp": components["parameters"]["WebhookTimestampHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "event": "validation.error",
+                 *       "timestamp": "2026-07-21T05:00:05Z",
+                 *       "data": {
+                 *         "type": "validation",
+                 *         "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                 *         "attributes": {
+                 *           "validation_type": "direct",
+                 *           "status": "error",
+                 *           "banxico_status": "error",
+                 *           "processing_time_ms": 1320,
+                 *           "created_at": "2026-07-21T05:00:00Z",
+                 *           "completed_at": "2026-07-21T05:00:05Z",
+                 *           "client_ref": "orden-4812",
+                 *           "error_code": "internal_error",
+                 *           "error_message": "La validación no pudo completarse."
+                 *         },
+                 *         "links": {
+                 *           "self": "/v1/validations/3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                 *         }
+                 *       },
+                 *       "meta": {
+                 *         "datetime": {
+                 *           "timezone": "UTC",
+                 *           "format": "ISO 8601"
+                 *         }
+                 *       }
+                 *     }
+                 */
+                "application/json": (components["schemas"]["WebhookValidationEvent"] & {
+                    /** @constant */
+                    event?: "validation.error";
+                }) | components["schemas"]["WebhookValidationErrorSummaryEvent"];
+            };
+        };
+        responses: {
+            /** @description Receiver temporarily saturated. The delivery is retried on the retry schedule. */
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver rate limiting. The delivery is retried on the retry schedule. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Delivery accepted. Any `2xx` status counts it as received and it is not retried; the body of your response is kept truncated to 2,048 bytes in the delivery history. */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Any other `4xx` signals a misconfigured receiver, and repeating the request does not fix it: the delivery is not retried and counts as a failure. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver error, network down or timeout. The delivery is retried on the retry schedule. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    receiveValidationRetryScheduledWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Classic delivery signature: `sha256=` followed by the HMAC-SHA256, in hexadecimal, of the body exactly as received, computed with the endpoint secret. Compare it in constant time. */
+                "X-Webhook-Signature": components["parameters"]["WebhookSignatureHeader"];
+                /** @description Delivery signature that includes the attempt time: `t=<Unix seconds>,v1=<hex>`, where `v1` is the HMAC-SHA256 of `<t>.<body>` with the endpoint secret. Each retry carries its own `t`; the recommended tolerance window is 5 minutes against `t`, not against the `timestamp` field of the body. */
+                "X-Webhook-Signature-Timestamped": components["parameters"]["WebhookSignatureTimestampedHeader"];
+                /** @description Only during the 24 hours after the secret is regenerated: the same timestamped signature, with the same `t`, computed with the previous secret. It lets the receiver keep verifying deliveries while it adopts the new secret; outside that window it is not sent. */
+                "X-Webhook-Signature-Old"?: components["parameters"]["WebhookSignatureOldHeader"];
+                /** @description Event type that originated the delivery, for example `validation.completed`. It is the same value as the `event` field of the body. */
+                "X-Veriko-Event": components["parameters"]["WebhookEventHeader"];
+                /** @description Delivery identifier, the same one `GET /v1/webhooks/{id}/deliveries` shows. It stays stable across the retries of one delivery: use it to discard duplicates. */
+                "X-Veriko-Delivery-Id": components["parameters"]["WebhookDeliveryIdHeader"];
+                /** @description Send time of this attempt, in ISO 8601 UTC with a `Z` suffix. It is not signed: to discard an old delivery that someone replays, use `t` from the timestamped signature. */
+                "X-Veriko-Timestamp": components["parameters"]["WebhookTimestampHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "event": "validation.retry.scheduled",
+                 *       "timestamp": "2026-07-21T05:00:05Z",
+                 *       "data": {
+                 *         "type": "validation",
+                 *         "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                 *         "attributes": {
+                 *           "validation_type": "direct",
+                 *           "status": "processing",
+                 *           "banxico_status": "pending",
+                 *           "processing_time_ms": 1320,
+                 *           "created_at": "2026-07-21T05:00:00Z",
+                 *           "completed_at": null,
+                 *           "client_ref": "orden-4812",
+                 *           "retry_state": {
+                 *             "enabled": true,
+                 *             "attempts_completed": 1,
+                 *             "next_attempt_at": "2026-07-21T05:05:05Z",
+                 *             "resolved_at": null,
+                 *             "exhausted_at": null,
+                 *             "cancelled_at": null,
+                 *             "terminal_state": "pending"
+                 *           }
+                 *         },
+                 *         "links": {
+                 *           "self": "/v1/validations/3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                 *         }
+                 *       },
+                 *       "meta": {
+                 *         "datetime": {
+                 *           "timezone": "UTC",
+                 *           "format": "ISO 8601"
+                 *         }
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["WebhookValidationEvent"] & {
+                    /** @constant */
+                    event?: "validation.retry.scheduled";
+                };
+            };
+        };
+        responses: {
+            /** @description Receiver temporarily saturated. The delivery is retried on the retry schedule. */
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver rate limiting. The delivery is retried on the retry schedule. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Delivery accepted. Any `2xx` status counts it as received and it is not retried; the body of your response is kept truncated to 2,048 bytes in the delivery history. */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Any other `4xx` signals a misconfigured receiver, and repeating the request does not fix it: the delivery is not retried and counts as a failure. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver error, network down or timeout. The delivery is retried on the retry schedule. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    receiveValidationRetryResolvedWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Classic delivery signature: `sha256=` followed by the HMAC-SHA256, in hexadecimal, of the body exactly as received, computed with the endpoint secret. Compare it in constant time. */
+                "X-Webhook-Signature": components["parameters"]["WebhookSignatureHeader"];
+                /** @description Delivery signature that includes the attempt time: `t=<Unix seconds>,v1=<hex>`, where `v1` is the HMAC-SHA256 of `<t>.<body>` with the endpoint secret. Each retry carries its own `t`; the recommended tolerance window is 5 minutes against `t`, not against the `timestamp` field of the body. */
+                "X-Webhook-Signature-Timestamped": components["parameters"]["WebhookSignatureTimestampedHeader"];
+                /** @description Only during the 24 hours after the secret is regenerated: the same timestamped signature, with the same `t`, computed with the previous secret. It lets the receiver keep verifying deliveries while it adopts the new secret; outside that window it is not sent. */
+                "X-Webhook-Signature-Old"?: components["parameters"]["WebhookSignatureOldHeader"];
+                /** @description Event type that originated the delivery, for example `validation.completed`. It is the same value as the `event` field of the body. */
+                "X-Veriko-Event": components["parameters"]["WebhookEventHeader"];
+                /** @description Delivery identifier, the same one `GET /v1/webhooks/{id}/deliveries` shows. It stays stable across the retries of one delivery: use it to discard duplicates. */
+                "X-Veriko-Delivery-Id": components["parameters"]["WebhookDeliveryIdHeader"];
+                /** @description Send time of this attempt, in ISO 8601 UTC with a `Z` suffix. It is not signed: to discard an old delivery that someone replays, use `t` from the timestamped signature. */
+                "X-Veriko-Timestamp": components["parameters"]["WebhookTimestampHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "event": "validation.retry.resolved",
+                 *       "timestamp": "2026-07-21T05:00:05Z",
+                 *       "data": {
+                 *         "type": "validation",
+                 *         "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                 *         "attributes": {
+                 *           "validation_type": "direct",
+                 *           "status": "valid",
+                 *           "banxico_status": "valid",
+                 *           "processing_time_ms": 1320,
+                 *           "created_at": "2026-07-21T05:00:00Z",
+                 *           "completed_at": "2026-07-21T05:00:05Z",
+                 *           "client_ref": "orden-4812",
+                 *           "banxico_confirmed": {
+                 *             "amount": 1000.5,
+                 *             "operationDate": "21-07-2026",
+                 *             "processingTime": "13:45:02",
+                 *             "trackingKey": "MBAN01002607211345ABCDEF",
+                 *             "senderBank": "BBVA",
+                 *             "receiverBank": "AZTECA",
+                 *             "beneficiaryAccount": "••••5678"
+                 *           },
+                 *           "retry_state": {
+                 *             "enabled": true,
+                 *             "attempts_completed": 2,
+                 *             "next_attempt_at": null,
+                 *             "resolved_at": "2026-07-21T05:05:05Z",
+                 *             "exhausted_at": null,
+                 *             "cancelled_at": null,
+                 *             "terminal_state": "resolved"
+                 *           }
+                 *         },
+                 *         "links": {
+                 *           "self": "/v1/validations/3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                 *           "cep_xml": "/v1/validations/3fa85f64-5717-4562-b3fc-2c963f66afa6/cep?format=xml",
+                 *           "cep_pdf": "/v1/validations/3fa85f64-5717-4562-b3fc-2c963f66afa6/cep?format=pdf"
+                 *         }
+                 *       },
+                 *       "meta": {
+                 *         "datetime": {
+                 *           "timezone": "UTC",
+                 *           "format": "ISO 8601"
+                 *         }
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["WebhookValidationEvent"] & {
+                    /** @constant */
+                    event?: "validation.retry.resolved";
+                };
+            };
+        };
+        responses: {
+            /** @description Receiver temporarily saturated. The delivery is retried on the retry schedule. */
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver rate limiting. The delivery is retried on the retry schedule. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Delivery accepted. Any `2xx` status counts it as received and it is not retried; the body of your response is kept truncated to 2,048 bytes in the delivery history. */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Any other `4xx` signals a misconfigured receiver, and repeating the request does not fix it: the delivery is not retried and counts as a failure. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver error, network down or timeout. The delivery is retried on the retry schedule. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    receiveValidationRetryExhaustedWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Classic delivery signature: `sha256=` followed by the HMAC-SHA256, in hexadecimal, of the body exactly as received, computed with the endpoint secret. Compare it in constant time. */
+                "X-Webhook-Signature": components["parameters"]["WebhookSignatureHeader"];
+                /** @description Delivery signature that includes the attempt time: `t=<Unix seconds>,v1=<hex>`, where `v1` is the HMAC-SHA256 of `<t>.<body>` with the endpoint secret. Each retry carries its own `t`; the recommended tolerance window is 5 minutes against `t`, not against the `timestamp` field of the body. */
+                "X-Webhook-Signature-Timestamped": components["parameters"]["WebhookSignatureTimestampedHeader"];
+                /** @description Only during the 24 hours after the secret is regenerated: the same timestamped signature, with the same `t`, computed with the previous secret. It lets the receiver keep verifying deliveries while it adopts the new secret; outside that window it is not sent. */
+                "X-Webhook-Signature-Old"?: components["parameters"]["WebhookSignatureOldHeader"];
+                /** @description Event type that originated the delivery, for example `validation.completed`. It is the same value as the `event` field of the body. */
+                "X-Veriko-Event": components["parameters"]["WebhookEventHeader"];
+                /** @description Delivery identifier, the same one `GET /v1/webhooks/{id}/deliveries` shows. It stays stable across the retries of one delivery: use it to discard duplicates. */
+                "X-Veriko-Delivery-Id": components["parameters"]["WebhookDeliveryIdHeader"];
+                /** @description Send time of this attempt, in ISO 8601 UTC with a `Z` suffix. It is not signed: to discard an old delivery that someone replays, use `t` from the timestamped signature. */
+                "X-Veriko-Timestamp": components["parameters"]["WebhookTimestampHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "event": "validation.retry.exhausted",
+                 *       "timestamp": "2026-07-21T05:00:05Z",
+                 *       "data": {
+                 *         "type": "validation",
+                 *         "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                 *         "attributes": {
+                 *           "validation_type": "direct",
+                 *           "status": "not_found",
+                 *           "banxico_status": "not_found",
+                 *           "processing_time_ms": 1320,
+                 *           "created_at": "2026-07-21T05:00:00Z",
+                 *           "completed_at": "2026-07-21T05:00:05Z",
+                 *           "client_ref": "orden-4812",
+                 *           "retry_state": {
+                 *             "enabled": true,
+                 *             "attempts_completed": 3,
+                 *             "next_attempt_at": null,
+                 *             "resolved_at": null,
+                 *             "exhausted_at": "2026-07-21T05:35:05Z",
+                 *             "cancelled_at": null,
+                 *             "terminal_state": "exhausted"
+                 *           }
+                 *         },
+                 *         "links": {
+                 *           "self": "/v1/validations/3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                 *         }
+                 *       },
+                 *       "meta": {
+                 *         "datetime": {
+                 *           "timezone": "UTC",
+                 *           "format": "ISO 8601"
+                 *         }
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["WebhookValidationEvent"] & {
+                    /** @constant */
+                    event?: "validation.retry.exhausted";
+                };
+            };
+        };
+        responses: {
+            /** @description Receiver temporarily saturated. The delivery is retried on the retry schedule. */
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver rate limiting. The delivery is retried on the retry schedule. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Delivery accepted. Any `2xx` status counts it as received and it is not retried; the body of your response is kept truncated to 2,048 bytes in the delivery history. */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Any other `4xx` signals a misconfigured receiver, and repeating the request does not fix it: the delivery is not retried and counts as a failure. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver error, network down or timeout. The delivery is retried on the retry schedule. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    receiveValidationReturnedWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Classic delivery signature: `sha256=` followed by the HMAC-SHA256, in hexadecimal, of the body exactly as received, computed with the endpoint secret. Compare it in constant time. */
+                "X-Webhook-Signature": components["parameters"]["WebhookSignatureHeader"];
+                /** @description Delivery signature that includes the attempt time: `t=<Unix seconds>,v1=<hex>`, where `v1` is the HMAC-SHA256 of `<t>.<body>` with the endpoint secret. Each retry carries its own `t`; the recommended tolerance window is 5 minutes against `t`, not against the `timestamp` field of the body. */
+                "X-Webhook-Signature-Timestamped": components["parameters"]["WebhookSignatureTimestampedHeader"];
+                /** @description Only during the 24 hours after the secret is regenerated: the same timestamped signature, with the same `t`, computed with the previous secret. It lets the receiver keep verifying deliveries while it adopts the new secret; outside that window it is not sent. */
+                "X-Webhook-Signature-Old"?: components["parameters"]["WebhookSignatureOldHeader"];
+                /** @description Event type that originated the delivery, for example `validation.completed`. It is the same value as the `event` field of the body. */
+                "X-Veriko-Event": components["parameters"]["WebhookEventHeader"];
+                /** @description Delivery identifier, the same one `GET /v1/webhooks/{id}/deliveries` shows. It stays stable across the retries of one delivery: use it to discard duplicates. */
+                "X-Veriko-Delivery-Id": components["parameters"]["WebhookDeliveryIdHeader"];
+                /** @description Send time of this attempt, in ISO 8601 UTC with a `Z` suffix. It is not signed: to discard an old delivery that someone replays, use `t` from the timestamped signature. */
+                "X-Veriko-Timestamp": components["parameters"]["WebhookTimestampHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "event": "validation.returned",
+                 *       "timestamp": "2026-07-22T09:15:44Z",
+                 *       "data": {
+                 *         "type": "validation",
+                 *         "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                 *         "attributes": {
+                 *           "validation_type": "direct",
+                 *           "status": "returned",
+                 *           "banxico_status": "returned",
+                 *           "processing_time_ms": 1320,
+                 *           "created_at": "2026-07-21T05:00:00Z",
+                 *           "completed_at": "2026-07-21T05:00:05Z",
+                 *           "client_ref": "orden-4812",
+                 *           "banxico_confirmed": {
+                 *             "amount": 1000.5,
+                 *             "operationDate": "21-07-2026",
+                 *             "processingTime": "13:45:02",
+                 *             "trackingKey": "MBAN01002607211345ABCDEF",
+                 *             "senderBank": "BBVA",
+                 *             "receiverBank": "AZTECA",
+                 *             "beneficiaryAccount": "••••5678"
+                 *           },
+                 *           "payment_status": {
+                 *             "code": "devuelto",
+                 *             "label": "Devuelto",
+                 *             "settled": false,
+                 *             "reversed": true,
+                 *             "checked_at": "2026-07-22T09:15:43Z"
+                 *           }
+                 *         },
+                 *         "links": {
+                 *           "self": "/v1/validations/3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                 *           "cep_xml": "/v1/validations/3fa85f64-5717-4562-b3fc-2c963f66afa6/cep?format=xml",
+                 *           "cep_pdf": "/v1/validations/3fa85f64-5717-4562-b3fc-2c963f66afa6/cep?format=pdf"
+                 *         }
+                 *       },
+                 *       "meta": {
+                 *         "datetime": {
+                 *           "timezone": "UTC",
+                 *           "format": "ISO 8601"
+                 *         }
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["WebhookValidationEvent"] & {
+                    /** @constant */
+                    event?: "validation.returned";
+                };
+            };
+        };
+        responses: {
+            /** @description Receiver temporarily saturated. The delivery is retried on the retry schedule. */
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver rate limiting. The delivery is retried on the retry schedule. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Delivery accepted. Any `2xx` status counts it as received and it is not retried; the body of your response is kept truncated to 2,048 bytes in the delivery history. */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Any other `4xx` signals a misconfigured receiver, and repeating the request does not fix it: the delivery is not retried and counts as a failure. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver error, network down or timeout. The delivery is retried on the retry schedule. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    receiveBillingPaymentSucceededWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Classic delivery signature: `sha256=` followed by the HMAC-SHA256, in hexadecimal, of the body exactly as received, computed with the endpoint secret. Compare it in constant time. */
+                "X-Webhook-Signature": components["parameters"]["WebhookSignatureHeader"];
+                /** @description Delivery signature that includes the attempt time: `t=<Unix seconds>,v1=<hex>`, where `v1` is the HMAC-SHA256 of `<t>.<body>` with the endpoint secret. Each retry carries its own `t`; the recommended tolerance window is 5 minutes against `t`, not against the `timestamp` field of the body. */
+                "X-Webhook-Signature-Timestamped": components["parameters"]["WebhookSignatureTimestampedHeader"];
+                /** @description Only during the 24 hours after the secret is regenerated: the same timestamped signature, with the same `t`, computed with the previous secret. It lets the receiver keep verifying deliveries while it adopts the new secret; outside that window it is not sent. */
+                "X-Webhook-Signature-Old"?: components["parameters"]["WebhookSignatureOldHeader"];
+                /** @description Event type that originated the delivery, for example `validation.completed`. It is the same value as the `event` field of the body. */
+                "X-Veriko-Event": components["parameters"]["WebhookEventHeader"];
+                /** @description Delivery identifier, the same one `GET /v1/webhooks/{id}/deliveries` shows. It stays stable across the retries of one delivery: use it to discard duplicates. */
+                "X-Veriko-Delivery-Id": components["parameters"]["WebhookDeliveryIdHeader"];
+                /** @description Send time of this attempt, in ISO 8601 UTC with a `Z` suffix. It is not signed: to discard an old delivery that someone replays, use `t` from the timestamped signature. */
+                "X-Veriko-Timestamp": components["parameters"]["WebhookTimestampHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "event": "billing.payment_succeeded",
+                 *       "timestamp": "2026-07-21T05:00:05Z",
+                 *       "data": {
+                 *         "invoice_id": "in_1QxAbC2eZvKYlo2C",
+                 *         "user_id": "550e8400-e29b-41d4-a716-446655440000",
+                 *         "plan_slug": "pro",
+                 *         "amount_paid_minor": 49900,
+                 *         "currency": "MXN",
+                 *         "period_start": "2026-07-21T00:00:00Z",
+                 *         "period_end": "2026-08-21T00:00:00Z",
+                 *         "paid_at": "2026-07-21T05:00:04Z"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["WebhookBillingPaymentSucceededEvent"];
+            };
+        };
+        responses: {
+            /** @description Receiver temporarily saturated. The delivery is retried on the retry schedule. */
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver rate limiting. The delivery is retried on the retry schedule. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Delivery accepted. Any `2xx` status counts it as received and it is not retried; the body of your response is kept truncated to 2,048 bytes in the delivery history. */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Any other `4xx` signals a misconfigured receiver, and repeating the request does not fix it: the delivery is not retried and counts as a failure. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver error, network down or timeout. The delivery is retried on the retry schedule. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    receiveBillingPaymentFailedWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Classic delivery signature: `sha256=` followed by the HMAC-SHA256, in hexadecimal, of the body exactly as received, computed with the endpoint secret. Compare it in constant time. */
+                "X-Webhook-Signature": components["parameters"]["WebhookSignatureHeader"];
+                /** @description Delivery signature that includes the attempt time: `t=<Unix seconds>,v1=<hex>`, where `v1` is the HMAC-SHA256 of `<t>.<body>` with the endpoint secret. Each retry carries its own `t`; the recommended tolerance window is 5 minutes against `t`, not against the `timestamp` field of the body. */
+                "X-Webhook-Signature-Timestamped": components["parameters"]["WebhookSignatureTimestampedHeader"];
+                /** @description Only during the 24 hours after the secret is regenerated: the same timestamped signature, with the same `t`, computed with the previous secret. It lets the receiver keep verifying deliveries while it adopts the new secret; outside that window it is not sent. */
+                "X-Webhook-Signature-Old"?: components["parameters"]["WebhookSignatureOldHeader"];
+                /** @description Event type that originated the delivery, for example `validation.completed`. It is the same value as the `event` field of the body. */
+                "X-Veriko-Event": components["parameters"]["WebhookEventHeader"];
+                /** @description Delivery identifier, the same one `GET /v1/webhooks/{id}/deliveries` shows. It stays stable across the retries of one delivery: use it to discard duplicates. */
+                "X-Veriko-Delivery-Id": components["parameters"]["WebhookDeliveryIdHeader"];
+                /** @description Send time of this attempt, in ISO 8601 UTC with a `Z` suffix. It is not signed: to discard an old delivery that someone replays, use `t` from the timestamped signature. */
+                "X-Veriko-Timestamp": components["parameters"]["WebhookTimestampHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "event": "billing.payment_failed",
+                 *       "timestamp": "2026-07-21T05:00:05Z",
+                 *       "data": {
+                 *         "invoice_id": "in_1QxAbC2eZvKYlo2C",
+                 *         "user_id": "550e8400-e29b-41d4-a716-446655440000",
+                 *         "plan_slug": "pro",
+                 *         "amount_due_minor": 49900,
+                 *         "currency": "MXN",
+                 *         "due_date": "2026-07-28T00:00:00Z",
+                 *         "period_start": "2026-07-21T00:00:00Z",
+                 *         "period_end": "2026-08-21T00:00:00Z"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["WebhookBillingPaymentFailedEvent"];
+            };
+        };
+        responses: {
+            /** @description Receiver temporarily saturated. The delivery is retried on the retry schedule. */
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver rate limiting. The delivery is retried on the retry schedule. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Delivery accepted. Any `2xx` status counts it as received and it is not retried; the body of your response is kept truncated to 2,048 bytes in the delivery history. */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Any other `4xx` signals a misconfigured receiver, and repeating the request does not fix it: the delivery is not retried and counts as a failure. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver error, network down or timeout. The delivery is retried on the retry schedule. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    receiveBillingTrialWillEndWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Classic delivery signature: `sha256=` followed by the HMAC-SHA256, in hexadecimal, of the body exactly as received, computed with the endpoint secret. Compare it in constant time. */
+                "X-Webhook-Signature": components["parameters"]["WebhookSignatureHeader"];
+                /** @description Delivery signature that includes the attempt time: `t=<Unix seconds>,v1=<hex>`, where `v1` is the HMAC-SHA256 of `<t>.<body>` with the endpoint secret. Each retry carries its own `t`; the recommended tolerance window is 5 minutes against `t`, not against the `timestamp` field of the body. */
+                "X-Webhook-Signature-Timestamped": components["parameters"]["WebhookSignatureTimestampedHeader"];
+                /** @description Only during the 24 hours after the secret is regenerated: the same timestamped signature, with the same `t`, computed with the previous secret. It lets the receiver keep verifying deliveries while it adopts the new secret; outside that window it is not sent. */
+                "X-Webhook-Signature-Old"?: components["parameters"]["WebhookSignatureOldHeader"];
+                /** @description Event type that originated the delivery, for example `validation.completed`. It is the same value as the `event` field of the body. */
+                "X-Veriko-Event": components["parameters"]["WebhookEventHeader"];
+                /** @description Delivery identifier, the same one `GET /v1/webhooks/{id}/deliveries` shows. It stays stable across the retries of one delivery: use it to discard duplicates. */
+                "X-Veriko-Delivery-Id": components["parameters"]["WebhookDeliveryIdHeader"];
+                /** @description Send time of this attempt, in ISO 8601 UTC with a `Z` suffix. It is not signed: to discard an old delivery that someone replays, use `t` from the timestamped signature. */
+                "X-Veriko-Timestamp": components["parameters"]["WebhookTimestampHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "event": "billing.trial_will_end",
+                 *       "timestamp": "2026-07-21T05:00:05Z",
+                 *       "data": {
+                 *         "subscription_id": "sub_1QxAbC2eZvKYlo2C",
+                 *         "user_id": "550e8400-e29b-41d4-a716-446655440000",
+                 *         "plan_slug": "pro",
+                 *         "trial_end": "2026-07-24T05:00:00Z",
+                 *         "currency": "MXN",
+                 *         "billing_interval": "month"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["WebhookBillingTrialWillEndEvent"];
+            };
+        };
+        responses: {
+            /** @description Receiver temporarily saturated. The delivery is retried on the retry schedule. */
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver rate limiting. The delivery is retried on the retry schedule. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Delivery accepted. Any `2xx` status counts it as received and it is not retried; the body of your response is kept truncated to 2,048 bytes in the delivery history. */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Any other `4xx` signals a misconfigured receiver, and repeating the request does not fix it: the delivery is not retried and counts as a failure. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver error, network down or timeout. The delivery is retried on the retry schedule. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    receiveBillingSubscriptionCanceledWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Classic delivery signature: `sha256=` followed by the HMAC-SHA256, in hexadecimal, of the body exactly as received, computed with the endpoint secret. Compare it in constant time. */
+                "X-Webhook-Signature": components["parameters"]["WebhookSignatureHeader"];
+                /** @description Delivery signature that includes the attempt time: `t=<Unix seconds>,v1=<hex>`, where `v1` is the HMAC-SHA256 of `<t>.<body>` with the endpoint secret. Each retry carries its own `t`; the recommended tolerance window is 5 minutes against `t`, not against the `timestamp` field of the body. */
+                "X-Webhook-Signature-Timestamped": components["parameters"]["WebhookSignatureTimestampedHeader"];
+                /** @description Only during the 24 hours after the secret is regenerated: the same timestamped signature, with the same `t`, computed with the previous secret. It lets the receiver keep verifying deliveries while it adopts the new secret; outside that window it is not sent. */
+                "X-Webhook-Signature-Old"?: components["parameters"]["WebhookSignatureOldHeader"];
+                /** @description Event type that originated the delivery, for example `validation.completed`. It is the same value as the `event` field of the body. */
+                "X-Veriko-Event": components["parameters"]["WebhookEventHeader"];
+                /** @description Delivery identifier, the same one `GET /v1/webhooks/{id}/deliveries` shows. It stays stable across the retries of one delivery: use it to discard duplicates. */
+                "X-Veriko-Delivery-Id": components["parameters"]["WebhookDeliveryIdHeader"];
+                /** @description Send time of this attempt, in ISO 8601 UTC with a `Z` suffix. It is not signed: to discard an old delivery that someone replays, use `t` from the timestamped signature. */
+                "X-Veriko-Timestamp": components["parameters"]["WebhookTimestampHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "event": "billing.subscription_canceled",
+                 *       "timestamp": "2026-07-21T05:00:05Z",
+                 *       "data": {
+                 *         "subscription_id": "sub_1QxAbC2eZvKYlo2C",
+                 *         "user_id": "550e8400-e29b-41d4-a716-446655440000",
+                 *         "plan_slug": "pro",
+                 *         "canceled_at": "2026-07-21T05:00:00Z",
+                 *         "current_period_end": "2026-08-21T00:00:00Z",
+                 *         "cancel_at_period_end": false
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["WebhookBillingSubscriptionCanceledEvent"];
+            };
+        };
+        responses: {
+            /** @description Receiver temporarily saturated. The delivery is retried on the retry schedule. */
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver rate limiting. The delivery is retried on the retry schedule. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Delivery accepted. Any `2xx` status counts it as received and it is not retried; the body of your response is kept truncated to 2,048 bytes in the delivery history. */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Any other `4xx` signals a misconfigured receiver, and repeating the request does not fix it: the delivery is not retried and counts as a failure. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver error, network down or timeout. The delivery is retried on the retry schedule. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    receiveBillingInvoiceUpcomingWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Classic delivery signature: `sha256=` followed by the HMAC-SHA256, in hexadecimal, of the body exactly as received, computed with the endpoint secret. Compare it in constant time. */
+                "X-Webhook-Signature": components["parameters"]["WebhookSignatureHeader"];
+                /** @description Delivery signature that includes the attempt time: `t=<Unix seconds>,v1=<hex>`, where `v1` is the HMAC-SHA256 of `<t>.<body>` with the endpoint secret. Each retry carries its own `t`; the recommended tolerance window is 5 minutes against `t`, not against the `timestamp` field of the body. */
+                "X-Webhook-Signature-Timestamped": components["parameters"]["WebhookSignatureTimestampedHeader"];
+                /** @description Only during the 24 hours after the secret is regenerated: the same timestamped signature, with the same `t`, computed with the previous secret. It lets the receiver keep verifying deliveries while it adopts the new secret; outside that window it is not sent. */
+                "X-Webhook-Signature-Old"?: components["parameters"]["WebhookSignatureOldHeader"];
+                /** @description Event type that originated the delivery, for example `validation.completed`. It is the same value as the `event` field of the body. */
+                "X-Veriko-Event": components["parameters"]["WebhookEventHeader"];
+                /** @description Delivery identifier, the same one `GET /v1/webhooks/{id}/deliveries` shows. It stays stable across the retries of one delivery: use it to discard duplicates. */
+                "X-Veriko-Delivery-Id": components["parameters"]["WebhookDeliveryIdHeader"];
+                /** @description Send time of this attempt, in ISO 8601 UTC with a `Z` suffix. It is not signed: to discard an old delivery that someone replays, use `t` from the timestamped signature. */
+                "X-Veriko-Timestamp": components["parameters"]["WebhookTimestampHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "event": "billing.invoice_upcoming",
+                 *       "timestamp": "2026-07-21T05:00:05Z",
+                 *       "data": {
+                 *         "subscription_id": "sub_1QxAbC2eZvKYlo2C",
+                 *         "user_id": "550e8400-e29b-41d4-a716-446655440000",
+                 *         "plan_slug": "pro",
+                 *         "amount_due_minor": 49900,
+                 *         "currency": "MXN",
+                 *         "next_payment_attempt": "2026-08-21T00:00:00Z"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["WebhookBillingInvoiceUpcomingEvent"];
+            };
+        };
+        responses: {
+            /** @description Receiver temporarily saturated. The delivery is retried on the retry schedule. */
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver rate limiting. The delivery is retried on the retry schedule. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Delivery accepted. Any `2xx` status counts it as received and it is not retried; the body of your response is kept truncated to 2,048 bytes in the delivery history. */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Any other `4xx` signals a misconfigured receiver, and repeating the request does not fix it: the delivery is not retried and counts as a failure. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Receiver error, network down or timeout. The delivery is retried on the retry schedule. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    receiveTestWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Classic delivery signature: `sha256=` followed by the HMAC-SHA256, in hexadecimal, of the body exactly as received, computed with the endpoint secret. Compare it in constant time. */
+                "X-Webhook-Signature": components["parameters"]["WebhookSignatureHeader"];
+                /** @description Delivery signature that includes the attempt time: `t=<Unix seconds>,v1=<hex>`, where `v1` is the HMAC-SHA256 of `<t>.<body>` with the endpoint secret. Each retry carries its own `t`; the recommended tolerance window is 5 minutes against `t`, not against the `timestamp` field of the body. */
+                "X-Webhook-Signature-Timestamped": components["parameters"]["WebhookSignatureTimestampedHeader"];
+                /** @description Only during the 24 hours after the secret is regenerated: the same timestamped signature, with the same `t`, computed with the previous secret. It lets the receiver keep verifying deliveries while it adopts the new secret; outside that window it is not sent. */
+                "X-Webhook-Signature-Old"?: components["parameters"]["WebhookSignatureOldHeader"];
+                /** @description Event type that originated the delivery, for example `validation.completed`. It is the same value as the `event` field of the body. */
+                "X-Veriko-Event": components["parameters"]["WebhookEventHeader"];
+                /** @description Delivery identifier, the same one `GET /v1/webhooks/{id}/deliveries` shows. It stays stable across the retries of one delivery: use it to discard duplicates. */
+                "X-Veriko-Delivery-Id": components["parameters"]["WebhookDeliveryIdHeader"];
+                /** @description Send time of this attempt, in ISO 8601 UTC with a `Z` suffix. It is not signed: to discard an old delivery that someone replays, use `t` from the timestamped signature. */
+                "X-Veriko-Timestamp": components["parameters"]["WebhookTimestampHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "event": "test",
+                 *       "timestamp": "2026-07-21T05:00:05Z",
+                 *       "data": {
+                 *         "type": "test",
+                 *         "id": "test_a1b2c3d4e5f60718",
+                 *         "attributes": {
+                 *           "message": "Este es un webhook de prueba de Veriko."
+                 *         }
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["WebhookTestEvent"];
+            };
+        };
+        responses: {
+            /** @description Delivery accepted. Any `2xx` status counts it as received and it is not retried; the body of your response is kept truncated to 2,048 bytes in the delivery history. */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Any status other than `2xx` marks the test as failed. The test is not retried; `POST /v1/webhooks/{id}/test` returns the status received in `http_status`. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
 }
