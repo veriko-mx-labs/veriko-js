@@ -1,16 +1,16 @@
-# @veriko-mx/sdk · JavaScript and TypeScript SDK for the Veriko API
+# @veriko-mx/sdk · SDK de JavaScript y TypeScript para la API de Veriko
 
-Official [Veriko](https://veriko.mx) client for Node.
-It validates Mexican SPEI transfers against the Banco de México CEP, downloads the official
-receipt and verifies webhook signatures.
+Cliente oficial de [Veriko](https://veriko.mx) para Node.
+Valida transferencias SPEI contra el CEP de Banxico, descarga el comprobante oficial y verifica la
+firma de los webhooks.
 
-No runtime dependencies. Types generated from the OpenAPI spec. Node 18 or later, in ESM and
-CommonJS.
+Sin dependencias en tiempo de ejecución. Tipos generados del spec de OpenAPI. Node 18 o superior, en
+ESM y en CommonJS.
 
 ```ts
 import { Veriko } from '@veriko-mx/sdk';
 
-const client = new Veriko(); // reads VERIKO_API_KEY from the environment
+const client = new Veriko(); // lee VERIKO_API_KEY del entorno
 
 const validation = await client.validateTransfer({
   sendDate: '2025-03-15',
@@ -22,105 +22,107 @@ const validation = await client.validateTransfer({
 console.log(validation.attributes.status); // 'valid'
 ```
 
-## What the CEP is
+## Qué es el CEP
 
-The **Comprobante Electrónico de Pago (CEP)** is the document that **Banco de México (Banxico)**
-issues for every transfer that goes through SPEI, the Mexican interbank payment system. It carries
-the digital seal and the original string of the receiving institution, so it proves that a transfer
-happened and for what amount.
+El **Comprobante Electrónico de Pago (CEP)** es el documento que expide el **Banco de México
+(Banxico)** por cada transferencia que pasa por el SPEI, el sistema de pagos interbancarios
+mexicano. Contiene el sello digital y la cadena original de la institución receptora, de modo que
+acredita que una transferencia ocurrió y por qué importe.
 
-The CEP has no tax effect: it does not replace an invoice.
+El CEP no tiene efectos fiscales: no sustituye a una factura.
 
-Banxico offers a portal to look one up by hand, one receipt at a time.
+Su consulta manual se hace en el portal de Banxico, un comprobante a la vez.
 
-## What the API does
+## Qué hace la API
 
-The API looks up the CEP and returns a verdict in the `status` field:
+La API consulta el CEP y devuelve un veredicto en el campo `status`:
 
-| verdict           | meaning                                                                             |
-| ----------------- | ----------------------------------------------------------------------------------- |
-| `queued`          | The API accepted the validation and has not started it                              |
-| `processing`      | The query to Banxico is running                                                     |
-| `valid`           | Banxico returned a CEP that matches the data sent                                   |
-| `not_found`       | Banxico has no CEP with that data. It can be temporary: a CEP takes time to publish |
-| `cep_unavailable` | Banxico could not answer. It says nothing about the transfer                        |
-| `invalid`         | Banxico answered in a way the API does not recognize                                |
-| `returned`        | The payment settled and the beneficiary institution returned it afterwards          |
-| `failed`          | The API rejected the data or stopped because of a problem in the data sent          |
-| `error`           | Processing failed. The reason is in `error_code`                                    |
+| veredicto         | significado                                                                            |
+| ----------------- | -------------------------------------------------------------------------------------- |
+| `queued`          | La API aceptó la validación y todavía no la inicia                                     |
+| `processing`      | La consulta a Banxico está en curso                                                    |
+| `valid`           | Banxico devolvió un CEP que coincide con los datos enviados                            |
+| `not_found`       | Banxico no tiene un CEP con esos datos. Puede ser temporal: un CEP tarda en publicarse |
+| `cep_unavailable` | Banxico no pudo responder. No dice nada sobre la transferencia                         |
+| `invalid`         | Banxico respondió de una forma que la API no reconoce                                  |
+| `returned`        | El pago se liquidó y la institución beneficiaria lo devolvió después                   |
+| `failed`          | La API rechazó los datos o se detuvo por un problema en los datos enviados             |
+| `error`           | Falló el procesamiento. El motivo viaja en `error_code`                                |
 
-With a `valid` verdict, the receipt is available as XML and PDF. A `valid` is the verdict at the
-time of the query: Banxico can report the return up to 72 hours later, and the validation changes
-to `returned`.
+Con veredicto `valid`, el comprobante queda disponible en XML y en PDF. Un `valid` es el veredicto
+del momento de la consulta: Banxico puede reportar la devolución hasta 72 horas después, y la
+validación pasa a `returned`.
 
-## The operation families
+## Las familias de operaciones
 
-The client groups the 75 M2M operations of the API into eleven families:
+El cliente agrupa las 75 operaciones M2M de la API en once familias:
 
-| family                 | what it covers                                                                                                               |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `client.validations`   | Validate by fields or by image, get, list, export, recheck payment status, delete, the retry policy and the receipt download |
-| `client.webhooks`      | Register endpoints, rotate their secret, send a test event and read the delivery history                                     |
-| `client.catalog`       | SPEI bank catalog, SPEI non-business-day calendar, issuing bank of a card and Banxico service status                         |
-| `client.beneficiaries` | Saved beneficiary accounts and the bulk import, as a full cycle                                                              |
-| `client.usage`         | Validation quota, rate limits and the API activity log                                                                       |
-| `client.account`       | Profile and default retry policy of the account                                                                              |
-| `client.dashboard`     | Dashboard summary                                                                                                            |
-| `client.plans`         | Catalog and comparison of public plans, with no API key                                                                      |
-| `client.insights`      | Summary, trends, top banks and top beneficiaries                                                                             |
-| `client.finance`       | Summary, statement, previews, downloads and CEP exports                                                                      |
-| `client.billing`       | Active subscription                                                                                                          |
+| familia                | qué cubre                                                                                                                                                |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `client.validations`   | Validar por campos o por imagen, consultar, listar, exportar, revisar el estado de pago, borrar, la política de reintentos y la descarga del comprobante |
+| `client.webhooks`      | Registrar endpoints, rotar su secreto, enviar un evento de prueba y leer el historial de entregas                                                        |
+| `client.catalog`       | Catálogo de bancos SPEI, calendario de días inhábiles SPEI, banco emisor de una tarjeta y estado del servicio de Banxico                                 |
+| `client.beneficiaries` | Cuentas beneficiarias guardadas y la importación masiva, como ciclo completo                                                                             |
+| `client.usage`         | Cuota de validaciones, límites de tasa y registro de actividad de la API                                                                                 |
+| `client.account`       | Perfil y política de reintentos predeterminada de la cuenta                                                                                              |
+| `client.dashboard`     | Resumen del panel                                                                                                                                        |
+| `client.plans`         | Catálogo y comparación de planes públicos, sin clave de API                                                                                              |
+| `client.insights`      | Resumen, tendencias, bancos y beneficiarios principales                                                                                                  |
+| `client.finance`       | Resumen, estado de cuenta, vistas previas, descargas y exportaciones de CEP                                                                              |
+| `client.billing`       | Suscripción activa                                                                                                                                       |
 
-The three most used operations are also on the client root as shortcuts: `validateTransfer()`,
-`getValidation()` and `getCep()`.
+Las tres operaciones de uso más frecuente están también en la raíz del cliente, como atajo:
+`validateTransfer()`, `getValidation()` y `getCep()`.
 
-## Installation
+## Instalación
 
 ```bash
 npm install @veriko-mx/sdk
 ```
 
-The SDK runs on Node 18 or later, in ESM and CommonJS, and uses only `fetch`, `FormData`,
-`ReadableStream` and `node:crypto`. CI runs the tests on Node 18, 20, 22 and 24. Bun 1.4 runs the
-examples, the streaming downloads and the webhook verification; it is not part of CI. The SDK is not
-tested on Deno, in browsers or on edge runtimes: webhook verification needs `node:crypto`.
+El SDK corre en Node 18 o superior, en ESM y en CommonJS, y sólo usa `fetch`, `FormData`,
+`ReadableStream` y `node:crypto`. El CI corre las pruebas en Node 18, 20, 22 y 24. Bun 1.4 ejecuta
+los ejemplos, las descargas en flujo y la verificación de webhooks; no forma parte del CI. El SDK no
+está probado en Deno, en navegadores ni en entornos de borde: la verificación de webhooks necesita
+`node:crypto`.
 
-While the version is `0.x`, a minor version can adjust the public surface of the SDK. Version
-`1.0.0` is reserved for a stable production integration.
+Mientras la versión sea `0.x`, una versión menor puede ajustar la superficie pública del SDK.
+La versión `1.0.0` se reservará para una integración estable en producción.
 
-## Authentication
+## Autenticación
 
-Get the API key from the dashboard ([app.veriko.mx](https://app.veriko.mx)). It starts with
-`veriko_`. The client reads it from the `VERIKO_API_KEY` environment variable:
+La clave de API se obtiene en el panel ([app.veriko.mx](https://app.veriko.mx)) y empieza con
+`veriko_`. El cliente la toma de la variable de entorno `VERIKO_API_KEY`:
 
 ```bash
-export VERIKO_API_KEY=veriko_your_key_here
+export VERIKO_API_KEY=veriko_tu_clave_aqui
 ```
 
-Only `client.plans.listPublic()` and `client.plans.getPublicPlanComparison()` work without a key,
-and they send no `Authorization` header. Every other call keeps the API authentication: a request
-with no key, or with a key that does not have the shape the dashboard issues (`veriko_` and 64
-lowercase hexadecimal characters), throws `ConfigurationError` before it reaches the network.
+Sólo `client.plans.listPublic()` y `client.plans.getPublicPlanComparison()` se pueden usar sin
+clave y no envían `Authorization`. El resto conserva la autenticación de la API: una petición sin
+clave, o con una clave que no tiene la forma de las que emite el panel (`veriko_` y 64 caracteres
+hexadecimales en minúscula), lanza `ConfigurationError` antes de salir a la red.
 
-The `apiKey` option takes it directly when another mechanism manages it:
+La opción `apiKey` la recibe directamente cuando la gestiona otro mecanismo:
 
 ```ts
-const client = new Veriko({ apiKey: 'veriko_your_key_here' });
+const client = new Veriko({ apiKey: 'veriko_tu_clave_aqui' });
 ```
 
-## Validate a transfer
+## Validar una transferencia
 
-The operation requires the amount, the beneficiary account and **the tracking key or the numeric
-reference**. Sending both narrows the search. The send date is optional: when it is missing or
-unusable, the API tries candidate dates against Banxico, and rejects with `422` (`preflight_failed`
-with `send_date_required`) only when it has nothing to guess it from. The sender and receiver banks
-are optional and improve identification. The API rejects a request with no account with `422`
-(`preflight_failed` with the field error `account_required`) and does not look it up among the saved
-beneficiaries. When the account is not known, `candidateAccounts` replaces `beneficiaryAccount`.
+La operación exige el importe, la cuenta beneficiaria y **la clave de rastreo o la referencia
+numérica**. Enviar las dos precisa la búsqueda. La fecha de envío es opcional: si falta o no es
+utilizable, la API prueba fechas candidatas contra Banxico, y rechaza con `422` (`preflight_failed`
+con `send_date_required`) sólo cuando no tiene datos para adivinarla. El banco emisor y el receptor
+son opcionales y mejoran la identificación. La API rechaza con `422` (`preflight_failed` con el
+error de campo `account_required`) una petición sin cuenta: no la busca entre los beneficiarios
+guardados. Cuando no se sabe cuál fue la cuenta, `candidateAccounts` sustituye a
+`beneficiaryAccount`.
 
-A `preflight_failed` rejection means the data contradicts itself or a field is malformed. It
-happens before Banxico is queried, it consumes no quota, and `error.errors` lists one entry per
-field.
+Un rechazo `preflight_failed` significa que los datos se contradicen o que un campo está mal
+formado. Ocurre antes de consultar a Banxico, no consume cuota y `error.errors` trae una entrada por
+campo.
 
 ```ts
 import { Veriko } from '@veriko-mx/sdk';
@@ -128,64 +130,64 @@ import { Veriko } from '@veriko-mx/sdk';
 const client = new Veriko();
 
 const validation = await client.validateTransfer({
-  sendDate: '2025-03-15', // YYYY-MM-DD, the send date
-  amount: 15000.5, // in pesos, with cents
+  sendDate: '2025-03-15', // YYYY-MM-DD, la fecha de envío
+  amount: 15000.5, // en pesos, con centavos
   trackingKey: 'MXBA20250315001234',
   numericReference: '1234567',
   senderBank: 'BANCO NACIONAL DE MEXICO',
   receiverBank: 'BBVA MEXICO',
-  beneficiaryAccount: '012180004412345678', // CLABE, card or DiMo phone
+  beneficiaryAccount: '012180004412345678', // CLABE, tarjeta o celular DiMo
 });
 
 if (validation.attributes.status === 'valid') {
-  console.log('Payment confirmed in', validation.attributes.processing_time_ms, 'ms');
+  console.log('Pago confirmado en', validation.attributes.processing_time_ms, 'ms');
 }
 ```
 
-Arguments use `camelCase` and travel with the English name the API expects (`send_date`,
-`amount`, `tracking_key`). What the API returns keeps its own names (`banxico_status`,
-`processing_time_ms`), because the type is generated from the spec.
+Los argumentos van en `camelCase` y viajan con el nombre en inglés que la API espera (`send_date`,
+`amount`, `tracking_key`). Lo que la API devuelve conserva el suyo (`banxico_status`,
+`processing_time_ms`), porque es el tipo generado del spec.
 
-`amount` takes a number or a decimal string. The SDK rejects `NaN`, an empty value and a non-numeric
-string with `InvalidRequestError` (`invalid_amount`) before it sends anything.
+`amount` acepta un número o una cadena decimal. El SDK rechaza `NaN`, un valor vacío y una cadena no
+numérica con `InvalidRequestError` (`invalid_amount`) antes de enviar nada.
 
-#### Names from earlier versions
+#### Nombres de versiones anteriores
 
-Field names from earlier versions keep working for existing integrations and emit a
-`DeprecationWarning`. They are not part of the typed API, and a future version removes them. Sending
-an earlier name and its current name together throws `InvalidRequestError` (`alias_conflict`). In
-responses, the current names (`request_data.send_date`, `ocr_result.amount`,
-`normalized_data.tracking_key`, among others) are the ones that serialize.
+Los nombres de campo de versiones anteriores siguen funcionando para las integraciones existentes y
+emiten un `DeprecationWarning`. No forman parte de la API tipada y una versión futura los quitará.
+Enviar un nombre anterior junto con su nombre actual lanza `InvalidRequestError`
+(`alias_conflict`). En las respuestas, los nombres actuales (`request_data.send_date`,
+`ocr_result.amount`, `normalized_data.tracking_key`, entre otros) son los que se serializan.
 
-Every call consumes plan quota, charged when the API accepts the request.
+Cada llamada consume cuota del plan, que se cobra cuando la API acepta la petición.
 
-The per-attempt timeout is 60 seconds by default (`timeoutMs`), because the API can take up to 45
-seconds on a synchronous validation before it answers `202`.
+El tiempo de espera por intento es de 60 segundos de forma predeterminada (`timeoutMs`), porque la
+API puede tardar hasta 45 segundos en una validación síncrona antes de responder `202`.
 
-### From the receipt
+### Desde el comprobante
 
 ```ts
 const validation = await client.validations.validateOcr({
-  image: 'receipt.png', // path, Buffer or Uint8Array
-  beneficiaryAccount: '012180004412345678', // required for a DiMo phone
+  image: 'receipt.png', // ruta, Buffer o Uint8Array
+  beneficiaryAccount: '012180004412345678', // obligatoria para un celular DiMo
 });
 ```
 
-The SDK reads the file and encodes it in base64. `imageUrl` takes a receipt already published over
-HTTPS, and when both `image` and `imageUrl` are sent, the API considers only `image`. Formats: JPEG,
-PNG, WebP or a PDF of 1 to 3 pages, up to 12 MB.
+El SDK lee el archivo y lo codifica en base64. `imageUrl` recibe un comprobante ya publicado por
+HTTPS, y si se envían `image` e `imageUrl` a la vez, la API considera sólo `image`. Formatos: JPEG,
+PNG, WebP o un PDF de 1 a 3 páginas, de hasta 12 MB.
 
-`candidateAccounts` replaces `beneficiaryAccount` when the image does not show the account.
+`candidateAccounts` sustituye a `beneficiaryAccount` cuando la imagen no muestra la cuenta.
 
-`senderBank` and `receiverBank` correct the bank read from the receipt. They carry the 4 or 5 digit
-SPEI code (`'40012'`), which replaces the one read before Banxico is queried. A value in any other
-format, such as a name, is ignored and the one read is kept.
+`senderBank` y `receiverBank` corrigen el banco leído del comprobante. Llevan el código SPEI de 4 o
+5 dígitos (`'40012'`), que reemplaza al leído antes de consultar a Banxico. Un valor en cualquier
+otro formato, como un nombre, se ignora y se conserva el leído.
 
-`client.validations.image(id)` downloads the receipt of an OCR validation.
+`client.validations.image(id)` descarga el comprobante de una validación por imagen.
 
-### Without waiting for the verdict
+### Sin esperar al veredicto
 
-For volume, the API accepts the request and answers with the identifier:
+Para volumen, la API acepta la petición y responde con el identificador:
 
 ```ts
 const queued = await client.validations.enqueue({
@@ -194,32 +196,33 @@ const queued = await client.validations.enqueue({
   trackingKey: 'MXBA20250315001234',
 });
 
-const validation = await client.validations.waitFor(queued.id); // polls until the verdict
+const validation = await client.validations.waitFor(queued.id); // consulta hasta el veredicto
 ```
 
-`enqueue()` and `enqueueOcr()` are separate methods and not an option of `validate()`, so the return
-type of each is fixed.
+`enqueue()` y `enqueueOcr()` son métodos aparte y no una opción de `validate()`, para que el tipo de
+retorno de cada uno sea fijo.
 
-`waitFor()` sends the `ETag` of the previous response on every round, so a poll that finds no
-change does not download the same body again. It waits for the verdict to settle, not only for the
-status to be terminal: a validation with retries in progress reaches `not_found` and keeps changing
-afterwards. That distinction is `isSettled()`, next to `isTerminal()` and `hasCep()`. Only the
-outcomes the retry policy repeats (`not_found`, `cep_unavailable` and `error`) keep the cycle open.
+`waitFor()` envía el `ETag` de la respuesta anterior en cada ronda, así que una consulta que no
+encuentra cambios no vuelve a descargar el mismo cuerpo. Espera a que el veredicto se asiente, no
+sólo a que el estado sea terminal: una validación con reintentos en curso llega a `not_found` y
+sigue cambiando después. Esa distinción es `isSettled()`, junto a `isTerminal()` y `hasCep()`. Sólo
+los resultados que la política de reintentos repite (`not_found`, `cep_unavailable` y `error`)
+mantienen abierto el ciclo.
 
-The pause between polls follows the server. It is the longer of `pollIntervalMs` (2 seconds by
-default) and the wait the API asks for in `Retry-After` or `meta.next_poll_after_seconds`. The wait
-ends at the `expires_at` of the validation, plus a short grace period, when the API reported one,
-and after five minutes otherwise. Set it with `timeoutMs`. When it runs out, `waitFor()` throws
-`TimeoutError`, which carries `resourceId` and `timeoutMs`. `waitFor()` accepts a validation id or
-the result of `enqueue()` and takes the call options of every method.
+La pausa entre consultas sigue al servidor. Es la mayor entre `pollIntervalMs` (2 segundos de forma
+predeterminada) y la espera que la API pide en `Retry-After` o en `meta.next_poll_after_seconds`. La
+espera termina en el `expires_at` de la validación, más un breve margen, cuando la API lo informó, y
+a los cinco minutos en caso contrario. Se ajusta con `timeoutMs`. Cuando se agota, `waitFor()` lanza
+`TimeoutError`, que trae `resourceId` y `timeoutMs`. `waitFor()` acepta el id de una validación o el
+resultado de `enqueue()` y recibe las opciones de llamada de todos los métodos.
 
-The alternative to polling is to subscribe to the `validation.completed` webhook.
+La alternativa a consultar es suscribirse al webhook `validation.completed`.
 
-### When the API answers `202`
+### Cuando la API responde `202`
 
-A synchronous `validate()` or `validateOcr()` can run past 45 seconds of Banxico querying. The API
-then answers `202` with `async_reason: 'sync_deadline'` and keeps working in the background. The
-result carries `queued` with what the acknowledgment says:
+Un `validate()` o `validateOcr()` síncrono puede pasar de los 45 segundos de consulta a Banxico. La
+API responde entonces `202` con `async_reason: 'sync_deadline'` y sigue trabajando en segundo plano.
+El resultado trae `queued` con lo que dice el acuse:
 
 ```ts
 const result = await client.validateTransfer(params);
@@ -232,17 +235,17 @@ if (result.queued) {
 }
 ```
 
-`validateAndWait()` and `validateOcrAndWait()` do both steps: they call the operation and, when
-the API answers `202`, poll with the hints of the acknowledgment.
+`validateAndWait()` y `validateOcrAndWait()` hacen los dos pasos: llaman a la operación y, cuando
+la API responde `202`, consultan con las indicaciones del acuse.
 
 ```ts
 const validation = await client.validations.validateAndWait(params, { timeoutMs: 120_000 });
 ```
 
-### Your own reference
+### Referencia propia
 
-`clientRef` is a reference of your own, from 1 to 64 characters, with no line breaks or emoji. It
-relates the validation to an order of yours. It must not contain personal data.
+`clientRef` es una referencia tuya, de 1 a 64 caracteres, sin saltos de línea ni emoji. Relaciona la
+validación con un pedido tuyo. No debe contener datos personales.
 
 ```ts
 const validation = await client.validateTransfer({
@@ -257,23 +260,24 @@ console.log(validation.attributes.client_ref); // order-4812
 const page = await client.validations.list({ clientRef: 'order-4812' });
 ```
 
-`validateOcr()`, `enqueue()` and `enqueueOcr()` accept it too. It returns in
-`attributes.client_ref`, in listings and in validation webhooks, and `list()`, `stats()` and
-`export()` use it as an exact-match filter. In a webhook, `parseWebhook()` delivers it in
-`event.data.attributes.client_ref`. The API rejects a reference that breaks the rules with `422`
-(`invalid_client_ref`).
+`validateOcr()`, `enqueue()` y `enqueueOcr()` también la aceptan. Vuelve en `attributes.client_ref`,
+en los listados y en los webhooks de validación, y `list()`, `stats()` y `export()` la usan como
+filtro de coincidencia exacta. En un webhook, `parseWebhook()` la entrega en
+`event.data.attributes.client_ref`. La API rechaza con `422` (`invalid_client_ref`) una referencia
+que incumple las reglas.
 
-### Duplicate and account conflict
+### Duplicado y conflicto de cuenta
 
-`attributes.duplicate_of` carries the `id` and `created_at` of an earlier `valid` validation of the
-same account and with the same tracking key. In an OCR validation, `attributes.account_conflict`
-carries the last 4 digits of the account sent (`sent_last4`) and of the one the image shows
-(`read_last4`). Neither changes the verdict, and both are absent when the API does not report them.
+`attributes.duplicate_of` trae el `id` y el `created_at` de una validación `valid` anterior de la
+misma cuenta y con la misma clave de rastreo. En una validación por imagen,
+`attributes.account_conflict` trae los últimos 4 dígitos de la cuenta enviada (`sent_last4`) y de la
+que muestra la imagen (`read_last4`). Ninguno cambia el veredicto, y los dos están ausentes cuando
+la API no los informa.
 
-### Several candidate accounts
+### Varias cuentas candidatas
 
-`candidateAccounts` carries from 2 accounts up to the platform maximum (3 by default, never more
-than 10) in a single validation, with a single quota unit.
+`candidateAccounts` lleva desde 2 cuentas hasta el máximo de la plataforma (3 de forma
+predeterminada, nunca más de 10) en una sola validación, con una sola unidad de cuota.
 
 ```ts
 const validation = await client.validateTransfer({
@@ -283,25 +287,25 @@ const validation = await client.validateTransfer({
   candidateAccounts: ['012180004412345678', '002010077777777771'],
 });
 
-console.log(validation.attributes.candidate_match?.index); // position in the list sent, from 0
+console.log(validation.attributes.candidate_match?.index); // posición en la lista enviada, desde 0
 console.log(validation.attributes.candidate_match?.account_last4); // 7771
 ```
 
-`validateOcr()`, `enqueue()` and `enqueueOcr()` accept it too. The API queries the accounts in the
-order sent and adopts the first one that matches the transfer. `attributes.candidate_match` carries
-its position and its last 4 digits, and the full account is in
-`attributes.normalized_data.beneficiary_account`. The verdict does not change.
+`validateOcr()`, `enqueue()` y `enqueueOcr()` también la aceptan. La API consulta las cuentas en el
+orden enviado y adopta la primera que coincide con la transferencia. `attributes.candidate_match`
+trae su posición y sus últimos 4 dígitos, y la cuenta completa está en
+`attributes.normalized_data.beneficiary_account`. El veredicto no cambia.
 
-Send one form or the other. The argument type prevents both, and with `beneficiaryAccount` and
-`candidateAccounts` together, or with neither, the SDK throws `InvalidRequestError`
-(`account_and_candidates_mutually_exclusive` or `account_required`) and does not call the API. The API
-rejects a list that breaks the rules with `422` (`candidate_accounts_invalid`).
+Envía una forma o la otra. El tipo del argumento impide las dos, y con `beneficiaryAccount` y
+`candidateAccounts` juntos, o con ninguno, el SDK lanza `InvalidRequestError`
+(`account_and_candidates_mutually_exclusive` o `account_required`) y no llama a la API. La API
+rechaza con `422` (`candidate_accounts_invalid`) una lista que incumple las reglas.
 
-### Keep the receipt
+### Conservar el comprobante
 
-The platform keeps the file of an image validation, and `client.validations.image(id)` downloads it.
-With `retainImage: false`, it deletes the file as soon as the validation reaches a terminal state
-that no longer needs it. The verdict and the extracted data are kept.
+La plataforma conserva el archivo de una validación por imagen, y `client.validations.image(id)` lo
+descarga. Con `retainImage: false`, borra el archivo en cuanto la validación llega a un estado
+terminal que ya no lo necesita. El veredicto y los datos extraídos se conservan.
 
 ```ts
 const validation = await client.validations.validateOcr({
@@ -311,68 +315,69 @@ const validation = await client.validations.validateOcr({
 console.log(validation.attributes.image_retained); // false
 ```
 
-`enqueueOcr()` accepts `retainImage` too. `image()` answers `410` with `image_not_retained` when the
-file is not kept, and the API rejects a value that is not a boolean with `422`
-(`invalid_retain_image`).
+`enqueueOcr()` también acepta `retainImage`. `image()` responde `410` con `image_not_retained` cuando
+el archivo no se conserva, y la API rechaza con `422` (`invalid_retain_image`) un valor que no es
+booleano.
 
-### List and walk the history
+### Listar y recorrer el historial
 
 ```ts
 const page = await client.validations.list({ status: 'valid', perPage: 50 });
-console.log(page.total, 'validations,', page.totalPages, 'pages');
+console.log(page.total, 'validaciones,', page.totalPages, 'páginas');
 
 for await (const item of client.validations.iter({ from: '2025-03-01', to: '2025-03-31' })) {
   console.log(item.id, item.attributes.status);
 }
 ```
 
-`iter()` is an `AsyncIterable` and requests the next page only when the previous one runs out.
-`maxPages` bounds the walk. Each `Page` carries `items`, `page`, `perPage`, `total`, `totalPages`,
-`hasNext` and `meta`. The API clamps `perPage` to the maximum of the operation (50 for validations,
-100 for deliveries and import previews) and does not reject it. `Page.perPage` reports the value
-the API applied.
+`iter()` es un `AsyncIterable` y pide la página siguiente sólo cuando se agota la anterior.
+`maxPages` acota el recorrido. Cada `Page` trae `items`, `page`, `perPage`, `total`, `totalPages`,
+`hasNext` y `meta`. La API limita `perPage` al máximo de la operación (50 en validaciones, 100 en
+entregas y vistas previas de importación) y no lo rechaza. `Page.perPage` informa el valor que la
+API aplicó.
 
-The filters (`status`, `type`, `from`, `to`, `search`, `playground`, `withDeleted`, `batchId`,
-`bank`, `banks`, `amountMin`, `amountMax`, `clientRef` and `retryState`) use `camelCase`. `status`
-takes one state or a list, typed with `ValidationStatus`. `withDeleted: true` returns only the
-validations removed from the history, while `false` returns only the active ones. `banks` filters by
-several banks at once: up to 50 SPEI codes, as a list or comma-separated, and returns the validations
-whose sender or receiver bank is any of them.
+Los filtros (`status`, `type`, `from`, `to`, `search`, `playground`, `withDeleted`, `batchId`,
+`bank`, `banks`, `amountMin`, `amountMax`, `clientRef` y `retryState`) van en `camelCase`. `status`
+acepta un estado o una lista, tipados con `ValidationStatus`. `withDeleted: true` devuelve sólo las
+validaciones quitadas del historial, y `false` sólo las activas. `banks` filtra por varios bancos a
+la vez: hasta 50 códigos SPEI, como lista o separados por comas, y devuelve las validaciones cuyo
+banco emisor o receptor sea cualquiera de ellos.
 
-A listing carries fewer fields than `get()`: it leaves out the data sent, the Banxico result and the
-receipt links.
+Un listado trae menos campos que `get()`: deja fuera los datos enviados, el resultado de Banxico y
+los enlaces del comprobante.
 
-`client.validations.export({ format: 'csv' })` exports the history. It also accepts `xlsx` and the
-same filters. `client.validations.stats()` returns the totals with those filters.
+`client.validations.export({ format: 'csv' })` exporta el historial. También acepta `xlsx` y los
+mismos filtros. `client.validations.stats()` devuelve los totales con esos filtros.
 
-## Download the CEP
+## Descargar el CEP
 
 ```ts
 import { writeFile } from 'node:fs/promises';
 import { hasCep } from '@veriko-mx/sdk';
 
 if (hasCep(validation)) {
-  const cep = await client.getCep(validation.id, { format: 'pdf' }); // or 'xml'
+  const cep = await client.getCep(validation.id, { format: 'pdf' }); // o 'xml'
   await writeFile(cep.filename, cep.content); // CEP-<id>.pdf
 }
 ```
 
-`getCep()` returns the file: the XML Banxico issued, with its digital seal and original string, or
-the equivalent PDF. When the validation has no receipt, the API answers `404` with
-`cep_not_available` and the SDK throws `NotFoundError`.
+`getCep()` devuelve el archivo: el XML que Banxico emitió, con su sello digital y su cadena
+original, o el PDF equivalente. Cuando la validación no tiene comprobante, la API responde `404` con
+`cep_not_available` y el SDK lanza `NotFoundError`.
 
-Downloads and exports return the file and not a link: `content`, `contentType`, `headers` and the
-`filename` the API proposes in `Content-Disposition`. The SDK reads the name from `filename*`
-(RFC 6266) first and from `filename`, including quoted names that contain `;`, otherwise.
+Las descargas y las exportaciones devuelven el archivo y no un enlace: `content`, `contentType`,
+`headers` y el `filename` que la API propone en `Content-Disposition`. El SDK lee el nombre primero
+de `filename*` (RFC 6266) y, si no está, de `filename`, incluidos los nombres entre comillas que
+contienen `;`.
 
-### Stream a large download
+### Descargar en flujo un archivo grande
 
-Each download has a `*Stream()` variant that resolves to a web `ReadableStream` and does not buffer
-the body: `validations.cepStream()`, `validations.imageStream()`, `validations.exportStream()`,
-`webhooks.exportDeliveriesStream()`, `beneficiaries.exportStream()`,
+Cada descarga tiene una variante `*Stream()` que se resuelve en un `ReadableStream` web y no guarda
+el cuerpo en memoria: `validations.cepStream()`, `validations.imageStream()`,
+`validations.exportStream()`, `webhooks.exportDeliveriesStream()`, `beneficiaries.exportStream()`,
 `beneficiaries.importTemplateStream()`, `usage.exportStream()`, `finance.statementStream()`,
-`finance.reportStream()`, `finance.cepsStream()` and `finance.downloadCepExportStream()`. They take
-the same arguments as the buffered methods.
+`finance.reportStream()`, `finance.cepsStream()` y `finance.downloadCepExportStream()`. Reciben los
+mismos argumentos que los métodos que guardan el cuerpo completo.
 
 ```ts
 import { createWriteStream } from 'node:fs';
@@ -384,50 +389,52 @@ console.log(file.filename, file.contentLength, file.headers['x-finance-items']);
 await pipeline(Readable.fromWeb(file.stream), createWriteStream(file.filename));
 ```
 
-The result carries `stream`, `contentType`, `filename`, `contentLength` (`undefined` when the response
-has no `Content-Length`) and `headers`. Read the stream to the end or call `stream.cancel()`, so the
-connection is released. `timeoutMs` covers the wait for the headers and not the transfer; the
-`signal` of the call options cancels the transfer, and the stream then fails with
-`RequestAbortedError`. A stream is not retried once it starts. An error response is read whole, so it
-still throws the typed error. `finance.reportStream('monthly' | 'counterparties' | 'by-bank' |
-'accounting', params)` streams the report files; the `preview` format is JSON, so use the buffered
-method for it.
+El resultado trae `stream`, `contentType`, `filename`, `contentLength` (`undefined` cuando la
+respuesta no trae `Content-Length`) y `headers`. Lee el flujo hasta el final o llama a
+`stream.cancel()`, para que se libere la conexión. `timeoutMs` cubre la espera de las cabeceras y no
+la transferencia; el `signal` de las opciones de llamada cancela la transferencia, y el flujo falla
+entonces con `RequestAbortedError`. Un flujo no se reintenta una vez que empieza. Una respuesta de
+error se lee completa, así que sigue lanzando el error tipado.
+`finance.reportStream('monthly' | 'counterparties' | 'by-bank' | 'accounting', params)` entrega los
+archivos de los reportes en flujo; el formato `preview` es JSON, así que para ese usa el método que
+devuelve el cuerpo completo.
 
-## Recheck the payment later
+## Revisar el pago después
 
-`client.validations.recheck(id)` queries Banxico again for the payment status of a `valid`
-validation created at most 72 hours ago, without consuming quota.
+`client.validations.recheck(id)` consulta de nuevo a Banxico el estado de pago de una validación
+`valid` creada hace 72 horas como máximo, sin consumir cuota.
 
 ```ts
 const result = await client.validations.recheck(validation.id);
 
-console.log(result.changed); // true if it moved from valid to returned
+console.log(result.changed); // true si pasó de valid a returned
 console.log(result.previousStatus); // 'valid'
 console.log(result.validation.attributes.status); // 'returned'
 ```
 
-If Banxico reports `devuelto` or `en_proceso_devolucion`, the validation changes to `returned`, keeps
-its CEP, and the API emits the `validation.returned` webhook. The payment status is in
-`attributes.banxico_result._payment_status`. A validation that was already `returned` answers its
-current state without querying Banxico, and `checkedAt` is `null`.
+Si Banxico reporta `devuelto` o `en_proceso_devolucion`, la validación pasa a `returned`, conserva
+su CEP y la API emite el webhook `validation.returned`. El estado de pago está en
+`attributes.banxico_result._payment_status`. Una validación que ya estaba en `returned` responde su
+estado actual sin consultar a Banxico, y `checkedAt` es `null`.
 
-Each validation accepts one recheck every 10 minutes. Before that, the SDK throws `RateLimitError`
-with `recheck_rate_limited`, and `retryAfter` carries the seconds left. A validation in another
-state, or older than 72 hours, throws `InvalidRequestError` with `recheck_not_eligible` or
-`recheck_window_expired`. If Banxico does not deliver a readable status, it throws `ServerError`
-with `recheck_unavailable`: the validation keeps its interval and a retry is possible at once.
+Cada validación acepta una revisión cada 10 minutos. Antes de eso, el SDK lanza `RateLimitError`
+con `recheck_rate_limited`, y `retryAfter` trae los segundos que faltan. Una validación en otro
+estado, o de más de 72 horas, lanza `InvalidRequestError` con `recheck_not_eligible` o
+`recheck_window_expired`. Si Banxico no entrega un estado legible, lanza `ServerError` con
+`recheck_unavailable`: la validación conserva su intervalo y se puede reintentar de inmediato.
 
-## Delete a validation
+## Borrar una validación
 
-`client.validations.delete(id)` removes a validation from the history, but the record, the CEP, the
-extracted data and the receipt file keep existing. The permanent purge deletes them in two steps: the
-first describes what it would delete and issues a single-use token, and the second confirms it.
+`client.validations.delete(id)` quita una validación del historial, pero el registro, el CEP, los
+datos extraídos y el archivo del comprobante siguen existiendo. La purga permanente los borra en dos
+pasos: el primero describe lo que borraría y emite un token de un solo uso, y el segundo lo
+confirma.
 
 ```ts
 const preparation = await client.validations.preparePurge(validation.id);
 
-console.log(preparation.attributes.will_delete); // what would be deleted
-console.log(preparation.attributes.expires_in); // seconds the token stays valid
+console.log(preparation.attributes.will_delete); // lo que se borraría
+console.log(preparation.attributes.expires_in); // segundos de vigencia del token
 
 const result = await client.validations.executePurge(validation.id, {
   confirmationToken: preparation.attributes.confirmation_token,
@@ -435,18 +442,18 @@ const result = await client.validations.executePurge(validation.id, {
 console.log(result.attributes.purged_at, result.attributes.file_removal);
 ```
 
-**The purge is irreversible and does not return quota.** The validation stays as a tombstone: it
-keeps the verdict, the dates and the amount, and carries `attributes.purged_at`. After that, the CEP,
-the receipt, the retries and `recheck()` answer `410` with `validation_purged`, which the SDK throws
-as `GoneError`. `file_removal` is `pending` when a file could not be deleted at that moment and the
-daily sweep finishes it.
+**La purga es irreversible y no devuelve cuota.** La validación queda como una lápida: conserva el
+veredicto, las fechas y el importe, y trae `attributes.purged_at`. Después, el CEP, el comprobante,
+los reintentos y `recheck()` responden `410` con `validation_purged`, que el SDK lanza como
+`GoneError`. `file_removal` es `pending` cuando un archivo no se pudo borrar en ese momento y la
+barrida diaria lo termina.
 
-A validation in progress throws `ConflictError` with `purge_validation_in_progress`. An expired,
-malformed token, or one from another validation, throws `InvalidRequestError`, and a token already
-used throws `ConflictError` with `confirmation_token_already_used`. If the response of
-`executePurge()` does not arrive, `client.getValidation(id)` tells whether the purge completed.
+Una validación en curso lanza `ConflictError` con `purge_validation_in_progress`. Un token vencido,
+mal formado o de otra validación lanza `InvalidRequestError`, y un token ya usado lanza
+`ConflictError` con `confirmation_token_already_used`. Si no llega la respuesta de `executePurge()`,
+`client.getValidation(id)` dice si la purga se completó.
 
-## Register a webhook
+## Registrar un webhook
 
 ```ts
 const endpoint = await client.webhooks.create({
@@ -457,26 +464,26 @@ const endpoint = await client.webhooks.create({
 console.log(endpoint.attributes.secret); // 64 hex
 ```
 
-The signing secret travels **once**, in this response. If it is lost,
-`client.webhooks.regenerateSecret(endpoint.id)` returns a new one. The previous secret keeps signing
-for 24 hours: each delivery then carries `X-Webhook-Signature-Old`, and
-`attributes.previous_secret_expires_at` says until when. Pass `{ immediate: true }` to revoke the
-previous secret at once, for example when it was exposed.
+El secreto de firma viaja **una sola vez**, en esta respuesta. Si se pierde,
+`client.webhooks.regenerateSecret(endpoint.id)` devuelve uno nuevo. El secreto anterior sigue
+firmando durante 24 horas: cada entrega trae entonces `X-Webhook-Signature-Old`, y
+`attributes.previous_secret_expires_at` dice hasta cuándo. Pasa `{ immediate: true }` para revocar el
+secreto anterior de inmediato, por ejemplo cuando quedó expuesto.
 
 ```ts
 const rotated = await client.webhooks.regenerateSecret(endpoint.id, { immediate: true });
 console.log(rotated.attributes.secret);
 ```
 
-`client.webhooks.test(endpoint.id)` sends a test event and tells whether the receiver accepted it.
-Test deliveries do not count toward the consecutive-failure counter that turns an endpoint off after
-three in a row. When that happens, the state is `auto_disabled`, and
-`client.webhooks.update(id, { status: 'active' })` reactivates it.
+`client.webhooks.test(endpoint.id)` envía un evento de prueba y dice si el receptor lo aceptó. Las
+entregas de prueba no cuentan para el contador de fallos consecutivos que apaga un endpoint después
+de tres seguidos. Cuando eso pasa, el estado es `auto_disabled`, y
+`client.webhooks.update(id, { status: 'active' })` lo reactiva.
 
-The attempt history is in `client.webhooks.deliveries()`, with or without an endpoint identifier, and
-`iterDeliveries()` walks it. `exportDeliveries()` downloads it as CSV or XLSX. Filters exist only on
-the global listing: with an endpoint and a filter, or with a list of up to 20 endpoints, the SDK
-queries that listing with `endpoint_id`. A list of more than 20 endpoints throws `ConfigurationError`.
+El historial de intentos está en `client.webhooks.deliveries()`, con o sin identificador de endpoint,
+e `iterDeliveries()` lo recorre. `exportDeliveries()` lo descarga en CSV o XLSX. Los filtros existen
+sólo en el listado global: con un endpoint y un filtro, o con una lista de hasta 20 endpoints, el SDK
+consulta ese listado con `endpoint_id`. Una lista de más de 20 endpoints lanza `ConfigurationError`.
 
 ```ts
 const failed = await client.webhooks.deliveries({
@@ -487,114 +494,116 @@ const failed = await client.webhooks.deliveries({
 });
 ```
 
-`status`, `eventType` and `responseStatus` take one value or a list. `responseStatus` accepts an exact
-code (`404`), a family (`'5xx'`) or `'none'` for deliveries with no response. `from` and `to` bound the
-creation date, `validationId` keeps the deliveries of one validation, `minResponseTimeMs` the slow
-responses, and `q` searches the identifier, the endpoint, the event, the validation and the HTTP
-code. `exportDeliveries()` accepts the same filters and `limit`.
+`status`, `eventType` y `responseStatus` aceptan un valor o una lista. `responseStatus` acepta un
+código exacto (`404`), una familia (`'5xx'`) o `'none'` para las entregas sin respuesta. `from` y
+`to` acotan la fecha de creación, `validationId` conserva las entregas de una validación,
+`minResponseTimeMs` las respuestas lentas, y `q` busca en el identificador, el endpoint, el evento,
+la validación y el código HTTP. `exportDeliveries()` acepta los mismos filtros y `limit`.
 
-## Catalog and Banxico status
+## Catálogo y estado de Banxico
 
 ```ts
-const banks = await client.catalog.banks(); // SPEI institutions with their code
-const calendar = await client.catalog.speiCalendar(2026); // SPEI non-business days of the year
-const card = await client.catalog.binLookup('455632'); // issuing bank of a card
+const banks = await client.catalog.banks(); // instituciones SPEI con su código
+const calendar = await client.catalog.speiCalendar(2026); // días inhábiles SPEI del año
+const card = await client.catalog.binLookup('455632'); // banco emisor de una tarjeta
 const status = await client.catalog.banxicoStatus();
 
 console.log(status.attributes.status); // 'operational'
 ```
 
-`banxicoStatus()` tells a `cep_unavailable` caused by the transfer from an outage of the service, and
-`banxicoTimeseries()` returns the latency or verdict series per window.
+`banxicoStatus()` distingue un `cep_unavailable` causado por la transferencia de una caída del
+servicio, y `banxicoTimeseries()` devuelve la serie de latencia o de veredictos por ventana.
 
-`speiCalendar()` returns `SpeiCalendar`: `attributes.non_business_days` carries the Monday to Friday
-non-business days (`YYYY-MM-DD`), `attributes.source` the CNBV provision published in the DOF, and
-`coveredYears` the years with a calendar. Saturdays and Sundays are always non-business days and do
-not repeat in the list. The query consumes no quota. A year with no calendar throws `NotFoundError`
-with `spei_calendar_year_not_covered`.
+`speiCalendar()` devuelve `SpeiCalendar`: `attributes.non_business_days` trae los días inhábiles de
+lunes a viernes (`YYYY-MM-DD`), `attributes.source` la disposición de la CNBV publicada en el DOF, y
+`coveredYears` los años con calendario. Los sábados y domingos son siempre inhábiles y no se repiten
+en la lista. La consulta no consume cuota. Un año sin calendario lanza `NotFoundError` con
+`spei_calendar_year_not_covered`.
 
-## Beneficiaries
+## Beneficiarios
 
-`client.beneficiaries` stores the accounts you pay: CLABE, card or DiMo phone. The type is detected
-from the length of the number, and a phone requires `bankCode`.
+`client.beneficiaries` guarda las cuentas a las que pagas: CLABE, tarjeta o celular DiMo. El tipo se
+detecta por la longitud del número, y un celular exige `bankCode`.
 
 ```ts
 const beneficiary = await client.beneficiaries.create({
   accountNumber: '012180004412345678',
-  label: 'Supplier ABC',
+  label: 'Proveedor ABC',
 });
 
-const found = await client.beneficiaries.lookup('012180004412345678'); // the account already saved
+const found = await client.beneficiaries.lookup('012180004412345678'); // la cuenta ya guardada
 console.log(found.attributes.bank_name);
 
 const check = await client.beneficiaries.validateAccount({
   account: '01218000441234567',
   type: 'clabe',
 });
-console.log(check.attributes.checksum_valid, check.attributes.bank?.name); // completes the 17-digit CLABE
+console.log(check.attributes.checksum_valid, check.attributes.bank?.name); // completa la CLABE de 17 dígitos
 ```
 
-`validateAccount()` checks an account number without saving it: type, length, check digit and bank.
-`type` is optional (`'clabe'` or `'bin'`).
+`validateAccount()` comprueba un número de cuenta sin guardarlo: tipo, longitud, dígito verificador y
+banco. `type` es opcional (`'clabe'` o `'bin'`).
 
-Registering an archived account reactivates it: the API answers `200` instead of `201` and
-`beneficiary.reactivated` is `true`. Without `label`, the account keeps its alias. Registering an
-account that is already active throws `InvalidRequestError` with `beneficiary_already_registered`.
+Registrar una cuenta archivada la reactiva: la API responde `200` en lugar de `201` y
+`beneficiary.reactivated` es `true`. Sin `label`, la cuenta conserva su alias. Registrar una cuenta
+que ya está activa lanza `InvalidRequestError` con `beneficiary_already_registered`.
 
-`client.beneficiaries.list()` walks the full list and does not paginate. `delete()` archives an
-account without deleting it, and `list({ withArchived: true })` returns only the archived ones.
-`export()` downloads it as CSV or XLSX.
+`client.beneficiaries.list()` recorre la lista completa y no pagina. `delete()` archiva una cuenta
+sin borrarla, y `list({ withArchived: true })` devuelve sólo las archivadas. `export()` la descarga
+en CSV o XLSX.
 
-### Bulk import
+### Importación masiva
 
-The import is a cycle: download the template, upload the file, review the rows and confirm.
+La importación es un ciclo: descargar la plantilla, subir el archivo, revisar las filas y confirmar.
 
 ```ts
-const template = await client.beneficiaries.importTemplate({ format: 'csv' }); // 1. download
-const started = await client.beneficiaries.importStart('beneficiaries.csv'); // 2. upload
-await client.beneficiaries.importWait(started.id); // 3. wait for the preview
+const template = await client.beneficiaries.importTemplate({ format: 'csv' }); // 1. descargar
+const started = await client.beneficiaries.importStart('beneficiaries.csv'); // 2. subir
+await client.beneficiaries.importWait(started.id); // 3. esperar la vista previa
 
 for await (const row of client.beneficiaries.iterImportPreview(started.id, {
   buckets: ['correctable'],
 })) {
-  // 4. review
+  // 4. revisar
   if (row.id !== undefined) {
     await client.beneficiaries.importEditRow(started.id, row.id, { parsedBankCode: '40012' });
   }
 }
 
-await client.beneficiaries.importCommit(started.id); // 5. confirm
+await client.beneficiaries.importCommit(started.id); // 5. confirmar
 ```
 
-`importStart()` takes the bytes of the file or its path and uploads it as `multipart/form-data`. The
-formats are CSV, XLS, XLSX, TXT, JSON and PDF, up to 20 MB, and the SDK sends the content type that
-matches the extension. Only one import can be open at a time: another one answers `422` with
-`import_already_in_flight`. Nothing is persisted until `importCommit()`. `importWait()` waits for
-`preview_ready` or a final state, which is what `isImportSettled()` tells apart. The status
-endpoint exposes no `ETag`, so each round downloads the body. `importCancel()` cancels an import that
-is not yet confirmed.
+`importStart()` recibe los bytes del archivo o su ruta y lo sube como `multipart/form-data`. Los
+formatos son CSV, XLS, XLSX, TXT, JSON y PDF, de hasta 20 MB, y el SDK envía el tipo de contenido que
+corresponde a la extensión. Sólo puede haber una importación abierta a la vez: otra responde `422`
+con `import_already_in_flight`. Nada se guarda hasta `importCommit()`. `importWait()` espera
+`preview_ready` o un estado final, que es lo que distingue `isImportSettled()`. El endpoint de estado
+no expone `ETag`, así que cada ronda descarga el cuerpo. `importCancel()` cancela una importación que
+aún no se confirma.
 
-The preview query filters rows with `buckets` (`valid`, `correctable`, `fatal`, `duplicate_account`,
-`duplicate_alias`). The SDK sends it as `buckets[]`, which is the form the API reads.
+La consulta de la vista previa filtra filas con `buckets` (`valid`, `correctable`, `fatal`,
+`duplicate_account`, `duplicate_alias`). El SDK lo envía como `buckets[]`, que es la forma que lee la
+API.
 
-## Usage
+## Consumo
 
 ```ts
 const summary = await client.usage.summary();
-console.log(summary.attributes?.used, 'of', summary.attributes?.limit);
+console.log(summary.attributes?.used, 'de', summary.attributes?.limit);
 
 const history = await client.usage.history({ months: 6 });
 const limits = await client.usage.limits();
 ```
 
-`summary()` carries the quota of the current plan and `limits()` the rate limits, which are separate
-from that quota. `breakdown()`, `heatmap()` and `apiUsage()` break the usage down, and
-`client.usage.export({ format: 'csv' })` downloads the activity log.
+`summary()` trae la cuota del plan vigente y `limits()` los límites de tasa, que son aparte de esa
+cuota. `breakdown()`, `heatmap()` y `apiUsage()` desglosan el consumo, y
+`client.usage.export({ format: 'csv' })` descarga el registro de actividad.
 
-## CEP exports
+## Exportaciones de CEP
 
-`client.finance.createCepExport()` starts an export of CEPs as an archive. It accepts an
-`Idempotency-Key`, and `waitForCepExport()` polls until the export reaches a terminal state:
+`client.finance.createCepExport()` inicia una exportación de CEP como archivo comprimido. Acepta un
+`Idempotency-Key`, y `waitForCepExport()` consulta hasta que la exportación llega a un estado
+terminal:
 
 ```ts
 const created = await client.finance.createCepExport({ from: '2026-10-01', to: '2026-10-31' });
@@ -602,15 +611,15 @@ const ready = await client.finance.waitForCepExport(created.id);
 console.log(ready.attributes?.status); // 'ready'
 ```
 
-The terminal statuses are `ready`, `failed` and `expired`, listed in `CEP_EXPORT_TERMINAL_STATUSES`
-and checked by `isCepExportTerminal()`. `waitForCepExport()` honors `Retry-After` and takes the same
-options as `waitFor()`.
+Los estados terminales son `ready`, `failed` y `expired`, listados en `CEP_EXPORT_TERMINAL_STATUSES`
+y comprobados por `isCepExportTerminal()`. `waitForCepExport()` respeta `Retry-After` y recibe las
+mismas opciones que `waitFor()`.
 
-## Conditional reads
+## Lecturas condicionales
 
-`client.validations.get()`, `client.catalog.banks()` and `client.catalog.speiCalendar()` accept
-`ifNoneMatch`. The response carries the `ETag` in `etag`, and when nothing changed the API answers
-`304`, which the SDK throws as `NotModifiedError` with the `etag` of the current representation.
+`client.validations.get()`, `client.catalog.banks()` y `client.catalog.speiCalendar()` aceptan
+`ifNoneMatch`. La respuesta trae el `ETag` en `etag`, y cuando nada cambió la API responde `304`, que
+el SDK lanza como `NotModifiedError` con el `etag` de la representación vigente.
 
 ```ts
 import { NotModifiedError } from '@veriko-mx/sdk';
@@ -624,18 +633,18 @@ try {
 }
 ```
 
-## Verify the signature of a webhook
+## Verificar la firma de un webhook
 
-Each delivery arrives signed with the HMAC-SHA256 of the body, using the secret that
-`POST /v1/webhooks` returned when the endpoint was registered:
+Cada entrega llega firmada con el HMAC-SHA256 del cuerpo, con el secreto que `POST /v1/webhooks`
+devolvió al registrar el endpoint:
 
 ```
 X-Webhook-Signature: sha256=<hex>
 ```
 
-What is signed is the body **exactly as it arrived**. Parsing the JSON and serializing it again
-changes the bytes and the signature no longer matches. In Express, that means `express.raw()` on the
-webhook route, not `express.json()`.
+Lo que se firma es el cuerpo **exactamente como llegó**. Interpretar el JSON y volver a serializarlo
+cambia los bytes y la firma deja de coincidir. En Express, eso significa `express.raw()` en la ruta
+del webhook, no `express.json()`.
 
 ```ts
 import express from 'express';
@@ -653,7 +662,7 @@ app.post('/hooks/veriko', express.raw({ type: 'application/json' }), (request, r
     throw error;
   }
 
-  response.sendStatus(200); // answer 2xx first, process afterwards
+  response.sendStatus(200); // responde 2xx primero, procesa después
 
   if (isKnownWebhookEvent(event) && event.event === 'validation.completed') {
     console.log(event.data.id, event.data.attributes.status);
@@ -661,25 +670,25 @@ app.post('/hooks/veriko', express.raw({ type: 'application/json' }), (request, r
 });
 ```
 
-`parseWebhook(payload, signatureOrHeaders, secret, options)` takes either the value of
-`X-Webhook-Signature` or the headers of the request. With the headers, it verifies the timestamped
-signature inside a time window, which also protects against replays. With only the signature value,
-it proves the origin and nothing about freshness.
+`parseWebhook(payload, signatureOrHeaders, secret, options)` recibe el valor de
+`X-Webhook-Signature` o las cabeceras de la petición. Con las cabeceras, verifica la firma con marca
+de tiempo dentro de una ventana, lo que además protege contra repeticiones. Con sólo el valor de la
+firma, prueba el origen y nada sobre la vigencia.
 
-The event is a union discriminated by `event`. For the seven `validation.*` events, `event.data` is
-the validation, and `validation.returned` also types `attributes.payment_status`. For the five
-`billing.*` events and for `test`, the API does not publish the shape of `data`, so it is in
-`event.rawData`. An event this version does not know, or a validation event whose body is not the
-documented one, comes back as `UnknownWebhookEvent`. `isKnownWebhookEvent(event)` narrows to
-`WebhookEvent`, and a `switch (event.event)` then covers every case:
+El evento es una unión discriminada por `event`. En los siete eventos `validation.*`, `event.data` es
+la validación, y `validation.returned` además tipa `attributes.payment_status`. En los cinco eventos
+`billing.*` y en `test`, la API no publica la forma de `data`, así que está en `event.rawData`. Un
+evento que esta versión no conoce, o un evento de validación cuyo cuerpo no es el documentado, llega
+como `UnknownWebhookEvent`. `isKnownWebhookEvent(event)` lo reduce a `WebhookEvent`, y un
+`switch (event.event)` cubre entonces todos los casos:
 
 ```ts
 const event = parseWebhook(request.body, request.headers, SECRET);
-if (!isKnownWebhookEvent(event)) return; // acknowledge it and look at event.rawData later
+if (!isKnownWebhookEvent(event)) return; // acusa recibo y revisa event.rawData después
 
 switch (event.event) {
   case 'validation.returned':
-    event.data.attributes.payment_status.code; // typed
+    event.data.attributes.payment_status.code; // tipado
     break;
   case 'validation.completed':
     event.data.attributes.banxico_confirmed?.amount;
@@ -687,32 +696,32 @@ switch (event.event) {
 }
 ```
 
-With the headers, the event also carries `deliveryId` (`X-Veriko-Delivery-Id`) and `attemptTimestamp`
-(the `t` of the timestamped signature). A body without `event` takes it from `X-Veriko-Event`.
+Con las cabeceras, el evento trae además `deliveryId` (`X-Veriko-Delivery-Id`) y `attemptTimestamp`
+(la `t` de la firma con marca de tiempo). Un cuerpo sin `event` lo toma de `X-Veriko-Event`.
 
-`verifyWebhook(payload, signature, secret)` makes the same check and returns `true` or `false`, to
-decide the response code separately. The comparison runs in constant time and works with any input,
-non-ASCII included.
+`verifyWebhook(payload, signature, secret)` hace la misma comprobación y devuelve `true` o `false`,
+para decidir el código de respuesta por separado. La comparación corre en tiempo constante y funciona
+con cualquier entrada, incluidos los caracteres no ASCII.
 
-The complete receiver is in [`examples/webhook-receiver.mjs`](examples/webhook-receiver.mjs). It uses
-`node:http`; the Express version differs only in `express.raw()`.
+El receptor completo está en [`examples/webhook-receiver.mjs`](examples/webhook-receiver.mjs). Usa
+`node:http`; la versión con Express sólo cambia en `express.raw()`.
 
-### Rotate the secret
+### Rotar el secreto
 
-`secret` accepts one string or a list. During a rotation, pass the new secret and the previous one:
-a delivery verifies if its signature matches any of them, in `X-Webhook-Signature-Timestamped` or in
-`X-Webhook-Signature-Old`.
+`secret` acepta una cadena o una lista. Durante una rotación, pasa el secreto nuevo y el anterior:
+una entrega se verifica si su firma coincide con cualquiera de los dos, en
+`X-Webhook-Signature-Timestamped` o en `X-Webhook-Signature-Old`.
 
 ```ts
 const event = parseWebhook(request.body, request.headers, [NEW_SECRET, PREVIOUS_SECRET]);
 ```
 
-Drop the previous secret once `previous_secret_expires_at` has passed.
+Quita el secreto anterior cuando pase `previous_secret_expires_at`.
 
-### A later return
+### Una devolución posterior
 
-`validation.returned` notifies when a validation that had come out `valid` changes to `returned`
-afterwards. The endpoint receives only the events it subscribed to, so add it next to
+`validation.returned` avisa cuando una validación que había salido `valid` pasa después a
+`returned`. El endpoint sólo recibe los eventos a los que se suscribió, así que añádelo junto a
 `validation.completed`:
 
 ```ts
@@ -722,51 +731,51 @@ const endpoint = await client.webhooks.create({
 });
 ```
 
-The body is that of `validation.completed` plus `attributes.payment_status`, which `parseWebhook()`
-delivers in `event.data.attributes.payment_status`:
+El cuerpo es el de `validation.completed` más `attributes.payment_status`, que `parseWebhook()`
+entrega en `event.data.attributes.payment_status`:
 
 ```ts
 if (isKnownWebhookEvent(event) && event.event === 'validation.returned') {
-  console.log(event.data.attributes.payment_status.code); // devuelto or en_proceso_devolucion
+  console.log(event.data.attributes.payment_status.code); // devuelto o en_proceso_devolucion
 }
 ```
 
-`checked_at` is the instant of the query. In every other event, `payment_status` is absent. The event
-is not emitted when the validation is created: an operation that arrives already returned is
-delivered with `validation.completed` and `status=returned`.
+`checked_at` es el instante de la consulta. En cualquier otro evento, `payment_status` está ausente.
+El evento no se emite al crear la validación: una operación que llega ya devuelta se entrega con
+`validation.completed` y `status=returned`.
 
-### What Banxico confirmed
+### Lo que Banxico confirmó
 
-When `banxico_status` is `valid`, or `returned` with a downloaded CEP, `event.data.attributes` also
-carries `banxico_confirmed`: the amount, the date, the tracking key, both banks and the beneficiary
-account (masked to the last 4 digits), as Banxico confirmed them. Compare it with the order before
-you release the goods: the image of a receipt can show an amount different from the one Banxico
-confirmed.
+Cuando `banxico_status` es `valid`, o `returned` con un CEP descargado, `event.data.attributes`
+trae además `banxico_confirmed`: el importe, la fecha, la clave de rastreo, los dos bancos y la
+cuenta beneficiaria (enmascarada a los últimos 4 dígitos), tal como Banxico los confirmó. Compáralo
+con el pedido antes de liberar la mercancía: la imagen de un comprobante puede mostrar un importe
+distinto del que Banxico confirmó.
 
-### The headers of a delivery
+### Las cabeceras de una entrega
 
-| header                            | content                                                                   |
-| --------------------------------- | ------------------------------------------------------------------------- |
-| `X-Webhook-Signature`             | `sha256=` followed by the HMAC in hexadecimal                             |
-| `X-Webhook-Signature-Timestamped` | `t=<seconds>,v1=<hex>`: signature of `<t>.<body>` with the attempt time   |
-| `X-Webhook-Signature-Old`         | The same format, signed with the previous secret. Present during rotation |
-| `X-Veriko-Event`                  | Event type, for example `validation.completed`                            |
-| `X-Veriko-Delivery-Id`            | Identifier of the delivery, stable across retries                         |
-| `X-Veriko-Timestamp`              | Moment of sending, ISO 8601 with a `Z` suffix                             |
+| cabecera                          | contenido                                                                       |
+| --------------------------------- | ------------------------------------------------------------------------------- |
+| `X-Webhook-Signature`             | `sha256=` seguido del HMAC en hexadecimal                                       |
+| `X-Webhook-Signature-Timestamped` | `t=<segundos>,v1=<hex>`: firma de `<t>.<cuerpo>` con la hora del intento        |
+| `X-Webhook-Signature-Old`         | El mismo formato, firmado con el secreto anterior. Presente durante la rotación |
+| `X-Veriko-Event`                  | Tipo de evento, por ejemplo `validation.completed`                              |
+| `X-Veriko-Delivery-Id`            | Identificador de la entrega, estable entre reintentos                           |
+| `X-Veriko-Timestamp`              | Momento del envío, ISO 8601 con sufijo `Z`                                      |
 
-The `Delivery-Id` is the value that lets you discard repeated deliveries.
+El `Delivery-Id` es el valor que permite descartar las entregas repetidas.
 
-### Timestamped signature
+### Firma con marca de tiempo
 
-`X-Webhook-Signature-Timestamped` signs the attempt time together with the body, so the receiver can
-discard an old delivery that someone sends again. `X-Webhook-Signature` does not change.
+`X-Webhook-Signature-Timestamped` firma la hora del intento junto con el cuerpo, para que el receptor
+pueda descartar una entrega vieja que alguien reenvía. `X-Webhook-Signature` no cambia.
 
 ```ts
 import { verifyWebhookTimestamped } from '@veriko-mx/sdk';
 
 if (
   !verifyWebhookTimestamped(
-    request.body, // the raw body
+    request.body, // el cuerpo crudo
     request.get('X-Webhook-Signature-Timestamped'),
     SECRET,
   )
@@ -775,42 +784,43 @@ if (
 }
 ```
 
-`verifyWebhookTimestamped(payload, header, secret, { toleranceSeconds, now })` returns `true` or
-`false`. It computes the HMAC-SHA256 of `<t>.<body>`, compares it in constant time with each `v1` of
-the header, and rejects the delivery if `t` is further from the receiver's clock than
-`toleranceSeconds`, 300 by default. `now` sets the current time with a `Date`, for tests.
-`verifyDelivery(payload, headers, secret, options)` checks the timestamped and the `-Old` signature
-together, and `verifyWebhookHeaders()` is the same check. With `requireTimestamp: false`, a delivery
-with no valid timestamped signature falls back to `X-Webhook-Signature`, which gives no protection
-against a replay. `attemptTimestamp(header)` reads `t`. `timestampedSignatureFromHeaders(headers)`, `oldSignatureFromHeaders(headers)` and
-`signatureFromHeaders(headers)` find each header under any capitalization.
+`verifyWebhookTimestamped(payload, header, secret, { toleranceSeconds, now })` devuelve `true` o
+`false`. Calcula el HMAC-SHA256 de `<t>.<cuerpo>`, lo compara en tiempo constante con cada `v1` de la
+cabecera, y rechaza la entrega si `t` está más lejos del reloj del receptor que `toleranceSeconds`,
+300 de forma predeterminada. `now` fija la hora actual con un `Date`, para pruebas.
+`verifyDelivery(payload, headers, secret, options)` comprueba juntas la firma con marca de tiempo y la
+`-Old`, y `verifyWebhookHeaders()` es la misma comprobación. Con `requireTimestamp: false`, una
+entrega sin firma con marca de tiempo válida recurre a `X-Webhook-Signature`, que no protege contra
+una repetición. `attemptTimestamp(header)` lee `t`. `timestampedSignatureFromHeaders(headers)`,
+`oldSignatureFromHeaders(headers)` y `signatureFromHeaders(headers)` encuentran cada cabecera con
+cualquier combinación de mayúsculas y minúsculas.
 
-The window applies to `t`, the attempt time, and not to the `timestamp` field of the body, which is
-the event time. A retry arrives up to about 8.6 hours after the event, but carries a freshly
-generated `t`. Measuring the window against the `timestamp` of the body would reject legitimate
-retries. The window does not replace deduplication: store the `Delivery-Id` for at least 24 hours.
+La ventana se aplica a `t`, la hora del intento, y no al campo `timestamp` del cuerpo, que es la hora
+del evento. Un reintento llega hasta unas 8.6 horas después del evento, pero trae una `t` recién
+generada. Medir la ventana contra el `timestamp` del cuerpo rechazaría reintentos legítimos. La
+ventana no sustituye a la deduplicación: guarda el `Delivery-Id` al menos 24 horas.
 
-## Retries
+## Reintentos
 
-Two different mechanisms share the name.
+Dos mecanismos distintos comparten el nombre.
 
-**The client's** repeat a request that failed for transient causes. The SDK retries `5xx`, `408` and
-`429`, and honors the `Retry-After` of the response in full. A `Retry-After` longer than
-`retry.maxRetryAfterMs` (60 seconds by default) is not waited out: the call throws the typed error,
-with `retryAfter` set. The other `4xx` are not retried, because the request has to be fixed before it
-is repeated. A `429` with `quota_exceeded` is not retried either: the plan quota does not refill in
-seconds.
+**Los del cliente** repiten una petición que falló por causas transitorias. El SDK reintenta `5xx`,
+`408` y `429`, y respeta completo el `Retry-After` de la respuesta. Un `Retry-After` mayor que
+`retry.maxRetryAfterMs` (60 segundos de forma predeterminada) no se espera: la llamada lanza el
+error tipado, con `retryAfter` establecido. Los demás `4xx` no se reintentan, porque hay que corregir
+la petición antes de repetirla. Un `429` con `quota_exceeded` tampoco se reintenta: la cuota del plan
+no se repone en segundos.
 
-A `POST` is retried only when it carries an `Idempotency-Key`. Without one, a repeat could duplicate
-the operation. `recheck()` and `executePurge()` never retry: the first has its own limit of one
-recheck every 10 minutes, and the purge is irreversible.
+Un `POST` se reintenta sólo cuando lleva un `Idempotency-Key`. Sin él, una repetición podría duplicar
+la operación. `recheck()` y `executePurge()` nunca reintentan: la primera tiene su propio límite de
+una revisión cada 10 minutos, y la purga es irreversible.
 
 ```ts
-const client = new Veriko({ maxRetries: 3 }); // 0 turns them off; the default is 2
+const client = new Veriko({ maxRetries: 3 }); // 0 los apaga; el valor predeterminado es 2
 ```
 
-**The API's** keep querying Banxico for hours, because a CEP takes time to publish, and notify by
-webhook when the verdict changes.
+**Los de la API** siguen consultando a Banxico durante horas, porque un CEP tarda en publicarse, y
+avisan por webhook cuando el veredicto cambia.
 
 ```ts
 const validation = await client.validateTransfer({
@@ -820,97 +830,99 @@ const validation = await client.validateTransfer({
   retryPolicy: {
     enabled: true,
     max_retries: 3,
-    interval_seconds: 600, // from 300 to 86,400
-    outcomes: ['not_found', 'cep_unavailable'], // which verdicts to retry
+    interval_seconds: 600, // de 300 a 86,400
+    outcomes: ['not_found', 'cep_unavailable'], // qué veredictos reintentar
   },
 });
 ```
 
-Read the progress of the cycle in `(await client.getValidation(id)).attributes.retry_state`, or wait
-for the `validation.retry.resolved` webhook. The attempts already made are in
+Lee el avance del ciclo en `(await client.getValidation(id)).attributes.retry_state`, o espera el
+webhook `validation.retry.resolved`. Los intentos ya hechos están en
 `client.validations.retryAttempts(id)`.
 
-`client.validations.setRetryPolicy(id, policy)` changes the policy of an existing validation, and
-`client.validations.cancelRetries(id)` stops the cycle. Both return the state of the cycle, not the
-full validation.
+`client.validations.setRetryPolicy(id, policy)` cambia la política de una validación existente, y
+`client.validations.cancelRetries(id)` detiene el ciclo. Las dos devuelven el estado del ciclo, no la
+validación completa.
 
-## Idempotency
+## Idempotencia
 
-Retrying a `POST` without an idempotency key can duplicate the validation, and its charge, when the
-response was lost but the request arrived. With a key, the repeat returns the original response for
-24 hours.
+Reintentar un `POST` sin clave de idempotencia puede duplicar la validación, y su cobro, cuando la
+respuesta se perdió pero la petición llegó. Con clave, la repetición devuelve la respuesta original
+durante 24 horas.
 
 ```ts
 const validation = await client.validateTransfer({
   sendDate: '2025-03-15',
   amount: 15000.5,
   trackingKey: 'MXBA20250315001234',
-  idempotencyKey: 'order-4f3a2b1c', // the identifier of the business attempt
+  idempotencyKey: 'order-4f3a2b1c', // el identificador del intento de negocio
 });
 ```
 
-Derive the key from the business attempt (the order, batch or transaction number). Do not generate a
-random one on each send: a random key per retry cancels the protection. A key has 1 to 255 characters
-among letters, digits, `_` and `-`. The SDK rejects any other key with `InvalidRequestError`
-(`invalid_idempotency_key`) before it sends anything.
+Deriva la clave del intento de negocio (el número de pedido, de lote o de transacción). No generes
+una aleatoria en cada envío: una clave aleatoria por reintento anula la protección. Una clave tiene de
+1 a 255 caracteres entre letras, dígitos, `_` y `-`. El SDK rechaza cualquier otra clave con
+`InvalidRequestError` (`invalid_idempotency_key`) antes de enviar nada.
 
-Without `idempotencyKey`, the SDK generates one per call and repeats it in its own retries. That key
-does not survive the process that generated it, so a later resend does run twice. This applies to the
-six operations that accept the header: `validate()`, `validateOcr()` (and so `enqueue()` and
-`enqueueOcr()`), `setRetryPolicy()`, `cancelRetries()`, `account.updateMyRetryPolicy()` and
-`finance.createCepExport()`.
+Sin `idempotencyKey`, el SDK genera una por llamada y la repite en sus propios reintentos. Esa clave
+no sobrevive al proceso que la generó, así que un reenvío posterior sí se ejecuta dos veces. Esto
+aplica a las seis operaciones que aceptan la cabecera: `validate()`, `validateOcr()` (y por tanto
+`enqueue()` y `enqueueOcr()`), `setRetryPolicy()`, `cancelRetries()`,
+`account.updateMyRetryPolicy()` y `finance.createCepExport()`.
 
-When the first request with a key is still running, the API answers `409` with
-`idempotency_key_in_progress`. The SDK waits `Retry-After` (or its own backoff) and repeats the request
-with the same key, up to `retry.maxInProgressWaitMs` of accumulated waiting, 120 seconds by default.
-`ConflictError.inProgress` tells that case from other conflicts when the wait runs out. Reusing a key
-with a different body answers `422` with `idempotency_key_reused`.
+Cuando la primera petición con una clave sigue en curso, la API responde `409` con
+`idempotency_key_in_progress`. El SDK espera el `Retry-After` (o su propia espera creciente) y repite
+la petición con la misma clave, hasta `retry.maxInProgressWaitMs` de espera acumulada, 120 segundos
+de forma predeterminada. `ConflictError.inProgress` distingue ese caso de otros conflictos cuando la
+espera se agota. Reutilizar una clave con un cuerpo distinto responde `422` con
+`idempotency_key_reused`.
 
-## Per-call options
+## Opciones por llamada
 
-Every method takes a last argument with the options of that call:
+Todos los métodos reciben un último argumento con las opciones de esa llamada:
 
 ```ts
 const controller = new AbortController();
 
 const validation = await client.validations.get(id, {
-  signal: controller.signal, // aborts the call, retries and waits included
-  timeoutMs: 10_000, // per attempt
+  signal: controller.signal, // aborta la llamada, con reintentos y esperas incluidos
+  timeoutMs: 10_000, // por intento
   maxRetries: 0,
-  acceptLanguage: 'en', // language of error.detail
-  headers: { 'X-Trace-Id': traceId }, // extra headers; Authorization cannot be overridden
+  acceptLanguage: 'en', // idioma de error.detail
+  headers: { 'X-Trace-Id': traceId }, // cabeceras extra; Authorization no se puede sustituir
 });
 ```
 
-`idempotencyKey` and `onResponse` are also per-call options. A call the caller aborts throws
-`RequestAbortedError` and is never retried. An attempt that exceeds `timeoutMs` throws
-`RequestTimeoutError`, a subclass of `ConnectionError`, once the retries are spent.
-`ConnectionError.attempts` says how many attempts were made. `retry` on the client adjusts the retry
-limits (`maxRetryAfterMs`, `maxInProgressWaitMs`) for every call.
+`idempotencyKey` y `onResponse` también son opciones por llamada. Una llamada que quien la hizo
+aborta lanza `RequestAbortedError` y nunca se reintenta. Un intento que excede `timeoutMs` lanza
+`RequestTimeoutError`, una subclase de `ConnectionError`, cuando se agotan los reintentos.
+`ConnectionError.attempts` dice cuántos intentos se hicieron. `retry` en el cliente ajusta los límites
+de reintento (`maxRetryAfterMs`, `maxInProgressWaitMs`) para todas las llamadas.
 
-## Response metadata
+## Metadatos de la respuesta
 
-Every method returns an `ApiPromise`, a `Promise` that also offers `.withResponse()`. `await` keeps
-returning the resource. `.withResponse()` also returns the metadata of the response:
+Todos los métodos devuelven una `ApiPromise`, una `Promise` que además ofrece `.withResponse()`.
+`await` sigue devolviendo el recurso. `.withResponse()` devuelve también los metadatos de la
+respuesta:
 
 ```ts
 const { data, response } = await client.validateTransfer(params).withResponse();
 
-console.log(response.requestId); // the value to quote when you contact support
+console.log(response.requestId); // el valor que debes citar al contactar a soporte
 console.log(response.rateLimit?.remaining);
 console.log(response.quota?.remaining);
-console.log(response.replayed); // true when the API replayed a stored response
-console.log(response.attempts); // requests it took, retries included
+console.log(response.replayed); // true cuando la API repitió una respuesta guardada
+console.log(response.attempts); // peticiones que tomó, con reintentos incluidos
 ```
 
-`ResponseMeta` carries `status`, `headers`, `requestId`, `apiVersion`, `meta`, `rateLimit`, `quota`,
-`replayed`, `etag`, `location`, `retryAfter`, `deprecation`, `sunset`, `link` and `attempts`. A
-download carries `headers` on the `DownloadedFile` too.
+`ResponseMeta` trae `status`, `headers`, `requestId`, `apiVersion`, `meta`, `rateLimit`, `quota`,
+`replayed`, `etag`, `location`, `retryAfter`, `deprecation`, `sunset`, `link` y `attempts`. Una
+descarga trae también `headers` en el `DownloadedFile`.
 
-To observe every response without changing the calls, pass `onResponse` to the client or to a call. To
-learn that an endpoint is deprecated, pass `onDeprecation`: it receives the `Deprecation`, `Sunset`
-and `Link` headers of the response. Without a handler, the SDK emits one process warning
-(`VERIKO_API_DEPRECATION`) per endpoint.
+Para observar cada respuesta sin cambiar las llamadas, pasa `onResponse` al cliente o a una llamada.
+Para enterarte de que un endpoint está obsoleto, pasa `onDeprecation`: recibe las cabeceras
+`Deprecation`, `Sunset` y `Link` de la respuesta. Sin manejador, el SDK emite un aviso de proceso
+(`VERIKO_API_DEPRECATION`) por endpoint.
 
 ```ts
 const client = new Veriko({
@@ -919,11 +931,11 @@ const client = new Veriko({
 });
 ```
 
-## Errors
+## Errores
 
-Every exception inherits from `VerikoError`. The API ones carry `code`, which is the stable contract,
-and `detail`, which is translated and can be reworded between versions. Branch on `code`, never on
-`detail`.
+Toda excepción hereda de `VerikoError`. Las de la API traen `code`, que es el contrato estable, y
+`detail`, que viene traducido y puede cambiar de redacción entre versiones. Ramifica por `code`,
+nunca por `detail`.
 
 ```ts
 import { InvalidRequestError, NotFoundError, RateLimitError } from '@veriko-mx/sdk';
@@ -932,85 +944,88 @@ try {
   const validation = await client.validateTransfer(params);
 } catch (error) {
   if (error instanceof InvalidRequestError) {
-    // 400, 413, 422: a 422 carries one entry per invalid field
+    // 400, 413, 422: un 422 trae una entrada por campo inválido
     for (const entry of error.errors) {
       console.error(entry.code, entry.source?.pointer, entry.hint, entry.docs_url);
     }
   } else if (error instanceof RateLimitError) {
-    console.error(error.kind, 'wait', error.retryAfter, 'seconds');
+    console.error(error.kind, 'espera', error.retryAfter, 'segundos');
   } else if (error instanceof NotFoundError) {
     // 404
   }
 }
 ```
 
-| exception                    | status                                                              |
-| ---------------------------- | ------------------------------------------------------------------- |
-| `NotModifiedError`           | `304`, from a conditional read                                      |
-| `AuthenticationError`        | `401`                                                               |
-| `ForbiddenError`             | `403`                                                               |
-| `NotFoundError`              | `404`                                                               |
-| `ConflictError`              | `409`                                                               |
-| `GoneError`                  | `410`, for example `validation_purged` and `image_not_retained`     |
-| `InvalidRequestError`        | `400` and `422`                                                     |
-| `PayloadTooLargeError`       | `413`, a subclass of `InvalidRequestError`                          |
-| `RateLimitError`             | `429`                                                               |
-| `QuotaExceededError`         | `429` with `quota_exceeded`, a subclass of `RateLimitError`         |
-| `ServerError`                | `5xx`                                                               |
-| `ApiError`                   | Any other API status. It is the base of the classes above           |
-| `ConnectionError`            | No response, with the retries spent                                 |
-| `RequestTimeoutError`        | An attempt exceeded `timeoutMs`, a subclass of `ConnectionError`    |
-| `RequestAbortedError`        | The caller aborted the call                                         |
-| `TimeoutError`               | `waitFor()`, `waitForCepExport()` or `importWait()` ran out of time |
-| `SignatureVerificationError` | The signature of a webhook does not match                           |
-| `ConfigurationError`         | The API key is missing or an argument of the client is unusable     |
+| excepción                    | estado                                                                |
+| ---------------------------- | --------------------------------------------------------------------- |
+| `NotModifiedError`           | `304`, de una lectura condicional                                     |
+| `AuthenticationError`        | `401`                                                                 |
+| `ForbiddenError`             | `403`                                                                 |
+| `NotFoundError`              | `404`                                                                 |
+| `ConflictError`              | `409`                                                                 |
+| `GoneError`                  | `410`, por ejemplo `validation_purged` e `image_not_retained`         |
+| `InvalidRequestError`        | `400` y `422`                                                         |
+| `PayloadTooLargeError`       | `413`, subclase de `InvalidRequestError`                              |
+| `RateLimitError`             | `429`                                                                 |
+| `QuotaExceededError`         | `429` con `quota_exceeded`, subclase de `RateLimitError`              |
+| `ServerError`                | `5xx`                                                                 |
+| `ApiError`                   | Cualquier otro estado de la API. Es la base de las clases anteriores  |
+| `ConnectionError`            | Sin respuesta, con los reintentos agotados                            |
+| `RequestTimeoutError`        | Un intento excedió `timeoutMs`, subclase de `ConnectionError`         |
+| `RequestAbortedError`        | Quien hizo la llamada la abortó                                       |
+| `TimeoutError`               | `waitFor()`, `waitForCepExport()` o `importWait()` agotaron su tiempo |
+| `SignatureVerificationError` | La firma de un webhook no cuadra                                      |
+| `ConfigurationError`         | Falta la clave de API o un argumento del cliente no se puede usar     |
 
-An `ApiError` carries:
+Un `ApiError` trae:
 
-- `status`, `code`, `detail`, `hint`, `docsUrl` and `pointer`, taken from the first entry of `errors`.
-- `errors`, the full list, and `codes`, the code of every entry. `hasCode(code)` checks the whole list.
-- `requestId`, the value that identifies the request in the system logs.
-- `meta`, `headers`, `retryAfter` and `validationId`, the validation created before the request failed,
-  when there is one.
-- `local`, `true` when the SDK raised the error before sending the request. The codes of those errors
-  are the ones the API would answer with, and `ERROR_CODES` lists the ones the SDK compares or raises.
+- `status`, `code`, `detail`, `hint`, `docsUrl` y `pointer`, tomados de la primera entrada de
+  `errors`.
+- `errors`, la lista completa, y `codes`, el código de cada entrada. `hasCode(code)` revisa toda la
+  lista.
+- `requestId`, el valor que identifica la petición en los registros del sistema.
+- `meta`, `headers`, `retryAfter` y `validationId`, la validación creada antes de que la petición
+  fallara, cuando la hay.
+- `local`, `true` cuando el SDK lanzó el error antes de enviar la petición. Los códigos de esos
+  errores son los que respondería la API, y `ERROR_CODES` lista los que el SDK compara o lanza.
 
-`RateLimitError` adds `kind` (`'rate_limit'` or `'quota'`), `limit`, `remaining` and `resetAt`, read
-from the `X-RateLimit-*` headers.
+`RateLimitError` añade `kind` (`'rate_limit'` o `'quota'`), `limit`, `remaining` y `resetAt`, leídos
+de las cabeceras `X-RateLimit-*`.
 
-## Types
+## Los tipos
 
-The types of what travels on the wire are generated from the OpenAPI spec and versioned in
+Los tipos de lo que viaja por la red se generan del spec de OpenAPI y se versionan en
 [`src/generated/openapi.ts`](src/generated/openapi.ts):
 
 ```bash
-npm run gen:types    # openapi-typescript over spec/openapi.yaml
+npm run gen:types    # openapi-typescript sobre spec/openapi.yaml
 ```
 
-The copy of `spec/openapi.yaml` comes from
-[docs.veriko.mx/openapi.yaml](https://docs.veriko.mx/openapi.yaml), and `npm run check:spec-public`
-checks on every CI run that it meets the API contract.
+La copia de `spec/openapi.yaml` viene de
+[docs.veriko.mx/openapi.yaml](https://docs.veriko.mx/openapi.yaml), y `npm run check:spec-public`
+comprueba en cada corrida del CI que cumple el contrato de la API.
 
-The examples in that spec cite a generic host. The SDK sets the real root of the API in
+Los ejemplos de ese spec citan un host genérico. El SDK fija la raíz real de la API en
 `DEFAULT_BASE_URL`.
 
-Each method returns the `data` resource of the response, typed by the spec: `validation.attributes`,
+Cada método devuelve el recurso `data` de la respuesta, tipado por el spec: `validation.attributes`,
 `endpoint.attributes.secret`, `bank.attributes.name`.
 
-The bodies of `POST /v1/validate` and `POST /v1/validate-ocr` are the only exception and are written
-by hand: their schemas carry an `anyOf` that the generator turns into `unknown`.
-`test/spec.test.ts` fails if the spec adds, removes or renames any of their fields.
+Los cuerpos de `POST /v1/validate` y `POST /v1/validate-ocr` son la única excepción y se escriben a
+mano: sus esquemas traen un `anyOf` que el generador convierte en `unknown`. `test/spec.test.ts`
+falla si el spec agrega, quita o renombra alguno de sus campos.
 
-Besides the types with a short name, the package re-exports the full `components`, `operations` and
-`paths`, for when you need an operation the SDK does not wrap yet.
+Además de los tipos con nombre corto, el paquete reexporta `components`, `operations` y `paths`
+completos, para cuando necesites una operación que el SDK todavía no envuelve.
 
-## M2M surface
+## Superficie M2M
 
-The SDK covers exactly the 75 operations of the public spec: `security: []` for the public ones and
-`ApiKeyAuth` for the authenticated ones.
+El SDK cubre exactamente las 75 operaciones del spec público: `security: []` para las públicas y
+`ApiKeyAuth` para las autenticadas.
 
-Among them are the profile and its retry policy, the dashboard summary, the two public plan endpoints,
-the four insights views, the eleven finance operations and the subscription. For example:
+Entre ellas están el perfil y su política de reintentos, el resumen del panel, los dos endpoints
+públicos de planes, las cuatro vistas de insights, las once operaciones de finanzas y la
+suscripción. Por ejemplo:
 
 ```ts
 const profile = await client.account.myProfile();
@@ -1019,43 +1034,44 @@ const statement = await client.finance.getStatement({ month: '2026-04', format: 
 await writeFile(statement.filename, statement.content);
 ```
 
-The monthly, counterparty, bank and accounting reports keep the API default, `format: 'csv'`. Pass
-`format: 'preview'` explicitly when you need the JSON response to process in memory.
+Los reportes mensual, por contraparte, por banco y contable conservan el valor predeterminado de la
+API, `format: 'csv'`. Pasa `format: 'preview'` de forma explícita cuando necesites la respuesta JSON
+para procesarla en memoria.
 
-## Development
+## Desarrollo
 
 ```bash
 npm install
-npm test               # compiles to dist-test/ and runs node --test
+npm test               # compila a dist-test/ y corre node --test
 npm run lint           # eslint
 npm run typecheck      # tsc --noEmit
-npm run build          # dist/esm and dist/cjs
-npm run gen:types      # regenerates src/generated from spec/openapi.yaml
-npm run test:examples  # builds, then runs examples/ against the recordings
+npm run build          # dist/esm y dist/cjs
+npm run gen:types      # regenera src/generated desde spec/openapi.yaml
+npm run test:examples  # compila y corre examples/ contra las grabaciones
 ```
 
-`test/operations.test.ts` derives the M2M set from `spec/openapi.yaml` (the operations that accept
-`ApiKeyAuth` or declare `security: []`) and compares it with the methods, one to one. It exercises
-every route against a local HTTP server, and fails when an M2M operation has no method or a method
-falls outside the contract. `VERIKO_TEST_SPEC=<path>` points the spec tests at another spec file.
+`test/operations.test.ts` deriva el conjunto M2M de `spec/openapi.yaml` (las operaciones que aceptan
+`ApiKeyAuth` o declaran `security: []`) y lo compara con los métodos, uno a uno. Ejercita cada ruta
+contra un servidor HTTP local, y falla cuando una operación M2M no tiene método o un método queda
+fuera del contrato. `VERIKO_TEST_SPEC=<ruta>` apunta las pruebas del spec a otro archivo de spec.
 
-`npm run test:examples` runs each file of [`examples/`](examples) as a child process whose
-`VERIKO_BASE_URL` is the recording server, checks the requests it sends and what it prints, and
-delivers signed webhooks to the receiver. CI runs it in its own job.
+`npm run test:examples` corre cada archivo de [`examples/`](examples) como proceso hijo cuyo
+`VERIKO_BASE_URL` es el servidor de grabaciones, comprueba las peticiones que envía y lo que imprime,
+y entrega webhooks firmados al receptor. El CI lo corre en un trabajo aparte.
 
-No test calls the API. The harness starts a local HTTP server that serves the responses stored in
-[`test/recordings/`](test/recordings), trimmed from the examples of the public spec.
+Ninguna prueba llama a la API. Las pruebas levantan un servidor HTTP local que sirve las respuestas
+guardadas en [`test/recordings/`](test/recordings), recortadas de los ejemplos del spec público.
 
-## Links
+## Enlaces
 
-- API documentation: [docs.veriko.mx](https://docs.veriko.mx)
-- OpenAPI spec: [docs.veriko.mx/openapi.yaml](https://docs.veriko.mx/openapi.yaml)
-- Python SDK: [veriko-mx-labs/veriko-python](https://github.com/veriko-mx-labs/veriko-python)
-- Examples in other languages: [veriko-mx-labs/examples](https://github.com/veriko-mx-labs/examples)
-- The CEP in detail: [docs.veriko.mx/en/concepts/cep-concept](https://docs.veriko.mx/en/concepts/cep-concept)
-- Error reference: [docs.veriko.mx/en/concepts/errors](https://docs.veriko.mx/en/concepts/errors)
-- Changelog: [CHANGELOG.md](CHANGELOG.md)
+- Documentación de la API: [docs.veriko.mx](https://docs.veriko.mx)
+- Spec de OpenAPI: [docs.veriko.mx/openapi.yaml](https://docs.veriko.mx/openapi.yaml)
+- SDK de Python: [veriko-mx-labs/veriko-python](https://github.com/veriko-mx-labs/veriko-python)
+- Ejemplos en otros lenguajes: [veriko-mx-labs/examples](https://github.com/veriko-mx-labs/examples)
+- El CEP, en detalle: [docs.veriko.mx/es/concepts/cep-concept](https://docs.veriko.mx/es/concepts/cep-concept)
+- Referencia de errores: [docs.veriko.mx/es/concepts/errors](https://docs.veriko.mx/es/concepts/errors)
+- Registro de cambios: [CHANGELOG.md](CHANGELOG.md)
 
-## License
+## Licencia
 
-MIT. See [`LICENSE`](LICENSE).
+MIT. Consulta [`LICENSE`](LICENSE).

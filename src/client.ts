@@ -40,7 +40,7 @@ export const API_KEY_ENV_VAR = 'VERIKO_API_KEY';
 export const BASE_URL_ENV_VAR = 'VERIKO_BASE_URL';
 
 /** The version that travels in the `User-Agent`. `test/client.test.ts` compares it with `package.json`. */
-export const VERSION = '0.6.0';
+export const VERSION = '0.6.1';
 
 interface RuntimeGlobals {
   Deno?: { version?: { deno?: string } };
