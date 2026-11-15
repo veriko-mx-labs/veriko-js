@@ -857,15 +857,16 @@ export interface paths {
         /**
          * Download bulk import template
          * @description Returns a template file in the requested format, with the fixed headers
-         *     `alias`, `account_number` and `bank_name` and example rows for CLABE, card and DiMo
+         *     `label`, `account_number` and `bank_code` (the same fields as
+         *     `POST /v1/beneficiaries`) and example rows for CLABE, card and DiMo
          *     phone.
          *     Serves as a starting point for {% concept slug="bulk-imports" %}the
          *     bulk import{% /concept %}.
          *
          *     The headers do not change with the language: the `Accept-Language`
          *     header only picks the language of the example rows and the sheet name;
-         *     Spanish is served by default. The import parser then accepts headers
-         *     in both languages accent-insensitively.
+         *     Spanish is served by default. On import, headers are matched
+         *     case-insensitively.
          */
         get: operations["downloadBeneficiaryImportTemplate"];
         put?: never;
@@ -2704,6 +2705,60 @@ export interface components {
              */
             legacy_fields?: string[];
         };
+        /**
+         * Format: date-time
+         * @description ISO 8601 timestamp in UTC with an explicit `Z` suffix; for example,
+         *     `"2026-05-01T05:14:38Z"`. The `*_at`, `*_end`, `*_start`, and `*_date`
+         *     fields follow this format. `meta.datetime` describes the same contract in
+         *     the response.
+         * @example 2026-05-01T05:14:38Z
+         */
+        TimestampUTC: string;
+        /** @description Validation quota as it stood after this request. Only present on responses that check or charge the quota (direct, OCR and asynchronous validations, also on the 429 for an exhausted quota) and it says the same as the `X-Quota-*` headers. `limit` and `remaining` are the hard cap, where service stops; `included` and `included_remaining` are what the plan includes at no extra charge, and `overage_used` is what went past that and is billed separately. */
+        QuotaSnapshot: {
+            /**
+             * @description Where the quota comes from: `cycle` (the subscription cycle) or `trial` (the initial trial of an account that has not claimed its plan).
+             * @example cycle
+             * @enum {string}
+             */
+            kind: "cycle" | "trial";
+            /**
+             * @description Validations included in the cycle. Equal to `limit` when the plan does not separate what is included from the cap.
+             * @example 650
+             */
+            included: number;
+            /**
+             * @description Validations consumed in the cycle, counting this one.
+             * @example 820
+             */
+            used: number;
+            /**
+             * @description Included validations left at no extra charge (`max(0, included - used)`).
+             * @example 0
+             */
+            included_remaining: number;
+            /**
+             * @description `true` when overage is enabled: you can validate above `included`, up to `limit`, billed separately.
+             * @example true
+             */
+            overage_enabled: boolean;
+            /**
+             * @description Validations above `included` in the cycle; billed separately at the end of the period. `0` without overage.
+             * @example 170
+             */
+            overage_used: number;
+            /**
+             * @description Hard cap of the cycle, equal to `X-Quota-Limit`.
+             * @example 13000
+             */
+            limit: number;
+            /**
+             * @description Validations left before the cap, equal to `X-Quota-Remaining`.
+             * @example 12180
+             */
+            remaining: number;
+            resets_at: components["schemas"]["TimestampUTC"];
+        };
         /** @description Standard error response wrapper. The `code` field within each error is the stable, machine-readable contract — clients must branch on `code`, not `detail`. */
         ErrorResponse: {
             /** @description List of one or more errors that occurred during the request. Each entry includes `status`, `code`, `detail` and, optionally, `source.pointer` referencing the field that failed. */
@@ -2727,6 +2782,7 @@ export interface components {
                 request_id?: string;
                 datetime?: components["schemas"]["DatetimeMeta"];
                 field_names_notice?: components["schemas"]["FieldNamesNotice"];
+                quota?: components["schemas"]["QuotaSnapshot"];
                 /**
                  * Format: uuid
                  * @description Identifier of the validation that was created before failing. Only present on `POST /v1/validate` and `POST /v1/validate-ocr` errors when the validation was already recorded with status `failed` or `error`; fetch it with `GET /v1/validations/{id}` to see the reason and what was read.
@@ -2790,15 +2846,6 @@ export interface components {
             /** @description Resource identifier, unique within its `type`. It always travels as a string, even when it originates from an auto-increment column. */
             id?: string;
         };
-        /**
-         * Format: date-time
-         * @description ISO 8601 timestamp in UTC with an explicit `Z` suffix; for example,
-         *     `"2026-05-01T05:14:38Z"`. The `*_at`, `*_end`, `*_start`, and `*_date`
-         *     fields follow this format. `meta.datetime` describes the same contract in
-         *     the response.
-         * @example 2026-05-01T05:14:38Z
-         */
-        TimestampUTC: string;
         /** @description A role the user account currently holds and the scope it holds it in. Revoked assignments are left out. */
         RoleAssignmentSummary: {
             /**
@@ -3678,6 +3725,7 @@ export interface components {
             /** @description Control metadata for the polling flow. */
             meta?: {
                 field_names_notice?: components["schemas"]["FieldNamesNotice"];
+                quota?: components["schemas"]["QuotaSnapshot"];
                 /**
                  * @description Reason for a `202` response to a request without `?async=1`. `sync_deadline`: the Banxico query took longer than 45 seconds and the validation continues in the background. It only appears in that case.
                  * @example sync_deadline
@@ -5055,6 +5103,22 @@ export interface components {
              */
             remaining?: number;
             resets_at?: components["schemas"]["TimestampUTC"];
+            /**
+             * @description The plan's billing model. With `hybrid` the plan includes validations and, with overage enabled, keeps validating up to `limit`. Additive.
+             * @example hybrid
+             * @enum {string}
+             */
+            billing_model?: "free" | "tiered" | "metered" | "hybrid";
+            /**
+             * @description `true` when overage is enabled: validations above `included_validations` are billed separately and `limit` is the plan's cap. Additive.
+             * @example true
+             */
+            overage_enabled?: boolean;
+            /**
+             * @description Validations included in the plan per cycle. `null` when the plan does not separate what is included from the limit. Additive.
+             * @example 650
+             */
+            included_validations?: number | null;
         };
         /** @description API usage statistics, validation quota, and Banxico status for the account. */
         ApiUsage: {
@@ -5867,6 +5931,22 @@ export interface components {
              * @example true
              */
             renews?: boolean;
+            /**
+             * @description The plan's billing model. With `hybrid` the plan includes validations and, with overage enabled, keeps validating up to `limit`. Additive.
+             * @example hybrid
+             * @enum {string}
+             */
+            billing_model?: "free" | "tiered" | "metered" | "hybrid";
+            /**
+             * @description `true` when overage is enabled: validations above `included_validations` are billed separately and `limit` is the plan's cap. Additive.
+             * @example true
+             */
+            overage_enabled?: boolean;
+            /**
+             * @description Validations included in the plan per cycle. `null` when the plan does not separate what is included from the limit. Additive.
+             * @example 650
+             */
+            included_validations?: number | null;
         };
         /** @description Monthly usage history for the requested number of months. */
         GetUsageHistoryAttributes: {
@@ -5943,8 +6023,8 @@ export interface components {
                          */
                         used?: number;
                         /**
-                         * @description Monthly limit for the operation. `0` when the plan limit applies.
-                         * @example 0
+                         * @description Effective limit of the current cycle, the same as `GET /v1/usage/summary` and `X-Quota-Limit`; with overage enabled it is the plan's cap. It is today's limit, repeated on every row.
+                         * @example 13000
                          */
                         limit?: number;
                     }[];
@@ -7375,8 +7455,8 @@ export interface components {
          * @example {
          *       "errors": [
          *         {
-         *           "detail": "Rate limit exceeded. Try again in 45 seconds.",
-         *           "hint": "Wait `meta.retry_after` seconds before retrying.",
+         *           "detail": "You exceeded the request limit.",
+         *           "hint": "Wait a few seconds and try again.",
          *           "docs_url": "https://docs.veriko.mx/en/concepts/rate-limits"
          *         }
          *       ]
@@ -7401,8 +7481,8 @@ export interface components {
                  *         {
                  *           "status": "429",
                  *           "code": "rate_limit_exceeded",
-                 *           "detail": "Límite de peticiones excedido. Inténtalo de nuevo en 45 segundos.",
-                 *           "hint": "Espera los segundos de `meta.retry_after` antes de reintentar.",
+                 *           "detail": "Superaste el límite de peticiones.",
+                 *           "hint": "Espera unos segundos y vuelve a intentarlo.",
                  *           "docs_url": "https://docs.veriko.mx/es/concepts/rate-limits"
                  *         }
                  *       ],
@@ -7429,7 +7509,7 @@ export interface components {
          * @example {
          *       "errors": [
          *         {
-         *           "detail": "Invalid or missing authentication credentials."
+         *           "detail": "This request requires authentication."
          *         }
          *       ]
          *     }
@@ -7445,7 +7525,7 @@ export interface components {
                  *         {
                  *           "status": "401",
                  *           "code": "unauthorized",
-                 *           "detail": "Credenciales de autenticación ausentes o inválidas."
+                 *           "detail": "La petición necesita autenticación."
                  *         }
                  *       ],
                  *       "meta": {
@@ -7495,7 +7575,7 @@ export interface components {
          * @example {
          *       "errors": [
          *         {
-         *           "detail": "The request body is too large."
+         *           "detail": "The body exceeds the 1 MB maximum."
          *         }
          *       ]
          *     }
@@ -7511,7 +7591,7 @@ export interface components {
                  *         {
                  *           "status": "413",
                  *           "code": "body_too_large",
-                 *           "detail": "El cuerpo de la petición es demasiado grande."
+                 *           "detail": "El cuerpo supera el máximo de 1 MB."
                  *         }
                  *       ],
                  *       "meta": {
@@ -7544,6 +7624,8 @@ export interface components {
                 "X-Quota-Used"?: number;
                 /** @description Validations remaining in the current cycle. */
                 "X-Quota-Remaining"?: number;
+                /** @description Validations included in the plan for the current cycle. With overage enabled it is lower than `X-Quota-Limit` (the cap); without overage, equal. Also in the body, under `meta.quota`. */
+                "X-Quota-Included"?: number;
                 /** @description End of the current cycle in ISO 8601 UTC, when the quota renews. */
                 "X-Quota-Reset"?: string;
                 [name: string]: unknown;
@@ -7575,7 +7657,7 @@ export interface components {
                  *         {
                  *           "status": "409",
                  *           "code": "idempotency_key_in_progress",
-                 *           "detail": "Una petición con esta Idempotency-Key sigue en proceso."
+                 *           "detail": "Ya hay una solicitud en curso con esta Idempotency-Key."
                  *         }
                  *       ],
                  *       "meta": {
@@ -7601,7 +7683,7 @@ export interface components {
          * @example {
          *       "errors": [
          *         {
-         *           "detail": "The validation was purged and this resource no longer exists."
+         *           "detail": "This validation was permanently deleted."
          *         }
          *       ]
          *     }
@@ -7617,7 +7699,7 @@ export interface components {
                  *         {
                  *           "status": "410",
                  *           "code": "validation_purged",
-                 *           "detail": "La validación se purgó y este recurso ya no existe."
+                 *           "detail": "Esta validación se borró de forma definitiva."
                  *         }
                  *       ],
                  *       "meta": {
@@ -7733,6 +7815,8 @@ export interface operations {
                     "X-Quota-Used"?: number;
                     /** @description Validations remaining in the current cycle. */
                     "X-Quota-Remaining"?: number;
+                    /** @description Validations included in the plan for the current cycle. With overage enabled it is lower than `X-Quota-Limit` (the cap); without overage, equal. Also in the body, under `meta.quota`. */
+                    "X-Quota-Included"?: number;
                     /** @description End of the current cycle in ISO 8601 UTC, when the quota renews. */
                     "X-Quota-Reset"?: string;
                     [name: string]: unknown;
@@ -7740,6 +7824,9 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SuccessEnvelope"] & {
                         data?: components["schemas"]["Validation"];
+                        meta?: {
+                            quota?: components["schemas"]["QuotaSnapshot"];
+                        };
                     };
                 };
             };
@@ -7795,7 +7882,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Could not queue your request. Please try again."
+             *           "detail": "We could not start the request."
              *         }
              *       ]
              *     }
@@ -7811,7 +7898,7 @@ export interface operations {
                      *         {
                      *           "status": "503",
                      *           "code": "dispatch_failed",
-                     *           "detail": "No se pudo poner la solicitud en cola. Intenta de nuevo."
+                     *           "detail": "No pudimos iniciar la solicitud."
                      *         }
                      *       ],
                      *       "meta": {
@@ -7862,6 +7949,8 @@ export interface operations {
                     "X-Quota-Used"?: number;
                     /** @description Validations remaining in the current cycle. */
                     "X-Quota-Remaining"?: number;
+                    /** @description Validations included in the plan for the current cycle. With overage enabled it is lower than `X-Quota-Limit` (the cap); without overage, equal. Also in the body, under `meta.quota`. */
+                    "X-Quota-Included"?: number;
                     /** @description End of the current cycle in ISO 8601 UTC, when the quota renews. */
                     "X-Quota-Reset"?: string;
                     [name: string]: unknown;
@@ -7869,6 +7958,9 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SuccessEnvelope"] & {
                         data?: components["schemas"]["Validation"];
+                        meta?: {
+                            quota?: components["schemas"]["QuotaSnapshot"];
+                        };
                     };
                 };
             };
@@ -8333,7 +8425,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -8349,7 +8441,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -8367,7 +8459,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "The request data is invalid."
+             *           "detail": "Some data needs fixing."
              *         }
              *       ]
              *     }
@@ -8383,7 +8475,7 @@ export interface operations {
                      *         {
                      *           "status": "422",
                      *           "code": "validation_error",
-                     *           "detail": "Los datos de la solicitud no son válidos."
+                     *           "detail": "Hay datos por corregir."
                      *         }
                      *       ],
                      *       "meta": {
@@ -8425,7 +8517,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -8441,7 +8533,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -8459,7 +8551,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "The request data is invalid."
+             *           "detail": "Some data needs fixing."
              *         }
              *       ]
              *     }
@@ -8475,7 +8567,7 @@ export interface operations {
                      *         {
                      *           "status": "422",
                      *           "code": "validation_error",
-                     *           "detail": "Los datos de la solicitud no son válidos."
+                     *           "detail": "Hay datos por corregir."
                      *         }
                      *       ],
                      *       "meta": {
@@ -8526,7 +8618,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Invalid format. Use xml or pdf."
+             *           "detail": "The CEP format must be xml or pdf."
              *         }
              *       ]
              *     }
@@ -8542,7 +8634,7 @@ export interface operations {
                      *         {
                      *           "status": "400",
                      *           "code": "invalid_export_format",
-                     *           "detail": "Formato inválido. Usa xml o pdf."
+                     *           "detail": "El formato del CEP debe ser xml o pdf."
                      *         }
                      *       ],
                      *       "meta": {
@@ -8562,7 +8654,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -8578,7 +8670,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -8597,7 +8689,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "The request data is invalid."
+             *           "detail": "Some data needs fixing."
              *         }
              *       ]
              *     }
@@ -8613,7 +8705,7 @@ export interface operations {
                      *         {
                      *           "status": "422",
                      *           "code": "validation_error",
-                     *           "detail": "Los datos de la solicitud no son válidos."
+                     *           "detail": "Hay datos por corregir."
                      *         }
                      *       ],
                      *       "meta": {
@@ -8708,7 +8800,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -8724,7 +8816,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -8752,7 +8844,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "The request data is invalid."
+             *           "detail": "Some data needs fixing."
              *         }
              *       ]
              *     }
@@ -8768,7 +8860,7 @@ export interface operations {
                      *         {
                      *           "status": "422",
                      *           "code": "validation_error",
-                     *           "detail": "Los datos de la solicitud no son válidos."
+                     *           "detail": "Hay datos por corregir."
                      *         }
                      *       ],
                      *       "meta": {
@@ -8787,7 +8879,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Could not queue your request. Please try again."
+             *           "detail": "We could not start the request."
              *         }
              *       ]
              *     }
@@ -8803,7 +8895,7 @@ export interface operations {
                      *         {
                      *           "status": "503",
                      *           "code": "dispatch_failed",
-                     *           "detail": "No se pudo poner la solicitud en cola. Intenta de nuevo."
+                     *           "detail": "No pudimos iniciar la solicitud."
                      *         }
                      *       ],
                      *       "meta": {
@@ -8860,7 +8952,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -8876,7 +8968,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -8903,7 +8995,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "The request data is invalid."
+             *           "detail": "Some data needs fixing."
              *         }
              *       ]
              *     }
@@ -8919,7 +9011,7 @@ export interface operations {
                      *         {
                      *           "status": "422",
                      *           "code": "validation_error",
-                     *           "detail": "Los datos de la solicitud no son válidos."
+                     *           "detail": "Hay datos por corregir."
                      *         }
                      *       ],
                      *       "meta": {
@@ -8965,7 +9057,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -8981,7 +9073,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -9000,7 +9092,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "The request data is invalid."
+             *           "detail": "Some data needs fixing."
              *         }
              *       ]
              *     }
@@ -9016,7 +9108,7 @@ export interface operations {
                      *         {
                      *           "status": "422",
                      *           "code": "validation_error",
-                     *           "detail": "Los datos de la solicitud no son válidos."
+                     *           "detail": "Hay datos por corregir."
                      *         }
                      *       ],
                      *       "meta": {
@@ -9211,7 +9303,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -9227,7 +9319,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -9246,7 +9338,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "The request data is invalid."
+             *           "detail": "Some data needs fixing."
              *         }
              *       ]
              *     }
@@ -9262,7 +9354,7 @@ export interface operations {
                      *         {
                      *           "status": "422",
                      *           "code": "validation_error",
-                     *           "detail": "Los datos de la solicitud no son válidos."
+                     *           "detail": "Hay datos por corregir."
                      *         }
                      *       ],
                      *       "meta": {
@@ -9359,7 +9451,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -9375,7 +9467,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -9394,7 +9486,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "The request data is invalid."
+             *           "detail": "Some data needs fixing."
              *         }
              *       ]
              *     }
@@ -9410,7 +9502,7 @@ export interface operations {
                      *         {
                      *           "status": "422",
                      *           "code": "validation_error",
-                     *           "detail": "Los datos de la solicitud no son válidos."
+                     *           "detail": "Hay datos por corregir."
                      *         }
                      *       ],
                      *       "meta": {
@@ -9475,7 +9567,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -9491,7 +9583,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -9519,7 +9611,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "The request data is invalid."
+             *           "detail": "Some data needs fixing."
              *         }
              *       ]
              *     }
@@ -9535,7 +9627,7 @@ export interface operations {
                      *         {
                      *           "status": "422",
                      *           "code": "validation_error",
-                     *           "detail": "Los datos de la solicitud no son válidos."
+                     *           "detail": "Hay datos por corregir."
                      *         }
                      *       ],
                      *       "meta": {
@@ -9597,7 +9689,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -9613,7 +9705,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -9642,7 +9734,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "The request data is invalid."
+             *           "detail": "Some data needs fixing."
              *         }
              *       ]
              *     }
@@ -9658,7 +9750,7 @@ export interface operations {
                      *         {
                      *           "status": "422",
                      *           "code": "validation_error",
-                     *           "detail": "Los datos de la solicitud no son válidos."
+                     *           "detail": "Hay datos por corregir."
                      *         }
                      *       ],
                      *       "meta": {
@@ -9742,7 +9834,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "That BIN was not found in the card directory."
+             *           "detail": "We could not find that BIN in the card directory."
              *         }
              *       ]
              *     }
@@ -9833,7 +9925,8 @@ export interface operations {
              *           "status": "404",
              *           "code": "spei_calendar_year_not_covered",
              *           "detail": "We do not have the calendar for 2030.",
-             *           "hint": "Request a year from 2024 to 2026."
+             *           "hint": "Request a year from 2024 to 2026.",
+             *           "docs_url": "https://docs.example.local/en/concepts/errors-taxonomy#spei_calendar_year_not_covered"
              *         }
              *       ],
              *       "meta": {
@@ -9859,7 +9952,8 @@ export interface operations {
                      *           "status": "404",
                      *           "code": "spei_calendar_year_not_covered",
                      *           "detail": "No tenemos el calendario de 2030.",
-                     *           "hint": "Pide un año de 2024 a 2026."
+                     *           "hint": "Pide un año de 2024 a 2026.",
+                     *           "docs_url": "https://docs.example.local/es/concepts/errors-taxonomy#spei_calendar_year_not_covered"
                      *         }
                      *       ],
                      *       "meta": {
@@ -9888,7 +9982,8 @@ export interface operations {
              *         {
              *           "status": "422",
              *           "code": "spei_calendar_year_invalid",
-             *           "detail": "The year does not have four digits."
+             *           "detail": "The year does not have four digits.",
+             *           "docs_url": "https://docs.example.local/en/concepts/errors-taxonomy#spei_calendar_year_invalid"
              *         }
              *       ]
              *     }
@@ -9904,7 +9999,8 @@ export interface operations {
                      *         {
                      *           "status": "422",
                      *           "code": "spei_calendar_year_invalid",
-                     *           "detail": "El año no tiene cuatro dígitos."
+                     *           "detail": "El año no tiene cuatro dígitos.",
+                     *           "docs_url": "https://docs.example.local/es/concepts/errors-taxonomy#spei_calendar_year_invalid"
                      *         }
                      *       ],
                      *       "meta": {
@@ -10136,7 +10232,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -10152,7 +10248,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -10207,7 +10303,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -10223,7 +10319,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -10273,7 +10369,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "The `account` query parameter is required."
+             *           "detail": "The account number is missing from the query."
              *         }
              *       ]
              *     }
@@ -10289,7 +10385,7 @@ export interface operations {
                      *         {
                      *           "status": "400",
                      *           "code": "query_param_account_required",
-                     *           "detail": "Falta el parámetro `account` en la consulta."
+                     *           "detail": "Falta el número de cuenta en la consulta."
                      *         }
                      *       ],
                      *       "meta": {
@@ -10347,7 +10443,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "No beneficiary found for this account."
+             *           "detail": "None of your beneficiaries has that account."
              *         }
              *       ]
              *     }
@@ -10363,7 +10459,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "beneficiary_not_found_for_account",
-                     *           "detail": "No beneficiary was found for that account."
+                     *           "detail": "Ningún beneficiario tuyo tiene esa cuenta."
                      *         }
                      *       ],
                      *       "meta": {
@@ -10414,7 +10510,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Format must be one of: csv, xlsx, xls, txt, json"
+             *           "detail": "Invalid template format; accepted: csv, xlsx, xls, txt, json."
              *         }
              *       ]
              *     }
@@ -10430,7 +10526,7 @@ export interface operations {
                      *         {
                      *           "status": "422",
                      *           "code": "invalid_format",
-                     *           "detail": "El formato debe ser uno de: csv, xlsx, xls, txt, json."
+                     *           "detail": "Formato de plantilla no válido; admitidos: csv, xlsx, xls, txt, json."
                      *         }
                      *       ],
                      *       "meta": {
@@ -10491,7 +10587,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "A `file` part is required in the multipart body."
+             *           "detail": "The import file is missing."
              *         }
              *       ]
              *     }
@@ -10507,7 +10603,7 @@ export interface operations {
                      *         {
                      *           "status": "422",
                      *           "code": "file_required",
-                     *           "detail": "Falta la parte `file` en el cuerpo multiparte."
+                     *           "detail": "Falta el archivo de la importación."
                      *         }
                      *       ],
                      *       "meta": {
@@ -10554,7 +10650,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -10570,7 +10666,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -10615,7 +10711,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Import job not found or already terminal."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -10631,7 +10727,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "El lote no existe o ya llegó a un estado final."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -10699,7 +10795,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -10715,7 +10811,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -10858,7 +10954,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -10874,7 +10970,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -11355,7 +11451,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -11371,7 +11467,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -11390,7 +11486,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Invalid event: validation.created"
+             *           "detail": "The event validation.created does not exist."
              *         }
              *       ]
              *     }
@@ -11406,7 +11502,7 @@ export interface operations {
                      *         {
                      *           "status": "422",
                      *           "code": "webhook_event_invalid",
-                     *           "detail": "Evento inválido: validation.created",
+                     *           "detail": "El evento validation.created no existe.",
                      *           "source": {
                      *             "pointer": "/data/attributes/events"
                      *           }
@@ -11454,7 +11550,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -11470,7 +11566,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -11523,7 +11619,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -11539,7 +11635,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -11611,7 +11707,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -11627,7 +11723,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -11686,7 +11782,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -11702,7 +11798,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -11770,7 +11866,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Resource not found."
+             *           "detail": "We could not find what you requested."
              *         }
              *       ]
              *     }
@@ -11786,7 +11882,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "not_found",
-                     *           "detail": "Recurso no encontrado."
+                     *           "detail": "No encontramos lo que pediste."
                      *         }
                      *       ],
                      *       "meta": {
@@ -12152,7 +12248,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "Invalid period."
+             *           "detail": "The period must be the current one or YYYY-MM."
              *         }
              *       ]
              *     }
@@ -12168,7 +12264,7 @@ export interface operations {
                      *         {
                      *           "status": "400",
                      *           "code": "invalid_period",
-                     *           "detail": "Período inválido."
+                     *           "detail": "El periodo debe ser el actual o AAAA-MM."
                      *         }
                      *       ],
                      *       "meta": {
@@ -12590,7 +12686,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "We could not generate the PDF. Try again; contact us if it persists."
+             *           "detail": "We couldn't generate the PDF. Try again."
              *         }
              *       ]
              *     }
@@ -12606,7 +12702,7 @@ export interface operations {
                      *         {
                      *           "status": "500",
                      *           "code": "pdf_render_failed",
-                     *           "detail": "No pudimos generar el PDF. Vuelve a intentarlo; si persiste, escríbenos."
+                     *           "detail": "No pudimos generar el PDF. Vuelve a intentarlo."
                      *         }
                      *       ],
                      *       "meta": {
@@ -12692,7 +12788,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "We could not generate the PDF. Try again; contact us if it persists."
+             *           "detail": "We couldn't generate the PDF. Try again."
              *         }
              *       ]
              *     }
@@ -12708,7 +12804,7 @@ export interface operations {
                      *         {
                      *           "status": "500",
                      *           "code": "pdf_render_failed",
-                     *           "detail": "No pudimos generar el PDF. Vuelve a intentarlo; si persiste, escríbenos."
+                     *           "detail": "No pudimos generar el PDF. Vuelve a intentarlo."
                      *         }
                      *       ],
                      *       "meta": {
@@ -12794,7 +12890,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "We could not generate the PDF. Try again; contact us if it persists."
+             *           "detail": "We couldn't generate the PDF. Try again."
              *         }
              *       ]
              *     }
@@ -12810,7 +12906,7 @@ export interface operations {
                      *         {
                      *           "status": "500",
                      *           "code": "pdf_render_failed",
-                     *           "detail": "No pudimos generar el PDF. Vuelve a intentarlo; si persiste, escríbenos."
+                     *           "detail": "No pudimos generar el PDF. Vuelve a intentarlo."
                      *         }
                      *       ],
                      *       "meta": {
@@ -12901,7 +12997,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "We could not generate the PDF. Try again; contact us if it persists."
+             *           "detail": "We couldn't generate the PDF. Try again."
              *         }
              *       ]
              *     }
@@ -12917,7 +13013,7 @@ export interface operations {
                      *         {
                      *           "status": "500",
                      *           "code": "pdf_render_failed",
-                     *           "detail": "No pudimos generar el PDF. Vuelve a intentarlo; si persiste, escríbenos."
+                     *           "detail": "No pudimos generar el PDF. Vuelve a intentarlo."
                      *         }
                      *       ],
                      *       "meta": {
@@ -12999,7 +13095,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "No CEPs available in that range."
+             *           "detail": "There are no CEPs between 2026-01-01 and 2026-01-31."
              *         }
              *       ]
              *     }
@@ -13015,7 +13111,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "no_ceps",
-                     *           "detail": "No hay CEPs disponibles en ese rango."
+                     *           "detail": "No hay CEP entre 2026-01-01 y 2026-01-31."
                      *         }
                      *       ],
                      *       "meta": {
@@ -13123,7 +13219,7 @@ export interface operations {
              * @example {
              *       "errors": [
              *         {
-             *           "detail": "The request data is invalid."
+             *           "detail": "Some data needs fixing."
              *         }
              *       ]
              *     }
@@ -13139,7 +13235,7 @@ export interface operations {
                      *         {
                      *           "status": "422",
                      *           "code": "validation_error",
-                     *           "detail": "Los datos de la solicitud no son válidos."
+                     *           "detail": "Hay datos por corregir."
                      *         }
                      *       ],
                      *       "meta": {
