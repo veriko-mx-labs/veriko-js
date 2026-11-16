@@ -1737,7 +1737,9 @@ export interface paths {
          *     The contexts do not carry the same limits. `api` limits authenticated
          *     requests per key and per minute, with the value of the account plan
          *     (`key_per_minute`), and adds a per-IP ceiling (`ip_ceiling_per_minute`);
-         *     requests without a key are limited per IP (`ip_per_minute`). `webhooks`
+         *     requests without a key are limited per IP (`ip_per_minute`). A
+         *     credential that is not the account key, such as the token of a
+         *     connected app, also has its own cap (`credential_per_minute`). `webhooks`
          *     sets the deliveries per minute the account may send to a single
          *     destination host, per its plan (`host_per_minute`), and the cap for all
          *     customers together on that host (`host_global_per_minute`). `login`
@@ -3670,7 +3672,7 @@ export interface components {
                  */
                 cep_xml?: string | null;
                 /**
-                 * @description URL of the CEP in PDF format. It only appears when `banxico_status` is `valid`, or is `returned` with a receipt, and the validation was not purged; otherwise the `links` object is omitted.
+                 * @description URL of the CEP in PDF format. It only appears when `cep_xml` appears and the PDF is stored; an older validation can have the XML without the PDF.
                  * @example /v1/validations/a1b2c3d4-e5f6-4890-abcd-ef0123456789/cep?format=pdf
                  */
                 cep_pdf?: string | null;
@@ -6043,7 +6045,7 @@ export interface components {
                 type?: "usage_limits";
                 /** @description Limits data: the per-context limits and their notes. */
                 attributes?: {
-                    /** @description Rate limits by context. Each entry carries only the ones that context applies: `api` carries `key_per_minute`, `ip_ceiling_per_minute` and `ip_per_minute`; `webhooks`, `host_per_minute` and `host_global_per_minute`; `login`, the four IP and email ones. `key_per_minute` and `host_per_minute` are set by the account plan. */
+                    /** @description Rate limits by context. Each entry carries only the ones that context applies: `api` carries `key_per_minute`, `credential_per_minute`, `ip_ceiling_per_minute` and `ip_per_minute`; `webhooks`, `host_per_minute` and `host_global_per_minute`; `login`, the four IP and email ones. `key_per_minute` and `host_per_minute` are set by the account plan. */
                     rate_limits?: {
                         [key: string]: {
                             /**
@@ -6051,6 +6053,11 @@ export interface components {
                              * @example 240
                              */
                             key_per_minute?: number;
+                            /**
+                             * @description Requests per minute for a credential that is not the account key, such as the token of a connected app (the MCP server, for example) or an `adm_` key. It is counted separately and applies together with `key_per_minute`.
+                             * @example 120
+                             */
+                            credential_per_minute?: number;
                             /**
                              * @description Ceiling of requests per minute per IP address for authenticated requests, all keys from one origin together.
                              * @example 1200
@@ -7128,7 +7135,7 @@ export interface components {
              */
             cep_xml?: string;
             /**
-             * @description Path of the CEP in PDF. It only appears when the CEP exists.
+             * @description Path of the CEP in PDF. It only appears when the PDF is stored.
              * @example /v1/validations/3fa85f64-5717-4562-b3fc-2c963f66afa6/cep?format=pdf
              */
             cep_pdf?: string;
