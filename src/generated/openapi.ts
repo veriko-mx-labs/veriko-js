@@ -2848,6 +2848,28 @@ export interface components {
             /** @description Resource identifier, unique within its `type`. It always travels as a string, even when it originates from an auto-increment column. */
             id?: string;
         };
+        /**
+         * @description One of the account's two-factor authentication (2FA) methods, with its
+         *     ladder state: `passkey`, `app`, `email` or `sms`.
+         */
+        UserTwoFactorMethod: {
+            /**
+             * @description Method: `passkey`: passkey (Phase 4); `app`: authenticator app (TOTP); `email`: code by email; `sms`: code by SMS.
+             * @example app
+             * @enum {string}
+             */
+            method: "passkey" | "app" | "email" | "sms";
+            /**
+             * @description `enabled`: the method takes part in the ladder; `disabled`: it does not.
+             * @example enabled
+             * @enum {string}
+             */
+            status: "enabled" | "disabled";
+            /** @description When the method was verified: the channel verification for `email`/`sms`, the confirmed enrollment for `app`; `null` when never verified (or `passkey`, with no enrollment until Phase 4). */
+            verified_at: components["schemas"]["TimestampUTC"] | null;
+            /** @description When a challenge with this method was last passed; `null` when never used. */
+            last_used_at: components["schemas"]["TimestampUTC"] | null;
+        };
         /** @description A role the user account currently holds and the scope it holds it in. Revoked assignments are left out. */
         RoleAssignmentSummary: {
             /**
@@ -2968,22 +2990,24 @@ export interface components {
             /** @description Two-factor authentication (2FA) state. */
             two_factor?: {
                 /**
-                 * @description `true` when two-factor authentication (2FA) is active on the user account.
-                 * @example false
-                 */
-                enabled?: boolean;
-                /**
-                 * @description Channel the authentication code (OTP) is delivered through — `sms`: By text message; `email`: By email; `null`: The user account never configured it. Disabling 2FA keeps the last channel used.
-                 * @example sms
-                 * @enum {string|null}
-                 */
-                method?: "sms" | "email" | null;
-                /**
                  * Format: date-time
-                 * @description Date and time of the last 2FA use, in ISO 8601 UTC. A field planned for later: today it is always `null`.
+                 * @description Date and time of the last passed 2FA challenge with any method, in ISO 8601 UTC; `null` when never used.
                  * @example null
                  */
                 last_used_at?: string | null;
+                /** @description The four methods in ladder order (`passkey`, `app`, `email`, `sms`) with their state. The /security front reads these. */
+                methods?: components["schemas"]["UserTwoFactorMethod"][];
+                /**
+                 * @description First enabled method in ladder order (the one the login challenges); `null` when none is enabled. Derived, not stored.
+                 * @example app
+                 * @enum {string|null}
+                 */
+                primary?: "passkey" | "app" | "email" | "sms" | null;
+                /**
+                 * @description Unused recovery codes left (0 when no set is live).
+                 * @example 5
+                 */
+                recovery_codes_remaining?: number;
             };
             /** @description Flat, sorted list of the user account's effective permissions, in keys such as `validations.records.read`: the ones its roles grant on the platform and in its personal organization. */
             permissions?: string[];
