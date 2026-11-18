@@ -2854,7 +2854,7 @@ export interface components {
          */
         UserTwoFactorMethod: {
             /**
-             * @description Method: `passkey`: passkey (Phase 4); `app`: authenticator app (TOTP); `email`: code by email; `sms`: code by SMS.
+             * @description Method: `passkey`: passkey (Phase 4); `app`: authenticator app (TOTP or HOTP); `email`: code by email; `sms`: code by SMS.
              * @example app
              * @enum {string}
              */
@@ -2865,6 +2865,11 @@ export interface components {
              * @enum {string}
              */
             status: "enabled" | "disabled";
+            /**
+             * @description `true` when the method's engine is available in this deployment (RN-AUTH-054); `false` only for `passkey` until `b-passkeys-controlador` is in production. The front hides an unavailable method the user does not have active; when they had it active, it turns it off without unlinking.
+             * @example true
+             */
+            available: boolean;
             /** @description When the method was verified: the channel verification for `email`/`sms`, the confirmed enrollment for `app`; `null` when never verified (or `passkey`, with no enrollment until Phase 4). */
             verified_at: components["schemas"]["TimestampUTC"] | null;
             /** @description When a challenge with this method was last passed; `null` when never used. */
@@ -2995,7 +3000,7 @@ export interface components {
                  * @example null
                  */
                 last_used_at?: string | null;
-                /** @description The four methods in ladder order (`passkey`, `app`, `email`, `sms`) with their state. The /security front reads these. */
+                /** @description The four methods in ladder order (`passkey`, `app`, `email`, `sms`) with their state and availability (`available`). The /security front reads these. */
                 methods?: components["schemas"]["UserTwoFactorMethod"][];
                 /**
                  * @description First enabled method in ladder order (the one the login challenges); `null` when none is enabled. Derived, not stored.
@@ -3930,6 +3935,8 @@ export interface components {
                  * @example orden-4812
                  */
                 client_ref?: string;
+                /** @description Normalization warnings present. They can explain an unexpected `not_found` result. It only appears when the validation has any. */
+                normalization_warnings?: string[] | null;
             };
         } & WithRequired<components["schemas"]["JsonApiResourceBase"], "type" | "id">;
         /** @description JSON:API resource with validation counters by `banxico_status`, lifecycle state, and validation mode. */
@@ -7018,6 +7025,8 @@ export interface components {
              * @example Banxico no respondió tras tres intentos.
              */
             error_message?: string;
+            /** @description Normalization warnings present. They can explain an unexpected `not_found` result. It only appears when the validation has any. */
+            normalization_warnings?: string[] | null;
             /**
              * @description Reference of your own sent when the validation was created, returned as sent. It only appears when the request included it.
              * @example orden-4812
