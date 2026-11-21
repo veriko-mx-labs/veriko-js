@@ -3503,7 +3503,7 @@ export interface components {
                 } & {
                     [key: string]: unknown;
                 }) | null;
-                /** @description Normalization warnings present. They can explain an unexpected `not_found` result. */
+                /** @description Normalization warnings present. They can explain an unexpected `not_found` result. If a warning mentions an account, it shows only its last 4 digits. */
                 normalization_warnings?: string[] | null;
                 /**
                  * @description Earlier validation that confirmed this transfer in the
@@ -3935,7 +3935,7 @@ export interface components {
                  * @example orden-4812
                  */
                 client_ref?: string;
-                /** @description Normalization warnings present. They can explain an unexpected `not_found` result. It only appears when the validation has any. */
+                /** @description Normalization warnings present. They can explain an unexpected `not_found` result. It only appears when the validation has any. If a warning mentions an account, it shows only its last 4 digits. */
                 normalization_warnings?: string[] | null;
             };
         } & WithRequired<components["schemas"]["JsonApiResourceBase"], "type" | "id">;
@@ -7025,7 +7025,7 @@ export interface components {
              * @example Banxico no respondió tras tres intentos.
              */
             error_message?: string;
-            /** @description Normalization warnings present. They can explain an unexpected `not_found` result. It only appears when the validation has any. */
+            /** @description Normalization warnings present. They can explain an unexpected `not_found` result. It only appears when the validation has any. If a warning mentions an account, it shows only its last 4 digits. */
             normalization_warnings?: string[] | null;
             /**
              * @description Reference of your own sent when the validation was created, returned as sent. It only appears when the request included it.
