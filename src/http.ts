@@ -235,8 +235,9 @@ export function defaultSleep(ms: number): Promise<void> {
 }
 
 /**
- * The shape of an API key: `veriko_` and 64 lowercase hexadecimal characters. A key
- * of any other shape is not sent: the request fails before it reaches the network.
+ * The shape of a key: `veriko_` and 64 lowercase hexadecimal characters.
+ *
+ * A key of any other shape is not sent: the request fails before it reaches the network.
  */
 export const API_KEY_PATTERN = /^veriko_[0-9a-f]{64}$/;
 

@@ -10431,7 +10431,7 @@ export interface operations {
                      *         {
                      *           "status": "400",
                      *           "code": "query_param_account_required",
-                     *           "detail": "Falta el número de cuenta en la consulta."
+                     *           "detail": "The account number is missing from the query."
                      *         }
                      *       ],
                      *       "meta": {
@@ -10505,7 +10505,7 @@ export interface operations {
                      *         {
                      *           "status": "404",
                      *           "code": "beneficiary_not_found_for_account",
-                     *           "detail": "Ningún beneficiario tuyo tiene esa cuenta."
+                     *           "detail": "None of your beneficiaries has that account."
                      *         }
                      *       ],
                      *       "meta": {
@@ -13584,7 +13584,7 @@ export interface operations {
                  *           "completed_at": "2026-07-21T05:00:05Z",
                  *           "client_ref": "orden-4812",
                  *           "error_code": "not_found_identity",
-                 *           "error_message": "No se encontró la operación con la fecha, el criterio y los bancos enviados."
+                 *           "error_message": "No operation was found with the date, criterion and banks sent."
                  *         },
                  *         "links": {
                  *           "self": "/v1/validations/3fa85f64-5717-4562-b3fc-2c963f66afa6"

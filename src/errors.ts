@@ -69,7 +69,7 @@ export class VerikoError extends Error {
   }
 }
 
-/** The API key is missing, or an argument of the client is unusable. */
+/** The key is missing, or an argument of the client is unusable. */
 export class ConfigurationError extends VerikoError {}
 
 /** No response arrived: DNS, TLS, socket or timeout, with the retries already spent. */
@@ -182,7 +182,7 @@ export class NotModifiedError extends ApiError {
   }
 }
 
-/** `401`. The API key is missing or no longer valid. */
+/** `401`. The key is missing or no longer valid. */
 export class AuthenticationError extends ApiError {}
 
 /** `403`. Authenticated, but without permission for that operation. */

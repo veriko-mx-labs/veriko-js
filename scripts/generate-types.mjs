@@ -118,6 +118,12 @@ const TEXT_FIXES = [
     'No encontramos ningún beneficiario para esa cuenta.',
     'No beneficiary was found for that account.',
   ],
+  ['Falta el número de cuenta en la consulta.', 'The account number is missing from the query.'],
+  ['Ningún beneficiario tuyo tiene esa cuenta.', 'None of your beneficiaries has that account.'],
+  [
+    'No se encontró la operación con la fecha, el criterio y los bancos enviados.',
+    'No operation was found with the date, criterion and banks sent.',
+  ],
   [/\bfolio\b/g, 'statement number'],
 ];
 

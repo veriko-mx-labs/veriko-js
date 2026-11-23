@@ -73,7 +73,7 @@ export function buildUserAgent(prefix?: string, suffix?: string): string {
 }
 
 export interface VerikoOptions {
-  /** The API key. Defaults to `VERIKO_API_KEY`. */
+  /** The key. Defaults to `VERIKO_API_KEY`. */
   apiKey?: string;
   /** The root of the API. Defaults to `VERIKO_BASE_URL` or production. */
   baseUrl?: string;
@@ -113,7 +113,7 @@ export interface VerikoOptions {
 /**
  * Client of the Veriko API.
  *
- * The API key is read from `options.apiKey` or, when it is not passed, from the
+ * The key is read from `options.apiKey` or, when it is not passed, from the
  * `VERIKO_API_KEY` environment variable. It starts with `veriko_` and is obtained in the
  * dashboard: https://app.veriko.mx
  *

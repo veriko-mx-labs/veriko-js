@@ -59,7 +59,7 @@ const spec = parse(
 const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'];
 
 /**
- * `true` when the operation is machine-to-machine: it accepts the API key or is
+ * `true` when the operation is machine-to-machine: it accepts the key or is
  * public and asks for no authentication (`security: []`, or an empty alternative).
  * The operation's own `security` wins over the document's.
  */

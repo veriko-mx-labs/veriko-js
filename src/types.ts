@@ -36,16 +36,21 @@ export type RetryPolicy = Schemas['RetryPolicy'];
 /**
  * Body of `POST /v1/validate`.
  *
- * This one does not come from the generator. The schema in the spec carries an `anyOf`
- * that only expresses "`tracking_key` or `numeric_reference` is required", and
- * `openapi-typescript` turns it into `{...} | unknown`, which TypeScript collapses to
- * `unknown`. The type is written here with the same fields, and `test/spec.test.ts`
- * fails if the spec adds, removes or renames one.
+ * This one does not come from the generator.
+ *
+ * The schema in the spec carries an `anyOf` that only expresses "`tracking_key` or
+ * `numeric_reference` is required", and `openapi-typescript` turns it into `{...} |
+ * unknown`, which TypeScript collapses to `unknown`.
+ *
+ * The type is written here with the same fields, and `test/spec.test.ts` fails if the
+ * spec adds, removes or renames one.
  */
 export interface ValidationRequest {
   /**
-   * Date of the transfer in ISO 8601 format (`YYYY-MM-DD`). Optional: if it is missing or
-   * unusable, the API tries candidate dates against Banxico.
+   * Date of the transfer in ISO 8601 format (`YYYY-MM-DD`).
+   *
+   * Optional: if it is missing or unusable, the API tries candidate dates against
+   * Banxico.
    */
   send_date?: string;
   /** Amount in pesos, greater than zero, with up to two decimals and up to 13 integer digits. */
@@ -62,8 +67,9 @@ export interface ValidationRequest {
   beneficiary_account?: string;
   /**
    * From 2 accounts up to the maximum the platform allows (3 by default, never more than
-   * 10), among which is the receiving one, for when it is not known which it was. Goes
-   * instead of `beneficiary_account`.
+   * 10), among which is the receiving one, for when it is not known which it was.
+   *
+   * Goes instead of `beneficiary_account`.
    */
   candidate_accounts?: string[];
   /** `true` when the beneficiary is the receiving institution itself. */
@@ -75,8 +81,9 @@ export interface ValidationRequest {
 }
 
 /**
- * The fields of `ValidationRequest`, for the test that compares them with the spec. The
- * order is the spec's.
+ * The fields of `ValidationRequest`, for the test that compares them with the spec.
+ *
+ * The order is the spec's.
  */
 export const VALIDATION_REQUEST_FIELDS = [
   'send_date',
@@ -96,8 +103,9 @@ export const VALIDATION_REQUEST_FIELDS = [
  * Body of `POST /v1/validate-ocr`.
  *
  * It does not come from the generator either, for the same reason as `ValidationRequest`:
- * the `anyOf` that requires `image` or `image_url` becomes `unknown`. The fields are the
- * spec's, and `test/spec.test.ts` fails if they change.
+ * the `anyOf` that requires `image` or `image_url` becomes `unknown`.
+ *
+ * The fields are the spec's, and `test/spec.test.ts` fails if they change.
  */
 export interface OcrValidationRequest {
   /** The receipt in base64. JPEG, PNG, WebP or a PDF of 1 to 3 pages, up to 12 MB. */
@@ -170,10 +178,14 @@ export function isTerminal(status: string | undefined): boolean {
 /**
  * `true` when the verdict will no longer change, not even through retries.
  *
- * `isTerminal()` looks at the state only. A `not_found` is terminal for the query that
- * produced it, but if the validation has a retry cycle running the API asks Banxico again,
- * and the verdict can change. Only outcomes that admit retry (`RETRYABLE_OUTCOMES`) keep
- * the cycle alive: a `valid` or a `returned` is final even if a policy is configured.
+ * `isTerminal()` looks at the state only.
+ *
+ * A `not_found` is terminal for the query that produced it, but if the validation has a
+ * retry cycle running the API asks Banxico again, and the verdict can change.
+ *
+ * Only outcomes that admit retry (`RETRYABLE_OUTCOMES`) keep the cycle alive: a `valid`
+ * or a `returned` is final even if a policy is configured.
+ *
  * This is the condition `waitFor()` waits for.
  */
 export function isSettled(validation: Validation): boolean {
@@ -192,8 +204,9 @@ export function isSettled(validation: Validation): boolean {
 /**
  * `true` when there is a receipt to download.
  *
- * It is derived from `links.cep_xml`, which is what the server publishes. A `returned`
- * born from `cep_unavailable` does not carry it.
+ * It is derived from `links.cep_xml`, which is what the server publishes.
+ *
+ * A `returned` born from `cep_unavailable` does not carry it.
  */
 export function hasCep(validation: Validation): boolean {
   return Boolean(validation.links?.cep_xml);
@@ -221,20 +234,25 @@ export interface DownloadedFile {
   /** The name that `Content-Disposition` proposes. */
   filename: string;
   /**
-   * The response headers, with lowercase names. A finance ZIP carries `x-finance-items`, a
-   * statement `x-finance-folio`.
+   * The response headers, with lowercase names.
+   *
+   * A finance ZIP carries `x-finance-items`, a statement `x-finance-folio`.
    */
   headers: Record<string, string>;
 }
 
 /**
- * A file the API returns, handed over as a stream the SDK has not read. It is what the
- * `*Stream()` variants of the downloads resolve to.
+ * A file the API returns, handed over as a stream the SDK has not read.
+ *
+ * It is what the `*Stream()` variants of the downloads resolve to.
  *
  * The body is a web `ReadableStream`: pipe it to a file or to a response, or read it with
- * `getReader()`. Read it to the end or cancel it, so the connection is released. The time
- * limit of the call (`timeoutMs`) covers the wait for the headers, not the transfer; a
- * `signal` passed in the call options still cancels the transfer.
+ * `getReader()`.
+ *
+ * Read it to the end or cancel it, so the connection is released.
+ *
+ * The time limit of the call (`timeoutMs`) covers the wait for the headers, not the
+ * transfer; a `signal` passed in the call options still cancels the transfer.
  */
 export interface DownloadedStream {
   /** The body, unread. It is not buffered and not retried. */
@@ -280,13 +298,16 @@ export type WebhookEventName = (typeof WEBHOOK_EVENTS)[number];
 /**
  * What Banxico confirmed about the payment, included in the webhook delivery only when
  * the API already has it (`banxico_status` is `valid`, or `returned` with a downloaded
- * CEP). It serves to compare the amount, and the account if it applies, against the order
+ * CEP).
+ *
+ * It serves to compare the amount, and the account if it applies, against the order
  * before treating a transfer as paid: a receipt image can show an amount different from
  * the one Banxico confirmed.
  *
- * It does not come from the generator: it belongs to the webhook delivery. The
- * `Validation` resource the API returns exposes the same data unmasked, with more fields,
- * in `attributes.banxico_result`.
+ * It does not come from the generator: it belongs to the webhook delivery.
+ *
+ * The `Validation` resource the API returns exposes the same data unmasked, with more
+ * fields, in `attributes.banxico_result`.
  */
 export interface BanxicoConfirmed {
   /** Amount of the operation that Banxico confirmed, in pesos. */
@@ -306,13 +327,16 @@ export interface BanxicoConfirmed {
 }
 
 /**
- * The official state of the payment, as Banxico gave it the last time it was asked. It
- * travels in `attributes.payment_status` of the `validation.returned` event and in
+ * The official state of the payment, as Banxico gave it the last time it was asked.
+ *
+ * It travels in `attributes.payment_status` of the `validation.returned` event and in
  * `attributes.banxico_result._payment_status` of the validation.
  *
  * With `devuelto` or `en_proceso_devolucion` the validation becomes `returned`.
- * `checked_at` is the instant of the query, in ISO 8601 UTC. The codes are Banxico's
- * and stay in Spanish.
+ *
+ * `checked_at` is the instant of the query, in ISO 8601 UTC.
+ *
+ * The codes are Banxico's and stay in Spanish.
  */
 export interface PaymentStatus {
   code:
@@ -395,8 +419,9 @@ export interface ValidationReturnedWebhookEvent extends WebhookEnvelope {
 }
 
 /**
- * `billing.*`: the API does not publish the shape of its `data`, so it is not typed. It is
- * in `rawData`.
+ * `billing.*`: the API does not publish the shape of its `data`, so it is not typed.
+ *
+ * It is in `rawData`.
  */
 export interface BillingWebhookEvent extends WebhookEnvelope {
   event: BillingWebhookEventName;
@@ -410,8 +435,11 @@ export interface TestWebhookEvent extends WebhookEnvelope {
 }
 
 /**
- * An event this version of the SDK does not know. `data` is in `rawData`. A new event of
- * the API arrives as this type, so an existing integration does not break.
+ * An event this version of the SDK does not know.
+ *
+ * `data` is in `rawData`.
+ *
+ * A new event of the API arrives as this type, so an existing integration does not break.
  */
 export interface UnknownWebhookEvent extends WebhookEnvelope {
   event: string;
@@ -434,15 +462,19 @@ export interface UnknownWebhookEvent extends WebhookEnvelope {
  * }
  * ```
  *
- * `parseWebhook()` returns `WebhookEvent | UnknownWebhookEvent`. The API does not publish
- * the delivery bodies in its spec; these types follow the webhooks documentation.
+ * `parseWebhook()` returns `WebhookEvent | UnknownWebhookEvent`.
+ *
+ * The API does not publish the delivery bodies in its spec; these types follow the
+ * webhooks documentation.
  */
 export type WebhookEvent =
   ValidationWebhookEvent | ValidationReturnedWebhookEvent | BillingWebhookEvent | TestWebhookEvent;
 
 /**
- * The account of a validation by fields: a single one, in `beneficiaryAccount`, or several
- * in `candidateAccounts` when it is not known which it was. Send one of the two, not both.
+ * The account of a validation by fields: a single one, in `beneficiaryAccount`, or
+ * several in `candidateAccounts` when it is not known which it was.
+ *
+ * Send one of the two, not both.
  */
 export type TransferAccountParams =
   | {
@@ -454,19 +486,25 @@ export type TransferAccountParams =
       beneficiaryAccount?: never;
       /**
        * From 2 accounts up to the maximum the platform allows (3 by default, never more
-       * than 10), among which is the receiving one, in one validation and with one unit of
-       * quota. `attributes.candidate_match` says which one matched.
+       * than 10), among which is the receiving one, in one validation and with one unit
+       * of quota.
+       *
+       * `attributes.candidate_match` says which one matched.
        */
       candidateAccounts: readonly string[];
     };
 
 /**
- * The amount of a validation by fields, in `amount`. It is required.
+ * The amount of a validation by fields, in `amount`.
+ *
+ * It is required.
  */
 export type TransferAmountParams = {
   /**
    * Amount in pesos, greater than zero, with up to two decimals and up to 13 integer
-   * digits. A decimal string such as `'15000.50'` is sent as the number it spells.
+   * digits.
+   *
+   * A decimal string such as `'15000.50'` is sent as the number it spells.
    */
   amount: number | string;
 };
@@ -474,9 +512,11 @@ export type TransferAmountParams = {
 /** The arguments of `validateTransfer()`, without the account or the amount. */
 interface ValidateTransferBase {
   /**
-   * Send date of the transfer, `YYYY-MM-DD`. Optional: if it is missing or unusable, the
-   * API tries candidate dates against Banxico, and rejects with `422`
-   * (`send_date_required`) only when it has nothing to guess it from.
+   * Send date of the transfer, `YYYY-MM-DD`.
+   *
+   * Optional: if it is missing or unusable, the API tries candidate dates against
+   * Banxico, and rejects with `422` (`send_date_required`) only when it has nothing to
+   * guess it from.
    */
   sendDate?: string;
   /** Tracking key, from 1 to 30 characters. */
@@ -489,8 +529,11 @@ interface ValidateTransferBase {
   receiverBank?: string;
   /**
    * `true` when the beneficiary of the transfer is the receiving institution itself
-   * ("Pago a Banco" in the CEP). `false` by default. `1` and `0` are also accepted and
-   * converted.
+   * ("Pago a Banco" in the CEP).
+   *
+   * `false` by default.
+   *
+   * `1` and `0` are also accepted and converted.
    */
   recipientIsBank?: boolean | 0 | 1;
   /** Automatic retry policy of the API. */
@@ -498,9 +541,11 @@ interface ValidateTransferBase {
   /** Reference of your own, from 1 to 64 characters, that returns in the validation and in webhooks. */
   clientRef?: string;
   /**
-   * Identifier of the business attempt: the order, batch or transaction number. With it,
-   * repeating the request does not duplicate the validation for 24 hours. When it is
-   * missing, the SDK generates one per call.
+   * Identifier of the business attempt: the order, batch or transaction number.
+   *
+   * With it, repeating the request does not duplicate the validation for 24 hours.
+   *
+   * When it is missing, the SDK generates one per call.
    */
   idempotencyKey?: string;
 }
@@ -532,7 +577,9 @@ export interface CanonicalTransferParams {
  * A validation in a list.
  *
  * It is narrower than `Validation`: a list carries neither the submitted data nor the
- * Banxico result, nor the links to the receipt. `get()` returns the full one.
+ * Banxico result, nor the links to the receipt.
+ *
+ * `get()` returns the full one.
  */
 export type ValidationSummary = Schemas['PublicValidationListItem'];
 
@@ -560,8 +607,9 @@ export interface RecheckResult {
   /** The validation with the current state. */
   validation: Validation;
   /**
-   * The instant of the Banxico query, in ISO 8601 UTC. `null` when nothing was queried
-   * because the validation was already `returned`.
+   * The instant of the Banxico query, in ISO 8601 UTC.
+   *
+   * `null` when nothing was queried because the validation was already `returned`.
    */
   checkedAt: string | null;
   /** `true` when this query moved the validation from `valid` to `returned`. */
@@ -571,9 +619,13 @@ export interface RecheckResult {
 }
 
 /**
- * What the permanent deletion of a validation would erase, and the token that confirms it.
- * Nothing has changed yet. `attributes.confirmation_token` is single-use and expires in
- * `attributes.expires_in` seconds.
+ * What the permanent deletion of a validation would erase, and the token that confirms
+ * it.
+ *
+ * Nothing has changed yet.
+ *
+ * `attributes.confirmation_token` is single-use and expires in `attributes.expires_in`
+ * seconds.
  *
  * @see https://docs.veriko.mx/en/how-to/purge-a-validation
  */
@@ -581,6 +633,7 @@ export type PurgePreparation = ResourceOf<'prepareValidationPurge', 200>;
 
 /**
  * The result of the permanent deletion of a validation, which remains as a tombstone.
+ *
  * `attributes.file_removal` is `pending` when some file could not be deleted at that
  * moment and the daily sweep finishes it.
  *
@@ -635,10 +688,13 @@ export interface QueuedInfo {
 }
 
 /**
- * What `validate()` and `validateOcr()` return. `queued` is set when the API answered
- * `202` because the Banxico query outlasted 45 seconds: the resource is then the reduced
- * one of a queued validation, its `status` is `processing`, and the verdict is collected
- * with `waitFor()`. It is `undefined` when the response is the verdict.
+ * What `validate()` and `validateOcr()` return.
+ *
+ * `queued` is set when the API answered `202` because the Banxico query outlasted 45
+ * seconds: the resource is then the reduced one of a queued validation, its `status` is
+ * `processing`, and the verdict is collected with `waitFor()`.
+ *
+ * It is `undefined` when the response is the verdict.
  */
 export type ValidationResult = Validation & { queued?: QueuedInfo };
 
@@ -660,8 +716,11 @@ export type WebhookStatus = NonNullable<Schemas['UpdateWebhookRequest']['status'
 /** The arguments of `webhooks.regenerateSecret()`. */
 export interface RegenerateSecretParams {
   /**
-   * `true` revokes the previous secret at once, with no grace period. Use it if the secret
-   * was exposed. Without it, the previous secret keeps signing for 24 hours in
+   * `true` revokes the previous secret at once, with no grace period.
+   *
+   * Use it if the secret was exposed.
+   *
+   * Without it, the previous secret keeps signing for 24 hours in
    * `X-Webhook-Signature-Old`, until `attributes.previous_secret_expires_at`.
    */
   immediate?: boolean;
@@ -820,7 +879,9 @@ export type DeliveryEventType = NonNullable<DeliveriesQuery['event_type']>[numbe
 
 /**
  * The account of a validation by image: `beneficiaryAccount`, or several in
- * `candidateAccounts` when it is not known which it was. Send one of the two, not both.
+ * `candidateAccounts` when it is not known which it was.
+ *
+ * Send one of the two, not both.
  */
 export type OcrAccountParams =
   | {
@@ -837,8 +898,11 @@ export type OcrAccountParams =
 /** The arguments of `validations.validateOcr()` and `validations.enqueueOcr()`, without the account. */
 interface ValidateOcrBase {
   /**
-   * The receipt: its bytes (`Buffer` or `Uint8Array`) or the path of a file. The SDK
-   * encodes it in base64. JPEG, PNG, WebP or a PDF of 1 to 3 pages, up to 12 MB.
+   * The receipt: its bytes (`Buffer` or `Uint8Array`) or the path of a file.
+   *
+   * The SDK encodes it in base64.
+   *
+   * JPEG, PNG, WebP or a PDF of 1 to 3 pages, up to 12 MB.
    */
   image?: Uint8Array | string;
   /** Public HTTPS URL of an already published image. If `image` is also sent, only that one counts. */
@@ -848,22 +912,25 @@ interface ValidateOcrBase {
   /** Reference of your own, from 1 to 64 characters, that returns in the validation and in webhooks. */
   clientRef?: string;
   /**
-   * `true` by default: the platform keeps the receipt file and `image()` serves it. With
-   * `false` it deletes it as soon as the validation reaches a terminal state in which it
-   * no longer needs it, and `attributes.image_retained` is `false`.
+   * `true` by default: the platform keeps the receipt file and `image()` serves it.
+   *
+   * With `false` it deletes it as soon as the validation reaches a terminal state in
+   * which it no longer needs it, and `attributes.image_retained` is `false`.
    */
   retainImage?: boolean;
   /**
    * SPEI code of the sender bank, 4 or 5 digits (`'40012'`), that replaces the one read
-   * from the receipt before querying Banxico. A value in another format, such as a name,
-   * is ignored and the one read is kept.
+   * from the receipt before querying Banxico.
+   *
+   * A value in another format, such as a name, is ignored and the one read is kept.
    */
   senderBank?: string;
   /** SPEI code of the receiver bank, with the same rule as `senderBank`. */
   receiverBank?: string;
   /**
-   * `true` when the beneficiary is the receiving institution itself. `1` and `0` are also
-   * accepted and converted.
+   * `true` when the beneficiary is the receiving institution itself.
+   *
+   * `1` and `0` are also accepted and converted.
    */
   recipientIsBank?: boolean | 0 | 1;
   /** Identifier of the business attempt. With it, repeating the request does not duplicate the validation. */
@@ -891,8 +958,10 @@ export interface CanonicalOcrParams {
 /** The options of `validations.get()`. */
 export interface GetValidationOptions extends CallOptions {
   /**
-   * The `ETag` of an earlier read. When nothing changed, the API answers `304` and the SDK
-   * throws it as `NotModifiedError`, whose `etag` is the current one.
+   * The `ETag` of an earlier read.
+   *
+   * When nothing changed, the API answers `304` and the SDK throws it as
+   * `NotModifiedError`, whose `etag` is the current one.
    */
   ifNoneMatch?: string;
 }
@@ -900,14 +969,19 @@ export interface GetValidationOptions extends CallOptions {
 /** The options of `validations.waitFor()`, `finance.waitForCepExport()` and `beneficiaries.importWait()`. */
 export interface WaitForOptions extends Omit<CallOptions, 'timeoutMs'> {
   /**
-   * How long to wait for the result, in milliseconds. By default, up to the `expires_at` of
-   * the validation, when the API reported one, and five minutes otherwise.
+   * How long to wait for the result, in milliseconds.
+   *
+   * By default, up to the `expires_at` of the validation, when the API reported one, and
+   * five minutes otherwise.
    */
   timeoutMs?: number;
   /**
-   * Floor of the pause between polls, in milliseconds. The pause is never shorter than what
-   * the server asks in `Retry-After` or `meta.next_poll_after_seconds`. Without a server
-   * hint, it is this value, 2 seconds by default.
+   * Floor of the pause between polls, in milliseconds.
+   *
+   * The pause is never shorter than what the server asks in `Retry-After` or
+   * `meta.next_poll_after_seconds`.
+   *
+   * Without a server hint, it is this value, 2 seconds by default.
    */
   pollIntervalMs?: number;
   /** Time limit of each request of the polling, in milliseconds. */
@@ -938,7 +1012,9 @@ export interface ValidationFilters {
   bank?: string;
   /**
    * Up to 50 SPEI codes, as a list or comma-separated: the validations whose sender or
-   * receiver bank is any of them. With `bank`, both are met.
+   * receiver bank is any of them.
+   *
+   * With `bank`, both are met.
    */
   banks?: string | readonly string[];
   amountMin?: number;
@@ -964,8 +1040,10 @@ export interface ExportValidationsParams extends ValidationFilters {
 }
 
 /**
- * The options of the operations that accept `Idempotency-Key`. The SDK generates a key per
- * call when it is missing; pass your own to make a later resend safe.
+ * The options of the operations that accept `Idempotency-Key`.
+ *
+ * The SDK generates a key per call when it is missing; pass your own to make a later
+ * resend safe.
  */
 export type IdempotentOptions = CallOptions;
 
@@ -997,7 +1075,9 @@ export interface DeliveryFilters {
   eventType?: DeliveryEventType | readonly DeliveryEventType[];
   /**
    * The HTTP code the receiver answered with: exact (`404`), a family (`'5xx'`) or
-   * `'none'` for deliveries with no response. One or several.
+   * `'none'` for deliveries with no response.
+   *
+   * One or several.
    */
   responseStatus?: string | number | readonly (string | number)[];
   /** Only the deliveries of this validation. */
@@ -1061,9 +1141,10 @@ export interface CepOptions extends CallOptions {
 export type Beneficiary = Schemas['Beneficiary'];
 
 /**
- * The result of `beneficiaries.create()`. `reactivated` is `true` when the registration
- * reactivated an archived account with the same number (the API answers `200` with
- * `meta.reactivated`) and `false` for a new one.
+ * The result of `beneficiaries.create()`.
+ *
+ * `reactivated` is `true` when the registration reactivated an archived account with the
+ * same number (the API answers `200` with `meta.reactivated`) and `false` for a new one.
  */
 export type CreatedBeneficiary = Beneficiary & { reactivated: boolean };
 
@@ -1072,8 +1153,9 @@ export type BeneficiaryLookup = Schemas['BeneficiaryLookupResource'];
 
 /**
  * The structure of an account number, which `beneficiaries.validateAccount()` returns:
- * detected type, check digit and resolved bank. It is a local validation, with no Banxico
- * query.
+ * detected type, check digit and resolved bank.
+ *
+ * It is a local validation, with no Banxico query.
  */
 export interface AccountValidation {
   type: 'account_validation';
@@ -1170,7 +1252,9 @@ export function isImportTerminal(status: string | undefined): boolean {
  * `true` when the job no longer advances by itself.
  *
  * It covers `preview_ready`, where progress stops to wait for the review, and the final
- * states. It is what `importWait()` waits for.
+ * states.
+ *
+ * It is what `importWait()` waits for.
  */
 export function isImportSettled(job: BeneficiaryImportJob): boolean {
   const status = job.attributes?.status;

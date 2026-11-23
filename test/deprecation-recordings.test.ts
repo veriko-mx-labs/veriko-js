@@ -1,7 +1,9 @@
 /**
  * The seven operations that announce the field-name change answer with `Deprecation`,
- * `Sunset` and `Link`, and a `meta.field_names_notice`. The recordings carry them, as the
- * 1.212.1 API sends them, so these tests exercise what an integration really receives.
+ * `Sunset` and `Link`, and a `meta.field_names_notice`.
+ *
+ * The recordings carry them, as the 1.212.1 API sends them, so these tests exercise what
+ * an integration really receives.
  */
 
 import assert from 'node:assert/strict';

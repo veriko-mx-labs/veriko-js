@@ -2358,7 +2358,7 @@ export class Dashboard {
   }
 }
 
-/** Plan catalog that needs no API key. */
+/** Plan catalog that needs no key. */
 export class Plans {
   constructor(private readonly transport: Transport) {}
 

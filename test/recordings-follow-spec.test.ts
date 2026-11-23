@@ -201,10 +201,12 @@ function applicableSchemas(schema: JsonObject, value: unknown): JsonObject[] {
 }
 
 /**
- * What the 1.212.1 contract adds and the bundled spec may not declare yet. The recordings
- * follow 1.212.1, so they carry these; the check tolerates them only while the bundled spec
- * lacks them, and demands them once it declares them. Each entry is a pattern over the path
- * of the field.
+ * What the 1.212.1 contract adds and the bundled spec may not declare yet.
+ *
+ * The recordings follow 1.212.1, so they carry these; the check tolerates them only while
+ * the bundled spec lacks them, and demands them once it declares them.
+ *
+ * Each entry is a pattern over the path of the field.
  */
 const AHEAD_OF_BUNDLED_SPEC: readonly RegExp[] = [
   // The notice of the field-name change (`FieldNamesNotice`), in the `meta` of the seven operations.
