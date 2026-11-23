@@ -2854,7 +2854,7 @@ export interface components {
          */
         UserTwoFactorMethod: {
             /**
-             * @description Method: `passkey`: passkey (Phase 4); `app`: authenticator app (TOTP or HOTP); `email`: code by email; `sms`: code by SMS.
+             * @description Method: `passkey`: passkey; `app`: authenticator app (TOTP or HOTP); `email`: code by email; `sms`: code by SMS.
              * @example app
              * @enum {string}
              */
@@ -2866,11 +2866,11 @@ export interface components {
              */
             status: "enabled" | "disabled";
             /**
-             * @description `true` when the method's engine is available in this deployment (RN-AUTH-054); `false` only for `passkey` until `b-passkeys-controlador` is in production. The front hides an unavailable method the user does not have active; when they had it active, it turns it off without unlinking.
+             * @description `true` when the method's engine is available in this deployment (RN-AUTH-054). `passkey` is always `true`. The front hides an unavailable method the user does not have active; when they had it active, it turns it off without unlinking.
              * @example true
              */
             available: boolean;
-            /** @description When the method was verified: the channel verification for `email`/`sms`, the confirmed enrollment for `app`; `null` when never verified (or `passkey`, with no enrollment until Phase 4). */
+            /** @description When the method was verified: the channel verification for `email`/`sms`, the confirmed enrollment for `app`; `null` when never verified (or `passkey`, which is not enrolled as a 2FA method: its keys are managed at `/v1/users/me/passkeys`). */
             verified_at: components["schemas"]["TimestampUTC"] | null;
             /** @description When a challenge with this method was last passed; `null` when never used. */
             last_used_at: components["schemas"]["TimestampUTC"] | null;
@@ -7491,7 +7491,7 @@ export interface components {
     };
     responses: {
         /**
-         * @description Rate limit exceeded (`rate_limit_exceeded`: wait a few seconds) or plan quota used up (`quota_exceeded`: wait for the next period or change plans).
+         * @description Rate limit exceeded (`rate_limit_exceeded`: wait a few seconds).
          * @example {
          *       "errors": [
          *         {
@@ -7510,7 +7510,7 @@ export interface components {
                 "X-RateLimit-Limit"?: number;
                 /** @description Requests remaining in the current window. Always 0 at the moment of the 429; on a successful response of the authenticated API it is what is left of the per-key cap. */
                 "X-RateLimit-Remaining"?: number;
-                /** @description Absolute Unix epoch (seconds) when the window resets. Emitted on every 429, alongside Retry-After, and on successful responses of the authenticated API. Per-endpoint overrides exist (e.g. `rate_limited_login`). */
+                /** @description Absolute Unix epoch (seconds) when the window resets. Emitted on every 429, alongside Retry-After, and on successful responses of the authenticated API. */
                 "X-RateLimit-Reset"?: number;
                 [name: string]: unknown;
             };
@@ -7901,7 +7901,7 @@ export interface operations {
                     "X-RateLimit-Limit"?: number;
                     /** @description Requests remaining in the current window. Always 0 at the moment of the 429; on a successful response of the authenticated API it is what is left of the per-key cap. */
                     "X-RateLimit-Remaining"?: number;
-                    /** @description Absolute Unix epoch (seconds) when the window resets. Emitted on every 429, alongside Retry-After, and on successful responses of the authenticated API. Per-endpoint overrides exist (e.g. `rate_limited_login`). */
+                    /** @description Absolute Unix epoch (seconds) when the window resets. Emitted on every 429, alongside Retry-After, and on successful responses of the authenticated API. */
                     "X-RateLimit-Reset"?: number;
                     [name: string]: unknown;
                 };
@@ -8035,7 +8035,7 @@ export interface operations {
                     "X-RateLimit-Limit"?: number;
                     /** @description Requests remaining in the current window. Always 0 at the moment of the 429; on a successful response of the authenticated API it is what is left of the per-key cap. */
                     "X-RateLimit-Remaining"?: number;
-                    /** @description Absolute Unix epoch (seconds) when the window resets. Emitted on every 429, alongside Retry-After, and on successful responses of the authenticated API. Per-endpoint overrides exist (e.g. `rate_limited_login`). */
+                    /** @description Absolute Unix epoch (seconds) when the window resets. Emitted on every 429, alongside Retry-After, and on successful responses of the authenticated API. */
                     "X-RateLimit-Reset"?: number;
                     [name: string]: unknown;
                 };
@@ -9560,6 +9560,12 @@ export interface operations {
                 headers: {
                     /** @description Seconds left before this validation can be queried again. */
                     "Retry-After"?: number;
+                    /** @description Configured request cap for this bucket. It is emitted on every 429 and, on the authenticated API, also on successful responses, where it is the per-key cap of the account plan. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Requests remaining in the current window. Always 0 at the moment of the 429; on a successful response of the authenticated API it is what is left of the per-key cap. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Absolute Unix epoch (seconds) when the window resets. Emitted on every 429, alongside Retry-After, and on successful responses of the authenticated API. */
+                    "X-RateLimit-Reset"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -13292,6 +13298,12 @@ export interface operations {
             429: {
                 headers: {
                     "Retry-After"?: number;
+                    /** @description Configured request cap for this bucket. It is emitted on every 429 and, on the authenticated API, also on successful responses, where it is the per-key cap of the account plan. */
+                    "X-RateLimit-Limit"?: number;
+                    /** @description Requests remaining in the current window. Always 0 at the moment of the 429; on a successful response of the authenticated API it is what is left of the per-key cap. */
+                    "X-RateLimit-Remaining"?: number;
+                    /** @description Absolute Unix epoch (seconds) when the window resets. Emitted on every 429, alongside Retry-After, and on successful responses of the authenticated API. */
+                    "X-RateLimit-Reset"?: number;
                     [name: string]: unknown;
                 };
                 content: {
