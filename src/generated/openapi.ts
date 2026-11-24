@@ -2995,6 +2995,18 @@ export interface components {
             /** @description Two-factor authentication (2FA) state. */
             two_factor?: {
                 /**
+                 * @description `true` when the account has two-factor authentication (2FA) active, that is, when some method is enabled (`primary` is not `null`). A passkey alone does not turn 2FA on. Derived from the methods, not stored.
+                 * @example true
+                 */
+                enabled?: boolean;
+                /**
+                 * @deprecated
+                 * @description **Deprecated:** use the primary field. It carries the same value as primary: the first enabled method in ladder order, or `null` when none is enabled. It used to allow only `sms` and `email`; it now also allows `app`.
+                 * @example app
+                 * @enum {string|null}
+                 */
+                method?: "app" | "email" | "sms" | null;
+                /**
                  * Format: date-time
                  * @description Date and time of the last passed 2FA challenge with any method, in ISO 8601 UTC; `null` when never used.
                  * @example null
