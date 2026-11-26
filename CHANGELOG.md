@@ -3,6 +3,13 @@
 Formato de [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/);
 versiones según [SemVer](https://semver.org/lang/es/).
 
+## [0.6.2] - 2026-11-26
+
+### Cambiado
+
+- Los tipos generados siguen la versión 1.266.0 del spec público: incluyen los campos y los
+  ejemplos de error nuevos de las respuestas. Sin cambios de comportamiento en el cliente.
+
 ## [0.6.1] - 2026-11-14
 
 ### Cambiado
