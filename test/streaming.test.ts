@@ -161,7 +161,8 @@ describe('the *Stream() downloads', () => {
       assert.ok(streamed.stream instanceof ReadableStream);
       assert.equal(streamed.contentType, file.contentType);
       assert.equal(streamed.filename, file.filename);
-      assert.deepEqual(streamed.headers, file.headers);
+      // `date` is stamped per response, and two requests can land on different seconds.
+      assert.deepEqual({ ...streamed.headers, date: '' }, { ...file.headers, date: '' });
       assert.equal(streamed.contentLength, file.content.length);
       assert.deepEqual(await drain(streamed.stream), file.content);
     });
