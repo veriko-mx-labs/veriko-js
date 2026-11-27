@@ -3,6 +3,15 @@
 Formato de [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/);
 versiones según [SemVer](https://semver.org/lang/es/).
 
+## [0.6.3] - 2026-11-26
+
+### Añadido
+
+- Los tipos generados siguen la versión 1.272.0 del spec público. `Validation` añade
+  `truncated_fields`, con los campos que el comprobante muestra cortados con puntos suspensivos, y
+  `error_code` suma `tracking_key_truncated` y `other_account_exists`. El README explica los tres.
+  Sin cambios de comportamiento en el cliente.
+
 ## [0.6.2] - 2026-11-26
 
 ### Cambiado
