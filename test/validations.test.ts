@@ -126,6 +126,26 @@ describe('client.validations', () => {
       assert.equal(validation.attributes.status, 'not_found');
     });
 
+    it('the validation exposes the cut-off fields and the reason', async () => {
+      server.enqueue('validate-ocr-truncated');
+
+      const validation = await client.validations.validateOcr({ image: Buffer.from('png') });
+
+      assert.deepEqual(validation.attributes.truncated_fields, [
+        { field: 'tracking_key', position: 'end', head: null, tail: null },
+      ]);
+      assert.equal(validation.attributes.error_code, 'tracking_key_truncated');
+      assert.equal(validation.attributes.status, 'not_found');
+    });
+
+    it('without cut-off fields the validation carries no truncated_fields', async () => {
+      server.enqueue('validate-ocr');
+
+      const validation = await client.validations.validateOcr({ image: Buffer.from('png') });
+
+      assert.equal(validation.attributes.truncated_fields, undefined);
+    });
+
     it('imageUrl travels alone, without image', async () => {
       server.enqueue('validate-ocr');
 

@@ -274,6 +274,33 @@ misma cuenta y con la misma clave de rastreo. En una validación por imagen,
 que muestra la imagen (`read_last4`). Ninguno cambia el veredicto, y los dos están ausentes cuando
 la API no los informa.
 
+### Campos cortados y pago a otra cuenta
+
+Algunos comprobantes muestran un campo cortado con puntos suspensivos. Una validación por imagen los
+lista en `attributes.truncated_fields`:
+
+```ts
+for (const cut of validation.attributes.truncated_fields ?? []) {
+  console.log(cut.field, cut.position); // tracking_key end
+}
+```
+
+Cada entrada trae `field` (el nombre del campo en `normalized_data`), `position` (`start`, `middle`
+o `end`) y, cuando el corte está en medio, `head` y `tail` con el texto visible antes y después. El
+valor del campo nunca lleva los puntos: trae sólo lo visible, o queda vacío si el corte está en medio
+o si el campo es el monto, la fecha o la hora. Cada campo cortado se añade también a
+`normalization_warnings`, y `truncated_fields` está ausente cuando no hay ninguno.
+
+Dos valores de `attributes.error_code` acompañan a un `not_found` y no vienen del diagnóstico de
+Banxico:
+
+| `error_code`             | significado                                                                                                       |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `tracking_key_truncated` | El comprobante muestra la clave de rastreo cortada y no hay referencia. La API no consulta a Banxico ni reintenta |
+| `other_account_exists`   | No hay pago a la cuenta enviada, pero sí a otra cuenta que muestra el comprobante. La API no indica cuál          |
+
+Con `tracking_key_truncated`, vuelve a validar con la clave de rastreo completa.
+
 ### Varias cuentas candidatas
 
 `candidateAccounts` lleva desde 2 cuentas hasta el máximo de la plataforma (3 de forma
