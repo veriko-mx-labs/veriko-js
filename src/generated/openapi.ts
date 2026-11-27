@@ -3192,7 +3192,7 @@ export interface components {
             bank_name?: string;
         };
         /** @description Stable code for a validation failure. The list is not closed: an unexpected failure carries `internal_error` and other failures may carry the code of their cause, so treat an unknown value as a generic failure. */
-        ValidationErrorCode: string | ("network" | "captcha" | "max_retries_exceeded" | "ttl_expired" | "preflight_failed" | "rate_limit_exhausted" | "dispatch_failed" | "bank_code_unresolvable_for_phone" | "intra_bank_no_cep" | "not_found_identity" | "not_found_account" | "not_found_amount" | "not_found_account_and_amount" | "not_found_account_or_amount" | "internal_error");
+        ValidationErrorCode: string | ("network" | "captcha" | "max_retries_exceeded" | "ttl_expired" | "preflight_failed" | "rate_limit_exhausted" | "dispatch_failed" | "bank_code_unresolvable_for_phone" | "intra_bank_no_cep" | "not_found_identity" | "not_found_account" | "not_found_amount" | "not_found_account_and_amount" | "not_found_account_or_amount" | "tracking_key_truncated" | "other_account_exists" | "internal_error");
         /** @description Full retry cycle state with configuration, progress, and current status. */
         RetryStateFull: {
             /**
@@ -3561,6 +3561,39 @@ export interface components {
                     read_last4: string;
                 };
                 /**
+                 * @description Fields the receipt shows cut off with an ellipsis. It only
+                 *     appears on `ocr` validations, when there is at least one. The
+                 *     field value never carries the ellipsis: it holds only the
+                 *     visible part, or is empty when the cut is in the middle or the
+                 *     field is the amount, the date, or the time. A cut-off tracking
+                 *     key is not queried at Banxico (`error_code`
+                 *     `tracking_key_truncated` when there is no reference either),
+                 *     and a cut-off reference is discarded. Each field is also added
+                 *     to `normalization_warnings`.
+                 */
+                truncated_fields?: {
+                    /**
+                     * @description Name of the cut-off field, as it appears in `normalized_data`.
+                     * @example tracking_key
+                     */
+                    field: string;
+                    /**
+                     * @description Where the ellipsis is, at the start, in the middle, or at the end of the value.
+                     * @enum {string}
+                     */
+                    position: "start" | "middle" | "end";
+                    /**
+                     * @description Visible text before the ellipsis, only when `position` is `middle`.
+                     * @example null
+                     */
+                    head: string | null;
+                    /**
+                     * @description Visible text after the ellipsis, only when `position` is `middle`.
+                     * @example null
+                     */
+                    tail: string | null;
+                }[];
+                /**
                  * @description Which of the `candidate_accounts` sent won. It only appears
                  *     when the request carried that list and one of the accounts
                  *     matched the transfer. The full account is in
@@ -3684,7 +3717,12 @@ export interface components {
                  *     identity, account, amount, both, or the payment without
                  *     isolating the field. A diagnosis does not change the verdict
                  *     or prove payment. Without a conclusive response, the field
-                 *     remains `null`.
+                 *     remains `null`. Two codes do not come from diagnosis:
+                 *     `tracking_key_truncated` (the receipt shows the tracking key
+                 *     cut off and there is no reference; Banxico is not queried and
+                 *     there are no retries) and `other_account_exists` (there is no
+                 *     payment to the sent account, but there is one to another
+                 *     account shown on the receipt; which one is not disclosed).
                  */
                 error_code?: components["schemas"]["ValidationErrorCode"] | null;
                 /**
@@ -7772,6 +7810,38 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /**
+         * @description The request does not declare a supported `Content-Type` (`unsupported_media_type`): POST and PUT operations with a body accept `application/json` or `multipart/form-data`. Each operation documents its exceptions.
+         * @example {
+         *       "errors": [
+         *         {
+         *           "detail": "The content type must be JSON."
+         *         }
+         *       ]
+         *     }
+         */
+        UnsupportedMediaType: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "errors": [
+                 *         {
+                 *           "status": "415",
+                 *           "code": "unsupported_media_type",
+                 *           "detail": "El tipo de contenido debe ser JSON."
+                 *         }
+                 *       ],
+                 *       "meta": {
+                 *         "version": "1.273.1"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
     };
     parameters: {
         /** @description Optional client-generated key (Stripe-style) that guarantees the request is processed **exactly once** within a 24-hour TTL. The scope is `(user_id, endpoint, key)`. Retries with the same key and the same body return the byte-for-byte cached response with the `Idempotent-Replayed: true` header, without consuming rate-limit quota, without re-firing webhooks, and without creating a new `validations` row. Same key with a different body → 422 `idempotency_key_reused`. Same key with an in-flight request → 409 `idempotency_key_in_progress`. `5xx`, `429`, `408`, `401` and `403` responses are not cached (retries with the same key are processed for real); the other `4xx` responses (`400`, `404`, `409`, `422`) are cached and replayed. Format: 1–255 characters, alphanumeric + `_` + `-`. */
@@ -11442,6 +11512,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
             /** @description The URL, the event list, or `description` failed validation, or the account has reached its endpoint cap. It responds with an HTTP status `422` (with `code` in the body); the code inventory is in {% concept slug="errors-taxonomy" %}the error taxonomy{% /concept %}. Every field-level error carries `source.pointer`. */
             422: {
                 headers: {
@@ -11452,6 +11523,15 @@ export interface operations {
                 };
             };
             429: components["responses"]["RateLimited"];
+            /** @description `internal_error`: Something went wrong on our side. `processing_failed`: Internal error creating the endpoint. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     updateWebhook: {
@@ -11908,7 +11988,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description `body_empty` or `invalid_json`: a body was sent that is not valid JSON. The body is optional; if `immediate` is not needed, omit it. */
+            /** @description `invalid_json`: a body was sent that is not valid JSON. The body is optional; if `immediate` is not needed, omit it. */
             400: {
                 headers: {
                     [name: string]: unknown;
