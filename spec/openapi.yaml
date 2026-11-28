@@ -13,7 +13,7 @@ info:
     Las integraciones programáticas se autentican mediante una clave de API (`Authorization: Bearer veriko_…`).
 
     Aviso de seguridad: no se ha autorizado ninguna prueba de seguridad, escaneo ni prueba de penetración de terceros sobre esta API. El aviso completo y el contacto para reportar vulnerabilidades están en `/.well-known/security.txt`.
-  version: 1.274.2
+  version: 1.284.0
   contact:
     name: Veriko Support
     email: soporte@veriko.mx
@@ -2330,6 +2330,11 @@ paths:
                   value:
                     errors:
                       - detail: The receipt hides the account and we could not identify it.
+                preflight_failed:
+                  value:
+                    errors:
+                      - detail: Some data needs fixing.
+                      - detail: The receipt shows neither a tracking key nor a numeric reference.
                 validation_error:
                   value:
                     errors:
@@ -2757,6 +2762,25 @@ paths:
                       version: 1.193.0
                       api_version: v1
                       request_id: 49e00f0ce73b
+                preflight_failed:
+                  summary: Comprobante sin clave de rastreo ni referencia
+                  x-translations:
+                    en:
+                      summary: Receipt without tracking key or reference
+                  value:
+                    errors:
+                      - status: '422'
+                        code: preflight_failed
+                        detail: Hay datos por corregir.
+                      - status: '422'
+                        code: tracking_required
+                        detail: El comprobante no muestra la clave de rastreo ni la referencia numérica.
+                        source:
+                          pointer: /data/attributes/tracking_key
+                    meta:
+                      version: 1.277.1
+                      api_version: v1
+                      request_id: 5c1f0e7a9b24
                 validation_error:
                   summary: Datos de la petición no válidos
                   x-translations:
@@ -6069,6 +6093,17 @@ paths:
           x-translations:
             en:
               description: The validation was queried less than 10 minutes ago (code `recheck_rate_limited`). `Retry-After` and `meta.retry_after` give the seconds left. The API key request limit (`rate_limit_exceeded`) responds the same way.
+              examples:
+                recheck_rate_limited:
+                  value:
+                    errors:
+                      - detail: This validation was checked a moment ago.
+                rate_limit_exceeded:
+                  value:
+                    errors:
+                      - detail: You exceeded the request limit.
+                        hint: Wait a few seconds and try again.
+                        docs_url: https://docs.veriko.mx/en/concepts/rate-limits
           headers:
             Retry-After:
               schema:
@@ -6102,12 +6137,50 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/RetryAfterError'
+              examples:
+                recheck_rate_limited:
+                  summary: Validación consultada hace muy poco
+                  x-translations:
+                    en:
+                      summary: Validation checked a moment ago
+                  value:
+                    errors:
+                      - status: '429'
+                        code: recheck_rate_limited
+                        detail: Esta validación se consultó hace muy poco.
+                    meta:
+                      version: 1.277.1
+                      api_version: v1
+                      request_id: ab1a5f68af08
+                      retry_after: 420
+                rate_limit_exceeded:
+                  summary: Límite de peticiones excedido
+                  x-translations:
+                    en:
+                      summary: Rate limit exceeded
+                  value:
+                    errors:
+                      - status: '429'
+                        code: rate_limit_exceeded
+                        detail: Superaste el límite de peticiones.
+                        hint: Espera unos segundos y vuelve a intentarlo.
+                        docs_url: https://docs.veriko.mx/es/concepts/rate-limits
+                    meta:
+                      version: 1.277.1
+                      api_version: v1
+                      request_id: ab1a5f68af08
+                      retry_after: 45
         '503':
           description: Banxico no entregó un estado legible, o la consulta de estado está apagada (código `recheck_unavailable`). La validación no cambia y conserva su intervalo. `Retry-After` y `meta.retry_after` sugieren esperar 60 segundos.
           x-translations:
             en:
               description: Banxico did not return a readable status, or the status query is switched off (code `recheck_unavailable`). The validation does not change and keeps its interval. `Retry-After` and `meta.retry_after` suggest waiting 60 seconds.
+              examples:
+                recheck_unavailable:
+                  value:
+                    errors:
+                      - detail: We could not get the payment status.
           headers:
             Retry-After:
               schema:
@@ -6120,7 +6193,23 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/RetryAfterError'
+              examples:
+                recheck_unavailable:
+                  summary: Sin estado de pago de Banxico
+                  x-translations:
+                    en:
+                      summary: No payment status from Banxico
+                  value:
+                    errors:
+                      - status: '503'
+                        code: recheck_unavailable
+                        detail: No pudimos obtener el estado de pago.
+                    meta:
+                      version: 1.277.1
+                      api_version: v1
+                      request_id: ab1a5f68af08
+                      retry_after: 60
       x-translations:
         en:
           summary: Query the payment status of a validation again
@@ -16016,10 +16105,21 @@ paths:
                   api_version: v1
                   request_id: ab25e86f22f6
         '429':
-          description: '`export_limit_reached`: La cuenta ya tiene el máximo de exportaciones en curso. Consultar `Retry-After`.'
+          description: '`export_limit_reached`: La cuenta ya tiene el máximo de exportaciones en curso. Consultar `Retry-After` y `meta.retry_after`. También responde así el límite de peticiones de la clave de API (`rate_limit_exceeded`).'
           x-translations:
             en:
-              description: '`export_limit_reached`: The account already has the maximum number of exports in progress. Check `Retry-After`.'
+              description: '`export_limit_reached`: The account already has the maximum number of exports in progress. Check `Retry-After` and `meta.retry_after`. The API key request limit (`rate_limit_exceeded`) responds the same way.'
+              examples:
+                export_limit_reached:
+                  value:
+                    errors:
+                      - detail: You already have the maximum number of exports in progress. Wait for one to finish before requesting another.
+                rate_limit_exceeded:
+                  value:
+                    errors:
+                      - detail: You exceeded the request limit.
+                        hint: Wait a few seconds and try again.
+                        docs_url: https://docs.veriko.mx/en/concepts/rate-limits
           headers:
             Retry-After:
               schema:
@@ -16049,7 +16149,40 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/RetryAfterError'
+              examples:
+                export_limit_reached:
+                  summary: Máximo de exportaciones en curso
+                  x-translations:
+                    en:
+                      summary: Maximum exports in progress
+                  value:
+                    errors:
+                      - status: '429'
+                        code: export_limit_reached
+                        detail: Ya tienes el máximo de exportaciones en curso. Espera a que termine una para pedir otra.
+                    meta:
+                      version: 1.277.1
+                      api_version: v1
+                      request_id: ab25e86f22f6
+                      retry_after: 60
+                rate_limit_exceeded:
+                  summary: Límite de peticiones excedido
+                  x-translations:
+                    en:
+                      summary: Rate limit exceeded
+                  value:
+                    errors:
+                      - status: '429'
+                        code: rate_limit_exceeded
+                        detail: Superaste el límite de peticiones.
+                        hint: Espera unos segundos y vuelve a intentarlo.
+                        docs_url: https://docs.veriko.mx/es/concepts/rate-limits
+                    meta:
+                      version: 1.277.1
+                      api_version: v1
+                      request_id: ab25e86f22f6
+                      retry_after: 60
         '503':
           description: '`exports_busy`: Hay demasiadas exportaciones en curso en la plataforma, o `dispatch_failed`: no se pudo encolar. Consultar `Retry-After` cuando viene.'
           x-translations:
@@ -18061,6 +18194,27 @@ components:
                 en:
                   description: |
                     Identifier of the validation that was created before failing. Only present on `POST /v1/validate` and `POST /v1/validate-ocr` errors when the validation was already recorded with status `failed` or `error`; fetch it with `GET /v1/validations/{id}` to see the reason and what was read.
+    RetryAfterError:
+      description: |
+        Cuerpo de error de una respuesta que pide esperar antes de reintentar (429 y 503): el envoltorio estándar de error más `meta.retry_after`, los segundos a esperar, con el mismo valor que la cabecera `Retry-After`. Punto único donde se declara `retry_after`: las rutas no lo copian.
+      x-translations:
+        en:
+          description: |
+            Error body of a response asking to wait before retrying (429 and 503): the standard error wrapper plus `meta.retry_after`, the seconds to wait, with the same value as the `Retry-After` header. Single place where `retry_after` is declared: routes do not copy it.
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            meta:
+              type: object
+              properties:
+                retry_after:
+                  type: integer
+                  description: Segundos a esperar antes de reintentar. Es el mismo valor que la cabecera `Retry-After`, para clientes que no leen cabeceras HTTP.
+                  x-translations:
+                    en:
+                      description: Seconds to wait before retrying. It is the same value as the `Retry-After` header, for clients that do not read HTTP headers.
+                  example: 45
     Error:
       type: object
       description: |
@@ -28031,20 +28185,7 @@ components:
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '#/components/schemas/ErrorResponse'
-              - type: object
-                properties:
-                  meta:
-                    type: object
-                    properties:
-                      retry_after:
-                        type: integer
-                        description: Segundos a esperar antes de reintentar. Es el mismo valor que la cabecera `Retry-After`, para clientes que no leen cabeceras HTTP.
-                        x-translations:
-                          en:
-                            description: Seconds to wait before retrying. It is the same value as the `Retry-After` header, for clients that do not read HTTP headers.
-                        example: 45
+            $ref: '#/components/schemas/RetryAfterError'
           example:
             errors:
               - status: '429'
@@ -28116,6 +28257,36 @@ components:
             meta:
               version: 1.51.0
               request_id: 1a2b3c4d5e6ff6e5d4c3b2a1
+    IdempotencyKeyInProgress:
+      description: Una petición con la misma `Idempotency-Key` aún se está procesando. Se debe reintentar después de los segundos que indica la cabecera `Retry-After`.
+      x-translations:
+        en:
+          description: |
+            A request with the same `Idempotency-Key` is still being processed. The client must retry after the number of seconds indicated by the `Retry-After` header.
+          example:
+            errors:
+              - detail: A request with this Idempotency-Key is still being processed.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            example: 2
+          description: Segundos a esperar antes de reintentar
+          x-translations:
+            en:
+              description: Seconds to wait before retrying
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            errors:
+              - status: '409'
+                code: idempotency_key_in_progress
+                detail: Ya hay una solicitud en curso con esta Idempotency-Key.
+            meta:
+              version: 1.51.0
+              request_id: 2b3c4d5e6f7aa7f6e5d4c3b2
     ValidationQueuedAccepted:
       description: Validación asíncrona aceptada. Se debe sondear `GET /v1/validations/{id}` hasta uno de los estados terminales (`valid`, `not_found`, `cep_unavailable`, `invalid`, `returned`, `failed`, `error`). `meta.next_poll_after_seconds` indica el intervalo recomendado para el primer sondeo. Sin `?async=1`, esta respuesta llega cuando la consulta a Banxico pasa de 45 segundos, con `meta.async_reason` en `sync_deadline`.
       x-translations:
@@ -28218,36 +28389,6 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ValidationQueued'
-    IdempotencyKeyInProgress:
-      description: Una petición con la misma `Idempotency-Key` aún se está procesando. Se debe reintentar después de los segundos que indica la cabecera `Retry-After`.
-      x-translations:
-        en:
-          description: |
-            A request with the same `Idempotency-Key` is still being processed. The client must retry after the number of seconds indicated by the `Retry-After` header.
-          example:
-            errors:
-              - detail: A request with this Idempotency-Key is still being processed.
-      headers:
-        Retry-After:
-          schema:
-            type: integer
-            example: 2
-          description: Segundos a esperar antes de reintentar
-          x-translations:
-            en:
-              description: Seconds to wait before retrying
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-          example:
-            errors:
-              - status: '409'
-                code: idempotency_key_in_progress
-                detail: Ya hay una solicitud en curso con esta Idempotency-Key.
-            meta:
-              version: 1.51.0
-              request_id: 2b3c4d5e6f7aa7f6e5d4c3b2
     ValidationNotModified:
       description: |
         El `etag_version` y `status` no cambiaron desde el `If-None-Match` enviado. La respuesta no tiene cuerpo.

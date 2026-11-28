@@ -2793,6 +2793,16 @@ export interface components {
                 validation_id?: string;
             };
         };
+        /** @description Error body of a response asking to wait before retrying (429 and 503): the standard error wrapper plus `meta.retry_after`, the seconds to wait, with the same value as the `Retry-After` header. Single place where `retry_after` is declared: routes do not copy it. */
+        RetryAfterError: components["schemas"]["ErrorResponse"] & {
+            meta?: {
+                /**
+                 * @description Seconds to wait before retrying. It is the same value as the `Retry-After` header, for clients that do not read HTTP headers.
+                 * @example 45
+                 */
+                retry_after?: number;
+            };
+        };
         /** @description JSON:API-style error response. The `code` field is the stable, machine-readable contract and is never translated — clients must branch on `code`, not `detail`. The `detail` field is human-readable and translated per the `Accept-Language` request header. */
         Error: {
             /** @description List of one or more errors that occurred during the request. Each entry includes `status`, `code`, `detail` and, optionally, `source.pointer` referencing the field that failed. */
@@ -7583,15 +7593,7 @@ export interface components {
                  *       }
                  *     }
                  */
-                "application/json": components["schemas"]["ErrorResponse"] & {
-                    meta?: {
-                        /**
-                         * @description Seconds to wait before retrying. It is the same value as the `Retry-After` header, for clients that do not read HTTP headers.
-                         * @example 45
-                         */
-                        retry_after?: number;
-                    };
-                };
+                "application/json": components["schemas"]["RetryAfterError"];
             };
         };
         /**
@@ -7693,37 +7695,6 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
-        /** @description Validation enqueued. Poll `GET /v1/validations/{id}` until one of the terminal statuses (`valid`, `not_found`, `cep_unavailable`, `invalid`, `returned`, `failed`, `error`). `meta.next_poll_after_seconds` hints the recommended first-poll interval. Without `?async=1`, this response arrives when the Banxico query takes longer than 45 seconds, with `meta.async_reason` set to `sync_deadline`. */
-        ValidationQueuedAccepted: {
-            headers: {
-                /** @description Initial weak ETag (format `W/"{etag_version}-{status}"`). The version increments on every state transition; send it in `If-None-Match` during polling so the server can answer 304 when nothing changed. */
-                ETag?: string;
-                /** @description Absolute path (host-relative) of the queued validation. Equivalent to `/v1/validations/{data.id}`. */
-                Location?: string;
-                /** @description Only present when the request included the `Idempotency-Key` header. `false` marks a fresh response; `true` marks a response reused from the idempotency cache, which remains valid for 24 hours per account, endpoint, and key. */
-                "Idempotent-Replayed"?: "true" | "false";
-                /** @description Date when this operation was marked as deprecated (November 11, 2026, RFC 8594). Spanish field names stop being accepted on March 1, 2027 (see the `Sunset` header). */
-                Deprecation?: string;
-                /** @description Date when Spanish field names stop being accepted (March 1, 2027). */
-                Sunset?: string;
-                /** @description Migration guide to English field names. */
-                Link?: string;
-                /** @description Monthly validation cap of the account plan. Emitted when quota is enabled. */
-                "X-Quota-Limit"?: number;
-                /** @description Validations consumed in the current cycle. */
-                "X-Quota-Used"?: number;
-                /** @description Validations remaining in the current cycle. */
-                "X-Quota-Remaining"?: number;
-                /** @description Validations included in the plan for the current cycle. With overage enabled it is lower than `X-Quota-Limit` (the cap); without overage, equal. Also in the body, under `meta.quota`. */
-                "X-Quota-Included"?: number;
-                /** @description End of the current cycle in ISO 8601 UTC, when the quota renews. */
-                "X-Quota-Reset"?: string;
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ValidationQueued"];
-            };
-        };
         /**
          * @description A request with the same `Idempotency-Key` is still being processed. The client must retry after the number of seconds indicated by the `Retry-After` header.
          * @example {
@@ -7757,6 +7728,37 @@ export interface components {
                  *     }
                  */
                 "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description Validation enqueued. Poll `GET /v1/validations/{id}` until one of the terminal statuses (`valid`, `not_found`, `cep_unavailable`, `invalid`, `returned`, `failed`, `error`). `meta.next_poll_after_seconds` hints the recommended first-poll interval. Without `?async=1`, this response arrives when the Banxico query takes longer than 45 seconds, with `meta.async_reason` set to `sync_deadline`. */
+        ValidationQueuedAccepted: {
+            headers: {
+                /** @description Initial weak ETag (format `W/"{etag_version}-{status}"`). The version increments on every state transition; send it in `If-None-Match` during polling so the server can answer 304 when nothing changed. */
+                ETag?: string;
+                /** @description Absolute path (host-relative) of the queued validation. Equivalent to `/v1/validations/{data.id}`. */
+                Location?: string;
+                /** @description Only present when the request included the `Idempotency-Key` header. `false` marks a fresh response; `true` marks a response reused from the idempotency cache, which remains valid for 24 hours per account, endpoint, and key. */
+                "Idempotent-Replayed"?: "true" | "false";
+                /** @description Date when this operation was marked as deprecated (November 11, 2026, RFC 8594). Spanish field names stop being accepted on March 1, 2027 (see the `Sunset` header). */
+                Deprecation?: string;
+                /** @description Date when Spanish field names stop being accepted (March 1, 2027). */
+                Sunset?: string;
+                /** @description Migration guide to English field names. */
+                Link?: string;
+                /** @description Monthly validation cap of the account plan. Emitted when quota is enabled. */
+                "X-Quota-Limit"?: number;
+                /** @description Validations consumed in the current cycle. */
+                "X-Quota-Used"?: number;
+                /** @description Validations remaining in the current cycle. */
+                "X-Quota-Remaining"?: number;
+                /** @description Validations included in the plan for the current cycle. With overage enabled it is lower than `X-Quota-Limit` (the cap); without overage, equal. Also in the body, under `meta.quota`. */
+                "X-Quota-Included"?: number;
+                /** @description End of the current cycle in ISO 8601 UTC, when the quota renews. */
+                "X-Quota-Reset"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ValidationQueued"];
             };
         };
         /** @description The `etag_version` and `status` have not changed since the `If-None-Match` sent. The response has no body. */
@@ -9651,7 +9653,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["RetryAfterError"];
                 };
             };
             /** @description Banxico did not return a readable status, or the status query is switched off (code `recheck_unavailable`). The validation does not change and keeps its interval. `Retry-After` and `meta.retry_after` suggest waiting 60 seconds. */
@@ -9662,7 +9664,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["RetryAfterError"];
                 };
             };
         };
@@ -13386,7 +13388,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description `export_limit_reached`: The account already has the maximum number of exports in progress. Check `Retry-After`. */
+            /** @description `export_limit_reached`: The account already has the maximum number of exports in progress. Check `Retry-After` and `meta.retry_after`. The API key request limit (`rate_limit_exceeded`) responds the same way. */
             429: {
                 headers: {
                     "Retry-After"?: number;
@@ -13399,7 +13401,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
+                    "application/json": components["schemas"]["RetryAfterError"];
                 };
             };
             /** @description `exports_busy`: Too many exports are in progress on the platform, or `dispatch_failed`: it could not be queued. Check `Retry-After` when present. */
